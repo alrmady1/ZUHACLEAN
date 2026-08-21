@@ -44,11 +44,17 @@ export default function Appointments() {
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
 
+  // جداول المشرفين الآخرين والجدول العام مقصورة على الإدارة (مدير عام / مدير نظام /
+  // مشرف إداري) — المشرف الميداني والفني الميداني ما يشوفون إلا جدولهم الخاص.
+  const canSeeOtherSchedules =
+    user?.role === 'general_manager' || user?.role === 'admin' || user?.role === 'admin_supervisor';
+
   const filtered = useMemo(() => {
-    if (scope === 'all') return appointments;
-    if (scope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
-    return appointments.filter((a) => a.supervisor_id === scope);
-  }, [appointments, scope, user]);
+    const effectiveScope = canSeeOtherSchedules ? scope : 'mine';
+    if (effectiveScope === 'all') return appointments;
+    if (effectiveScope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
+    return appointments.filter((a) => a.supervisor_id === effectiveScope);
+  }, [appointments, scope, user, canSeeOtherSchedules]);
 
   const grouped = useMemo(() => {
     const byDate = new Map<string, Appointment[]>();
@@ -122,31 +128,37 @@ export default function Appointments() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setScope('mine')}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'mine' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          جدولي
-        </button>
-        <button
-          onClick={() => setScope('all')}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          الجدول العام
-        </button>
-        {supervisors
-          .filter((s) => s.id !== user?.id)
-          .map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setScope(s.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === s.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-            >
-              جدول {s.full_name}
-            </button>
-          ))}
-      </div>
+      {canSeeOtherSchedules ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setScope('mine')}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'mine' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          >
+            جدولي
+          </button>
+          <button
+            onClick={() => setScope('all')}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          >
+            الجدول العام
+          </button>
+          {supervisors
+            .filter((s) => s.id !== user?.id)
+            .map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setScope(s.id)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === s.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+              >
+                جدول {s.full_name}
+              </button>
+            ))}
+        </div>
+      ) : (
+        <div>
+          <span className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white">جدولي</span>
+        </div>
+      )}
 
       {view === 'table' ? (
         <div className="space-y-5">
