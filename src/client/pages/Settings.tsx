@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Plus, X, Pencil, Users as UsersIcon, Wrench as ServicesIcon } from 'lucide-react';
+import { Plus, X, Pencil, Users as UsersIcon, Wrench as ServicesIcon, Banknote as PaymentIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 
@@ -353,8 +353,131 @@ function ServicesTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Payment methods tab
+// ---------------------------------------------------------------------------
+function PaymentMethodsTab() {
+  const [methods, setMethods] = useState<PaymentMethodOption[]>([]);
+  const [editing, setEditing] = useState<PaymentMethodOption | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  function refresh() {
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setMethods);
+  }
+  useEffect(refresh, []);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const payload = {
+      name: form.get('name'),
+      is_active: form.get('is_active') === 'on',
+    };
+    try {
+      if (editing) {
+        await api.patch(`/payment-methods/${editing.id}`, payload);
+      } else {
+        await api.post('/payment-methods', payload);
+      }
+      setShowForm(false);
+      setEditing(null);
+      refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-400">طرق الدفع المتاحة عند تسجيل المصروفات وتحصيل الدفعات</p>
+        <button
+          onClick={() => {
+            setEditing(null);
+            setShowForm(true);
+          }}
+          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> طريقة دفع جديدة
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="p-3 text-start font-medium">طريقة الدفع</th>
+              <th className="p-3 text-start font-medium">الحالة</th>
+              <th className="p-3 text-start font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {methods.map((m) => (
+              <tr key={m.id} className="border-b border-slate-50 last:border-0">
+                <td className="p-3 font-medium text-slate-700">{m.name}</td>
+                <td className="p-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${m.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                    {m.is_active ? 'مفعّلة' : 'موقوفة'}
+                  </span>
+                </td>
+                <td className="p-3">
+                  <button
+                    onClick={() => {
+                      setEditing(m);
+                      setShowForm(true);
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> تعديل
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {methods.length === 0 && (
+              <tr>
+                <td colSpan={3} className="p-8 text-center text-slate-400">
+                  لا توجد طرق دفع بعد
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <Modal
+          title={editing ? `تعديل ${editing.name}` : 'طريقة دفع جديدة'}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+          }}
+        >
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <Field label="اسم طريقة الدفع">
+              <input name="name" defaultValue={editing?.name} required className="input" placeholder="مثال: آجل / شيك" />
+            </Field>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" name="is_active" defaultChecked={editing?.is_active ?? true} />
+              مفعّلة (تظهر عند تسجيل مصروف أو تحصيل دفعة)
+            </label>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {submitting ? 'جارِ الحفظ…' : editing ? 'حفظ التعديلات' : 'حفظ طريقة الدفع'}
+            </button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 export default function Settings() {
-  const [tab, setTab] = useState<'users' | 'services'>('users');
+  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods'>('users');
 
   return (
     <div className="space-y-5">
@@ -376,9 +499,15 @@ export default function Settings() {
         >
           <ServicesIcon className="h-4 w-4" /> الخدمات
         </button>
+        <button
+          onClick={() => setTab('payment_methods')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'payment_methods' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <PaymentIcon className="h-4 w-4" /> طرق الدفع
+        </button>
       </div>
 
-      {tab === 'users' ? <UsersTab /> : <ServicesTab />}
+      {tab === 'users' ? <UsersTab /> : tab === 'services' ? <ServicesTab /> : <PaymentMethodsTab />}
     </div>
   );
 }

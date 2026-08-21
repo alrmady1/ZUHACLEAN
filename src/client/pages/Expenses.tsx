@@ -1,21 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategory } from '../../shared/types.js';
+import type { Expense, ExpenseCategory, PaymentMethodOption } from '../../shared/types.js';
 import { EXPENSE_CATEGORY_LABELS_AR } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'نقدي',
-  card: 'شبكة',
-  bank_transfer: 'تحويل بنكي',
-  other: 'أخرى',
-};
-
 export default function Expenses() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,7 +17,12 @@ export default function Expenses() {
     api.get<Expense[]>('/expenses').then(setExpenses);
   }
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    refresh();
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+  }, []);
+
+  const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
 
   const totals = useMemo(() => {
     const today = new Date().toDateString();
@@ -111,7 +110,7 @@ export default function Expenses() {
                     </span>
                   </td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
-                  <td className="p-3 text-slate-600">{PAYMENT_METHOD_LABELS[e.payment_method]}</td>
+                  <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
                   <td className="p-3 text-slate-600">{e.recorded_by_name ?? '—'}</td>
                 </tr>
               ))}
@@ -166,10 +165,13 @@ export default function Expenses() {
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
                 <select name="payment_method" required className="input">
-                  <option value="cash">نقدي</option>
-                  <option value="card">شبكة</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
-                  <option value="other">أخرى</option>
+                  {paymentMethods
+                    .filter((m) => m.is_active)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="block text-sm">

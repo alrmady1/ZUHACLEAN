@@ -34,7 +34,10 @@ export type AppointmentStatus =
   | 'cancelled';
 
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
-export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'other';
+// A free-form key referencing a PaymentMethodOption.id below — kept as
+// `string` (not a fixed union) so admins can add methods beyond the
+// built-in cash/card/bank_transfer from Settings without a code change.
+export type PaymentMethod = string;
 export type ContractType = 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 export type ContractStatus = 'active' | 'completed' | 'cancelled' | 'expired';
 export type VisitFrequency = 'weekly' | 'bi_weekly' | 'monthly';
@@ -91,6 +94,12 @@ export interface Service {
   description?: string;
   default_price: number;
   default_duration_minutes: number;
+  is_active: boolean;
+}
+
+export interface PaymentMethodOption {
+  id: string;
+  name: string;
   is_active: boolean;
 }
 
@@ -198,6 +207,7 @@ export interface Invoice {
   vat_amount: number;
   total: number;
   payment_status: PaymentStatus;
+  payment_method?: PaymentMethod;
   issue_date: string;
   notes?: string;
 }

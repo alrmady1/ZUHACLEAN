@@ -15,6 +15,7 @@ import type {
   Expense,
   Appointment,
   Invoice,
+  PaymentMethodOption,
 } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -32,6 +33,7 @@ interface DbShape {
   expenses: Expense[];
   appointments: Appointment[];
   invoices: Invoice[];
+  paymentMethods: PaymentMethodOption[];
 }
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
@@ -127,13 +129,22 @@ function seed(): DbShape {
 
   const invoices: Invoice[] = [];
 
-  return { profiles, customers, services, contracts, expenses: [], appointments, invoices };
+  const paymentMethods: PaymentMethodOption[] = [
+    { id: 'cash', name: 'نقدي', is_active: true },
+    { id: 'card', name: 'شبكة', is_active: true },
+    { id: 'bank_transfer', name: 'حوالة بنكية', is_active: true },
+  ];
+
+  return { profiles, customers, services, contracts, expenses: [], appointments, invoices, paymentMethods };
 }
 
 function load(): DbShape {
   if (fs.existsSync(DATA_FILE)) {
     try {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
+      const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
+      // Migrate data files saved before payment methods existed.
+      if (!parsed.paymentMethods) parsed.paymentMethods = seed().paymentMethods;
+      return parsed;
     } catch {
       // fall through to reseed on corrupt file
     }
@@ -218,5 +229,17 @@ export const store = {
   invoices: {
     list: () => db.invoices,
     insert: (i: Invoice) => { db.invoices.push(i); persist(); return i; },
+  },
+  paymentMethods: {
+    list: () => db.paymentMethods,
+    get: (id: string) => db.paymentMethods.find((m) => m.id === id),
+    insert: (m: PaymentMethodOption) => { db.paymentMethods.push(m); persist(); return m; },
+    update: (id: string, patch: Partial<PaymentMethodOption>) => {
+      const idx = db.paymentMethods.findIndex((m) => m.id === id);
+      if (idx === -1) return undefined;
+      db.paymentMethods[idx] = { ...db.paymentMethods[idx], ...patch };
+      persist();
+      return db.paymentMethods[idx];
+    },
   },
 };

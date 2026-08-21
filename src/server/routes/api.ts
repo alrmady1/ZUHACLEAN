@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword } from '../lib/password.js';
-import type { Appointment, Contract, VisitFrequency, Invoice, Service } from '../../shared/types.js';
+import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
 export const api = Router();
@@ -319,6 +319,36 @@ api.post('/expenses', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Payment methods — managed from Settings (cash / card / bank transfer by
+// default, admins can add or rename more). Expense.payment_method and
+// Payment.method just store the id of one of these as a free-form string.
+// ---------------------------------------------------------------------------
+api.get('/payment-methods', (_req, res) => res.json(store.paymentMethods.list()));
+
+api.post('/payment-methods', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const method: PaymentMethodOption = {
+    id: store.id(),
+    name: body.name,
+    is_active: body.is_active ?? true,
+  };
+  store.paymentMethods.insert(method);
+  res.status(201).json(method);
+});
+
+api.patch('/payment-methods/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<PaymentMethodOption> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.is_active !== undefined) patch.is_active = body.is_active;
+
+  const updated = store.paymentMethods.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
 // Invoices (VAT 15%)
 // ---------------------------------------------------------------------------
 api.get('/invoices', (_req, res) => res.json(store.invoices.list()));
@@ -339,6 +369,7 @@ api.post('/invoices', (req, res) => {
     vat_amount,
     total: Math.round((subtotal + vat_amount) * 100) / 100,
     payment_status: body.payment_status ?? 'unpaid',
+    payment_method: body.payment_method || undefined,
     issue_date: body.issue_date ?? new Date().toISOString().slice(0, 10),
     notes: body.notes,
   };

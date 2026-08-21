@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Invoice } from '../../shared/types.js';
+import type { Customer, Invoice, PaymentMethodOption } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
@@ -9,6 +9,7 @@ import { formatMoney } from '../lib/date.js';
 export default function Sales() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewSubtotal, setPreviewSubtotal] = useState(0);
@@ -20,7 +21,10 @@ export default function Sales() {
   useEffect(() => {
     refresh();
     api.get<Customer[]>('/customers').then(setCustomers);
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
+
+  const methodName = (id?: string) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : '—');
 
   const revenue = invoices.reduce((s, i) => s + i.total, 0);
   const vatCollected = invoices.reduce((s, i) => s + i.vat_amount, 0);
@@ -35,6 +39,7 @@ export default function Sales() {
         customer_id: form.get('customer_id'),
         subtotal: Number(form.get('subtotal')),
         payment_status: form.get('payment_status'),
+        payment_method: form.get('payment_method') || undefined,
       });
       setShowForm(false);
       setPreviewSubtotal(0);
@@ -76,6 +81,7 @@ export default function Sales() {
               <th className="p-3 text-start font-medium">قبل الضريبة</th>
               <th className="p-3 text-start font-medium">الضريبة (15٪)</th>
               <th className="p-3 text-start font-medium">الإجمالي</th>
+              <th className="p-3 text-start font-medium">طريقة الدفع</th>
               <th className="p-3 text-start font-medium">الحالة</th>
               <th className="p-3 text-start font-medium">التاريخ</th>
             </tr>
@@ -91,6 +97,7 @@ export default function Sales() {
                   <td className="p-3 text-slate-600">{formatMoney(i.subtotal)}</td>
                   <td className="p-3 text-slate-600">{formatMoney(i.vat_amount)}</td>
                   <td className="p-3 font-semibold text-slate-700">{formatMoney(i.total)}</td>
+                  <td className="p-3 text-slate-600">{methodName(i.payment_method)}</td>
                   <td className="p-3">
                     <PaymentStatusBadge status={i.payment_status} />
                   </td>
@@ -99,7 +106,7 @@ export default function Sales() {
               ))}
             {invoices.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">
+                <td colSpan={8} className="p-8 text-center text-slate-400">
                   لا توجد فواتير بعد
                 </td>
               </tr>
@@ -143,14 +150,29 @@ export default function Sales() {
                   onChange={(e) => setPreviewSubtotal(Number(e.target.value) || 0)}
                 />
               </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">حالة السداد</span>
-                <select name="payment_status" required className="input">
-                  <option value="unpaid">غير مسدد</option>
-                  <option value="partial">مسدد جزئياً</option>
-                  <option value="paid">مسدد بالكامل</option>
-                </select>
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">حالة السداد</span>
+                  <select name="payment_status" required className="input">
+                    <option value="unpaid">غير مسدد</option>
+                    <option value="partial">مسدد جزئياً</option>
+                    <option value="paid">مسدد بالكامل</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+                  <select name="payment_method" className="input">
+                    <option value="">بدون تحديد</option>
+                    {paymentMethods
+                      .filter((m) => m.is_active)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
 
               <div className="rounded-xl bg-slate-50 p-3 text-sm">
                 <div className="flex justify-between text-slate-500">
