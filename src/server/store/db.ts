@@ -1,0 +1,190 @@
+// ============================================================================
+// طبقة تخزين بسيطة (JSON على القرص) — بديل مؤقت لقاعدة بيانات حقيقية.
+// يمكن استبدالها لاحقاً بـ Postgres / Supabase دون تغيير واجهة الراوترات،
+// طالما أن الدوال هنا (list/get/insert/update) تبقى بنفس التوقيع.
+// ============================================================================
+import fs from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type {
+  Profile,
+  Customer,
+  Service,
+  Contract,
+  Expense,
+  Appointment,
+  Invoice,
+} from '../../shared/types.js';
+
+interface DbShape {
+  profiles: Profile[];
+  customers: Customer[];
+  services: Service[];
+  contracts: Contract[];
+  expenses: Expense[];
+  appointments: Appointment[];
+  invoices: Invoice[];
+}
+
+// Lives outside `src/` on purpose: production containers only ship `dist/`,
+// so the JSON store must resolve to a path that exists in both dev and prod.
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_FILE = path.join(DATA_DIR, 'data.json');
+
+function seed(): DbShape {
+  const now = new Date().toISOString();
+
+  const profiles: Profile[] = [
+    { id: 'u-gm', full_name: 'سارة العتيبي', email: 'gm@zaha.sa', role: 'general_manager', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-admin', full_name: 'خالد المطيري', email: 'admin@zaha.sa', role: 'admin', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-asup', full_name: 'نورة الحربي', email: 'asup@zaha.sa', role: 'admin_supervisor', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-sup1', full_name: 'فهد القحطاني', email: 'sup1@zaha.sa', role: 'supervisor', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-sup2', full_name: 'منى الدوسري', email: 'sup2@zaha.sa', role: 'supervisor', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-tech1', full_name: 'عبدالله الشمري', email: 'tech1@zaha.sa', role: 'technician', supervisor_id: 'u-sup1', is_active: true, created_at: now, updated_at: now },
+    { id: 'u-tech2', full_name: 'ياسر العنزي', email: 'tech2@zaha.sa', role: 'technician', supervisor_id: 'u-sup1', is_active: true, created_at: now, updated_at: now },
+  ];
+
+  const services: Service[] = [
+    { id: 'svc-home', name: 'تنظيف منازل', default_price: 250, default_duration_minutes: 120, is_active: true },
+    { id: 'svc-office', name: 'تنظيف مكاتب', default_price: 400, default_duration_minutes: 180, is_active: true },
+    { id: 'svc-deep', name: 'تنظيف عميق', default_price: 600, default_duration_minutes: 240, is_active: true },
+    { id: 'svc-postc', name: 'تنظيف ما بعد البناء', default_price: 900, default_duration_minutes: 300, is_active: true },
+    { id: 'svc-pest', name: 'مكافحة حشرات', default_price: 300, default_duration_minutes: 90, is_active: true },
+  ];
+
+  const customers: Customer[] = [
+    { id: 'c-1', name: 'عبدالعزيز الغامدي', phone: '966501234567', address: 'حي النرجس، الرياض', district: 'النرجس', city: 'الرياض', created_at: now },
+    { id: 'c-2', name: 'شركة النخبة العقارية', phone: '966559876543', address: 'طريق الملك فهد، جدة', district: 'الروضة', city: 'جدة', created_at: now },
+    { id: 'c-3', name: 'مطاعم الواحة', phone: '966545551212', address: 'حي العليا، الرياض', district: 'العليا', city: 'الرياض', created_at: now },
+  ];
+
+  const contracts: Contract[] = [
+    {
+      id: 'ct-1',
+      contract_number: 'CT-2026-001',
+      customer_id: 'c-2',
+      service_id: 'svc-office',
+      service_name_snapshot: 'تنظيف مكاتب',
+      contract_type: 'monthly',
+      visit_frequency: 'weekly',
+      visit_day_of_week: 'sunday',
+      visit_time: '09:00',
+      start_date: '2026-08-01',
+      end_date: '2026-10-31',
+      total_visits: 12,
+      completed_visits: 3,
+      total_amount: 4800,
+      paid_amount: 1600,
+      remaining_amount: 3200,
+      payment_status: 'partial',
+      supervisor_id: 'u-sup1',
+      assigned_technician_ids: ['u-tech1'],
+      status: 'active',
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+
+  const appointments: Appointment[] = [
+    {
+      id: 'ap-1',
+      customer_id: 'c-1',
+      customer_name_snapshot: 'عبدالعزيز الغامدي',
+      service_id: 'svc-home',
+      service_name_snapshot: 'تنظيف منازل',
+      scheduled_at: new Date().toISOString(),
+      expected_duration_minutes: 120,
+      amount: 250,
+      status: 'scheduled',
+      supervisor_id: 'u-sup1',
+      address_snapshot: 'حي النرجس، الرياض',
+      contract_id: undefined,
+      total_paid: 0,
+      remaining_amount: 250,
+      payment_status: 'unpaid',
+      assignments: [{ id: 'as-1', technician_id: 'u-tech1', technician_name: 'عبدالله الشمري' }],
+      photos: [],
+      payments: [],
+      created_at: now,
+    },
+  ];
+
+  const invoices: Invoice[] = [];
+
+  return { profiles, customers, services, contracts, expenses: [], appointments, invoices };
+}
+
+function load(): DbShape {
+  if (fs.existsSync(DATA_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
+    } catch {
+      // fall through to reseed on corrupt file
+    }
+  }
+  const initial = seed();
+  save(initial);
+  return initial;
+}
+
+function save(data: DbShape) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+const db = load();
+
+function persist() {
+  save(db);
+}
+
+export const store = {
+  id: () => randomUUID(),
+
+  profiles: {
+    list: () => db.profiles,
+    get: (id: string) => db.profiles.find((p) => p.id === id),
+  },
+  customers: {
+    list: () => db.customers,
+    get: (id: string) => db.customers.find((c) => c.id === id),
+    insert: (c: Customer) => { db.customers.push(c); persist(); return c; },
+  },
+  services: {
+    list: () => db.services,
+    get: (id: string) => db.services.find((s) => s.id === id),
+  },
+  contracts: {
+    list: () => db.contracts,
+    get: (id: string) => db.contracts.find((c) => c.id === id),
+    insert: (c: Contract) => { db.contracts.push(c); persist(); return c; },
+    update: (id: string, patch: Partial<Contract>) => {
+      const idx = db.contracts.findIndex((c) => c.id === id);
+      if (idx === -1) return undefined;
+      db.contracts[idx] = { ...db.contracts[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.contracts[idx];
+    },
+  },
+  expenses: {
+    list: () => db.expenses,
+    insert: (e: Expense) => { db.expenses.push(e); persist(); return e; },
+  },
+  appointments: {
+    list: () => db.appointments,
+    get: (id: string) => db.appointments.find((a) => a.id === id),
+    insert: (a: Appointment) => { db.appointments.push(a); persist(); return a; },
+    insertMany: (items: Appointment[]) => { db.appointments.push(...items); persist(); return items; },
+    update: (id: string, patch: Partial<Appointment>) => {
+      const idx = db.appointments.findIndex((a) => a.id === id);
+      if (idx === -1) return undefined;
+      db.appointments[idx] = { ...db.appointments[idx], ...patch };
+      persist();
+      return db.appointments[idx];
+    },
+  },
+  invoices: {
+    list: () => db.invoices,
+    insert: (i: Invoice) => { db.invoices.push(i); persist(); return i; },
+  },
+};

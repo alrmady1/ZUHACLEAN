@@ -1,0 +1,52 @@
+import express from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
+import { api } from './routes/api.js';
+
+const isProd = process.env.NODE_ENV === 'production';
+const PORT = Number(process.env.PORT ?? 3000);
+
+async function createServer() {
+  const app = express();
+  app.use(express.json({ limit: '8mb' })); // generous limit: before/after photos are base64
+
+  app.use('/api', api);
+
+  if (!isProd) {
+    // Dev mode: let Vite handle the client with full HMR, mounted as
+    // Express middleware so the API and the frontend share one origin/port.
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      root: process.cwd(),
+      server: { middlewareMode: true },
+      appType: 'custom',
+    });
+    app.use(vite.middlewares);
+
+    app.use('*', async (req, res, next) => {
+      try {
+        const url = req.originalUrl;
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        let template = fs.readFileSync(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (err) {
+        vite.ssrFixStacktrace(err as Error);
+        next(err);
+      }
+    });
+  } else {
+    // Prod mode: serve the pre-built static bundle from `vite build`.
+    const clientDist = path.resolve(process.cwd(), 'dist/client');
+    app.use(express.static(clientDist));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ zaha-ops server running: http://localhost:${PORT} (${isProd ? 'production' : 'development'})`);
+  });
+}
+
+createServer();
