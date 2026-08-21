@@ -16,6 +16,7 @@ import type {
   Appointment,
   Invoice,
   PaymentMethodOption,
+  CustodyTransaction,
 } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -34,6 +35,7 @@ interface DbShape {
   appointments: Appointment[];
   invoices: Invoice[];
   paymentMethods: PaymentMethodOption[];
+  custodyTransactions: CustodyTransaction[];
 }
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
@@ -135,7 +137,17 @@ function seed(): DbShape {
     { id: 'bank_transfer', name: 'حوالة بنكية', is_active: true },
   ];
 
-  return { profiles, customers, services, contracts, expenses: [], appointments, invoices, paymentMethods };
+  return {
+    profiles,
+    customers,
+    services,
+    contracts,
+    expenses: [],
+    appointments,
+    invoices,
+    paymentMethods,
+    custodyTransactions: [],
+  };
 }
 
 function load(): DbShape {
@@ -144,6 +156,8 @@ function load(): DbShape {
       const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
       // Migrate data files saved before payment methods existed.
       if (!parsed.paymentMethods) parsed.paymentMethods = seed().paymentMethods;
+      // Migrate data files saved before the custody ledger existed.
+      if (!parsed.custodyTransactions) parsed.custodyTransactions = [];
       return parsed;
     } catch {
       // fall through to reseed on corrupt file
@@ -212,6 +226,10 @@ export const store = {
   expenses: {
     list: () => db.expenses,
     insert: (e: Expense) => { db.expenses.push(e); persist(); return e; },
+  },
+  custodyTransactions: {
+    list: () => db.custodyTransactions,
+    insert: (t: CustodyTransaction) => { db.custodyTransactions.push(t); persist(); return t; },
   },
   appointments: {
     list: () => db.appointments,

@@ -2,7 +2,15 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword } from '../lib/password.js';
-import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption } from '../../shared/types.js';
+import type {
+  Appointment,
+  Contract,
+  VisitFrequency,
+  Invoice,
+  Service,
+  PaymentMethodOption,
+  CustodyTransaction,
+} from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
 export const api = Router();
@@ -316,6 +324,43 @@ api.post('/expenses', (req, res) => {
     created_at: new Date().toISOString(),
   });
   res.status(201).json(expense);
+});
+
+// ---------------------------------------------------------------------------
+// Custody ledger (عهد الموظفين) — a debit/credit statement per employee.
+// 'receipt' = مدين (custody amount handed to the employee), 'expense' =
+// دائن (amount the employee spent against a documented invoice). Balance
+// per employee is computed on the client from the full transaction list.
+// ---------------------------------------------------------------------------
+api.get('/custody-transactions', (req, res) => {
+  const { employee_id } = req.query;
+  let list = store.custodyTransactions.list();
+  if (employee_id && typeof employee_id === 'string') {
+    list = list.filter((t) => t.employee_id === employee_id);
+  }
+  res.json(list);
+});
+
+api.post('/custody-transactions', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.employee_id || !body.type || !body.amount) {
+    return res.status(400).json({ error: 'employee_id, type و amount مطلوبة' });
+  }
+  const transaction: CustodyTransaction = {
+    id: store.id(),
+    employee_id: body.employee_id,
+    employee_name: body.employee_name ?? '',
+    type: body.type,
+    amount: Number(body.amount),
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    invoice_number: body.invoice_number || undefined,
+    notes: body.notes || undefined,
+    recorded_by: body.recorded_by,
+    recorded_by_name: body.recorded_by_name,
+    created_at: new Date().toISOString(),
+  };
+  store.custodyTransactions.insert(transaction);
+  res.status(201).json(transaction);
 });
 
 // ---------------------------------------------------------------------------

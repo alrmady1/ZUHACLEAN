@@ -148,6 +148,31 @@ export interface Expense {
   created_at: string;
 }
 
+// عهد الموظفين — كشف حساب بنظام مدين/دائن لكل موظف:
+//   مدين  (debit)  = مبلغ عهدة استلمه الموظف من الشركة  → يزيد رصيده المستحق.
+//   دائن  (credit) = مبلغ صرفه الموظف بموجب فاتورة موثّقة → يخصم من رصيده.
+//   الرصيد المتبقي = مجموع المدين − مجموع الدائن.
+export type CustodyTransactionType = 'receipt' | 'expense';
+
+export const CUSTODY_TRANSACTION_LABELS_AR: Record<CustodyTransactionType, string> = {
+  receipt: 'مبلغ عهدة مستلم (مدين)',
+  expense: 'مصروف بموجب فاتورة (دائن)',
+};
+
+export interface CustodyTransaction {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  type: CustodyTransactionType;
+  amount: number;
+  date: string;
+  invoice_number?: string;
+  notes?: string;
+  recorded_by?: string;
+  recorded_by_name?: string;
+  created_at: string;
+}
+
 export interface AppointmentAssignment {
   id: string;
   technician_id: string;
