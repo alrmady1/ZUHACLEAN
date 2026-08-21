@@ -5,6 +5,7 @@
 // ============================================================================
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type {
   Profile,
@@ -28,7 +29,15 @@ interface DbShape {
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
 // so the JSON store must resolve to a path that exists in both dev and prod.
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+//
+// On Vercel the deployment bundle is read-only and `process.cwd()` isn't
+// writable, so we fall back to /tmp there. Fine for a demo — NOTE this
+// means data does NOT persist across cold starts or separate function
+// instances on Vercel. Swap this whole file for a real database
+// (Postgres/Supabase/etc.) before relying on this for real data.
+const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'zaha-ops-data')
+  : path.resolve(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 
 function seed(): DbShape {
