@@ -126,41 +126,49 @@ function generateAppointmentsForContract(contract: Contract): Appointment[] {
   const service = store.services.get(contract.service_id);
   const start = new Date(`${contract.start_date}T${contract.visit_time ?? '09:00'}:00`);
   const end = new Date(contract.end_date);
-  const visits: Appointment[] = [];
-  let cursor = start;
-  const perVisitAmount = contract.total_visits > 0 ? contract.total_amount / contract.total_visits : 0;
 
-  while (cursor <= end && visits.length < 200) {
-    visits.push({
-      id: store.id(),
-      customer_id: contract.customer_id,
-      customer_name_snapshot: customer?.name,
-      service_id: contract.service_id,
-      service_name_snapshot: contract.service_name_snapshot || service?.name || '',
-      scheduled_at: cursor.toISOString(),
-      expected_duration_minutes: service?.default_duration_minutes ?? 120,
-      amount: Math.round(perVisitAmount * 100) / 100,
-      status: 'scheduled',
-      supervisor_id: contract.supervisor_id,
-      address_snapshot: customer?.address ?? '',
-      location_url: customer?.location_url,
-      contract_id: contract.id,
-      contract_number: contract.contract_number,
-      total_paid: 0,
-      remaining_amount: Math.round(perVisitAmount * 100) / 100,
-      payment_status: 'unpaid',
-      assignments: (contract.assigned_technician_ids ?? []).map((tid) => ({
-        id: store.id(),
-        technician_id: tid,
-        technician_name: store.profiles.get(tid)?.full_name,
-      })),
-      photos: [],
-      payments: [],
-      created_at: new Date().toISOString(),
-    });
+  // Pass 1: walk the frequency to find every visit date, so we know the
+  // real visit count before splitting total_amount across visits (the
+  // contract form doesn't ask the user for total_visits directly).
+  const dates: Date[] = [];
+  let cursor = start;
+  while (cursor <= end && dates.length < 200) {
+    dates.push(new Date(cursor));
     cursor = addFrequency(cursor, contract.visit_frequency);
   }
-  return visits;
+
+  const perVisitAmount = dates.length > 0 ? contract.total_amount / dates.length : 0;
+  const roundedAmount = Math.round(perVisitAmount * 100) / 100;
+
+  // Pass 2: build the actual appointment records now that the per-visit
+  // amount is known.
+  return dates.map((date) => ({
+    id: store.id(),
+    customer_id: contract.customer_id,
+    customer_name_snapshot: customer?.name,
+    service_id: contract.service_id,
+    service_name_snapshot: contract.service_name_snapshot || service?.name || '',
+    scheduled_at: date.toISOString(),
+    expected_duration_minutes: service?.default_duration_minutes ?? 120,
+    amount: roundedAmount,
+    status: 'scheduled',
+    supervisor_id: contract.supervisor_id,
+    address_snapshot: customer?.address ?? '',
+    location_url: customer?.location_url,
+    contract_id: contract.id,
+    contract_number: contract.contract_number,
+    total_paid: 0,
+    remaining_amount: roundedAmount,
+    payment_status: 'unpaid',
+    assignments: (contract.assigned_technician_ids ?? []).map((tid) => ({
+      id: store.id(),
+      technician_id: tid,
+      technician_name: store.profiles.get(tid)?.full_name,
+    })),
+    photos: [],
+    payments: [],
+    created_at: new Date().toISOString(),
+  }));
 }
 
 api.post('/contracts', (req, res) => {

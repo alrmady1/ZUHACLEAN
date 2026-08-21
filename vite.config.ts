@@ -15,9 +15,7 @@ export default defineConfig({
     outDir: 'dist/client',
     emptyOutDir: true,
   },
-  server: {
-    // Express owns the actual HTTP port; this config only matters when
-    // Vite is used in middleware mode from src/server/index.ts.
-    hmr: true,
-  },
+  // No `server` block here on purpose: Express owns the actual HTTP port
+  // and configures HMR itself (see src/server/index.ts) when it creates
+  // Vite in middleware mode.
 });

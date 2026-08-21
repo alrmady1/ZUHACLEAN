@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import http from 'node:http';
 import { api } from './routes/api.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -8,6 +9,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 async function createServer() {
   const app = express();
+  const httpServer = http.createServer(app);
   app.use(express.json({ limit: '8mb' })); // generous limit: before/after photos are base64
 
   app.use('/api', api);
@@ -15,10 +17,13 @@ async function createServer() {
   if (!isProd) {
     // Dev mode: let Vite handle the client with full HMR, mounted as
     // Express middleware so the API and the frontend share one origin/port.
+    // Passing our own httpServer to hmr lets the HMR websocket upgrade
+    // through the same port instead of trying (and failing) to open a
+    // second one.
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       root: process.cwd(),
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: { server: httpServer, clientPort: PORT } },
       appType: 'custom',
     });
     app.use(vite.middlewares);
@@ -44,7 +49,7 @@ async function createServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ zaha-ops server running: http://localhost:${PORT} (${isProd ? 'production' : 'development'})`);
   });
 }
