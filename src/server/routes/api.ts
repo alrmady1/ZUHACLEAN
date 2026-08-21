@@ -10,6 +10,7 @@ import type {
   Service,
   PaymentMethodOption,
   CustodyTransaction,
+  Customer,
 } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
@@ -90,6 +91,22 @@ api.post('/customers', (req, res) => {
     created_at: new Date().toISOString(),
   });
   res.status(201).json(customer);
+});
+
+api.patch('/customers/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<Customer> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.phone !== undefined) patch.phone = body.phone;
+  if (body.address !== undefined) patch.address = body.address;
+  if (body.district !== undefined) patch.district = body.district || undefined;
+  if (body.city !== undefined) patch.city = body.city || undefined;
+  if (body.location_url !== undefined) patch.location_url = body.location_url || undefined;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+
+  const updated = store.customers.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
 });
 
 // ---------------------------------------------------------------------------

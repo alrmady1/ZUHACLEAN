@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, X, Phone, MapPin } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Pencil } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer } from '../../shared/types.js';
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   function refresh() {
@@ -14,20 +15,41 @@ export default function Customers() {
 
   useEffect(refresh, []);
 
+  function openNew() {
+    setEditing(null);
+    setShowForm(true);
+  }
+
+  function openEdit(c: Customer) {
+    setEditing(c);
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
+    const payload = {
+      name: form.get('name'),
+      phone: form.get('phone'),
+      address: form.get('address'),
+      district: form.get('district') || undefined,
+      city: form.get('city') || undefined,
+      location_url: form.get('location_url') || undefined,
+      notes: form.get('notes') || undefined,
+    };
     try {
-      await api.post('/customers', {
-        name: form.get('name'),
-        phone: form.get('phone'),
-        address: form.get('address'),
-        district: form.get('district') || undefined,
-        city: form.get('city') || undefined,
-        location_url: form.get('location_url') || undefined,
-      });
-      setShowForm(false);
+      if (editing) {
+        await api.patch(`/customers/${editing.id}`, payload);
+      } else {
+        await api.post('/customers', payload);
+      }
+      closeForm();
       refresh();
     } finally {
       setSubmitting(false);
@@ -42,7 +64,7 @@ export default function Customers() {
           <p className="text-sm text-slate-400">{customers.length} عميل</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={openNew}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
           <Plus className="h-4 w-4" /> عميل جديد
@@ -52,7 +74,15 @@ export default function Customers() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {customers.map((c) => (
           <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-2 text-sm font-semibold text-slate-800">{c.name}</div>
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+              <button
+                onClick={() => openEdit(c)}
+                className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-brand-600"
+              >
+                <Pencil className="h-3.5 w-3.5" /> تعديل
+              </button>
+            </div>
             <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-500">
               <Phone className="h-3.5 w-3.5" /> {c.phone}
             </div>
@@ -66,41 +96,51 @@ export default function Customers() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <form
+            key={editing?.id ?? 'new'}
             onSubmit={handleSubmit}
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">عميل جديد</h2>
-              <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
+              <h2 className="text-lg font-bold text-slate-800">{editing ? 'تعديل بيانات العميل' : 'عميل جديد'}</h2>
+              <button type="button" onClick={closeForm} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">الاسم</span>
-                <input name="name" required className="input" />
+                <input name="name" required defaultValue={editing?.name} className="input" />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">الجوال</span>
-                <input name="phone" required className="input" placeholder="9665xxxxxxxx" />
+                <input name="phone" required defaultValue={editing?.phone} className="input" placeholder="9665xxxxxxxx" />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">العنوان</span>
-                <input name="address" required className="input" />
+                <input name="address" required defaultValue={editing?.address} className="input" />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">الحي</span>
-                  <input name="district" className="input" />
+                  <input name="district" defaultValue={editing?.district} className="input" />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">المدينة</span>
-                  <input name="city" className="input" />
+                  <input name="city" defaultValue={editing?.city} className="input" />
                 </label>
               </div>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">رابط الموقع (خرائط جوجل)</span>
-                <input name="location_url" className="input" placeholder="https://maps.google.com/..." />
+                <input
+                  name="location_url"
+                  defaultValue={editing?.location_url}
+                  className="input"
+                  placeholder="https://maps.google.com/..."
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">ملاحظات</span>
+                <textarea name="notes" rows={2} defaultValue={editing?.notes} className="input" />
               </label>
             </div>
             <button
@@ -108,7 +148,7 @@ export default function Customers() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'جارِ الحفظ…' : 'حفظ العميل'}
+              {submitting ? 'جارِ الحفظ…' : editing ? 'حفظ التعديلات' : 'حفظ العميل'}
             </button>
           </form>
         </div>
