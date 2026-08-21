@@ -7,11 +7,14 @@ import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
 export default function Expenses() {
-  const { user } = useAuth();
+  const { user, allProfiles } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [category, setCategory] = useState<ExpenseCategory>('custody');
+
+  const activeEmployees = allProfiles.filter((p) => p.is_active);
 
   function refresh() {
     api.get<Expense[]>('/expenses').then(setExpenses);
@@ -44,6 +47,8 @@ export default function Expenses() {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
+    const custodyEmployeeId = category === 'custody' ? (form.get('custody_employee_id') as string) : '';
+    const custodyEmployee = activeEmployees.find((p) => p.id === custodyEmployeeId);
     try {
       await api.post('/expenses', {
         title: form.get('title'),
@@ -54,6 +59,8 @@ export default function Expenses() {
         payment_method: form.get('payment_method'),
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
+        supervisor_id: custodyEmployee?.id,
+        supervisor_name: custodyEmployee?.full_name,
         notes: form.get('notes') || undefined,
       });
       setShowForm(false);
@@ -91,6 +98,7 @@ export default function Expenses() {
               <th className="p-3 text-start font-medium">التاريخ</th>
               <th className="p-3 text-start font-medium">البند</th>
               <th className="p-3 text-start font-medium">التصنيف</th>
+              <th className="p-3 text-start font-medium">الموظف</th>
               <th className="p-3 text-start font-medium">المبلغ</th>
               <th className="p-3 text-start font-medium">طريقة الدفع</th>
               <th className="p-3 text-start font-medium">سجّله</th>
@@ -109,6 +117,7 @@ export default function Expenses() {
                       {EXPENSE_CATEGORY_LABELS_AR[e.category as ExpenseCategory]}
                     </span>
                   </td>
+                  <td className="p-3 text-slate-600">{e.supervisor_name ?? '—'}</td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
                   <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
                   <td className="p-3 text-slate-600">{e.recorded_by_name ?? '—'}</td>
@@ -116,7 +125,7 @@ export default function Expenses() {
               ))}
             {expenses.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-slate-400">
+                <td colSpan={7} className="p-8 text-center text-slate-400">
                   لا توجد مصروفات مسجلة
                 </td>
               </tr>
@@ -144,7 +153,13 @@ export default function Expenses() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">التصنيف</span>
-                <select name="category" required className="input">
+                <select
+                  name="category"
+                  required
+                  className="input"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+                >
                   {Object.entries(EXPENSE_CATEGORY_LABELS_AR).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -152,6 +167,19 @@ export default function Expenses() {
                   ))}
                 </select>
               </label>
+              {category === 'custody' && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">الموظف صاحب العُهدة</span>
+                  <select name="custody_employee_id" required className="input">
+                    <option value="">اختر موظفاً…</option>
+                    {activeEmployees.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
