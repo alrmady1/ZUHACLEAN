@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, X, Phone, MapPin, Pencil } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Plus, X, Phone, MapPin, Pencil, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer } from '../../shared/types.js';
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -14,6 +15,17 @@ export default function Customers() {
   }
 
   useEffect(refresh, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim();
+    if (!q) return customers;
+    const qDigits = q.replace(/\D/g, '');
+    return customers.filter((c) => {
+      if (c.name.toLowerCase().includes(q.toLowerCase())) return true;
+      if (qDigits && c.phone.replace(/\D/g, '').includes(qDigits)) return true;
+      return false;
+    });
+  }, [customers, search]);
 
   function openNew() {
     setEditing(null);
@@ -61,7 +73,9 @@ export default function Customers() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">العملاء</h1>
-          <p className="text-sm text-slate-400">{customers.length} عميل</p>
+          <p className="text-sm text-slate-400">
+            {search ? `${filtered.length} من ${customers.length} عميل` : `${customers.length} عميل`}
+          </p>
         </div>
         <button
           onClick={openNew}
@@ -71,8 +85,24 @@ export default function Customers() {
         </button>
       </div>
 
+      <div className="relative">
+        <Search className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ابحث بالاسم أو رقم الجوال…"
+          className="input pe-9"
+        />
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
+          {search ? 'لا يوجد عملاء مطابقون للبحث' : 'لا يوجد عملاء بعد'}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {customers.map((c) => (
+        {filtered.map((c) => (
           <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-2 flex items-start justify-between gap-2">
               <div className="text-sm font-semibold text-slate-800">{c.name}</div>
