@@ -17,8 +17,15 @@ import type {
   Invoice,
 } from '../../shared/types.js';
 
+// Server-only: carries the password hash alongside the public Profile
+// fields. Never sent to the client as-is — routes must strip password_hash
+// before responding (see src/server/routes/api.ts).
+export interface StoredProfile extends Profile {
+  password_hash?: string;
+}
+
 interface DbShape {
-  profiles: Profile[];
+  profiles: StoredProfile[];
   customers: Customer[];
   services: Service[];
   contracts: Contract[];
@@ -153,6 +160,14 @@ export const store = {
   profiles: {
     list: () => db.profiles,
     get: (id: string) => db.profiles.find((p) => p.id === id),
+    insert: (p: StoredProfile) => { db.profiles.push(p); persist(); return p; },
+    update: (id: string, patch: Partial<StoredProfile>) => {
+      const idx = db.profiles.findIndex((p) => p.id === id);
+      if (idx === -1) return undefined;
+      db.profiles[idx] = { ...db.profiles[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.profiles[idx];
+    },
   },
   customers: {
     list: () => db.customers,
@@ -162,6 +177,14 @@ export const store = {
   services: {
     list: () => db.services,
     get: (id: string) => db.services.find((s) => s.id === id),
+    insert: (s: Service) => { db.services.push(s); persist(); return s; },
+    update: (id: string, patch: Partial<Service>) => {
+      const idx = db.services.findIndex((s) => s.id === id);
+      if (idx === -1) return undefined;
+      db.services[idx] = { ...db.services[idx], ...patch };
+      persist();
+      return db.services[idx];
+    },
   },
   contracts: {
     list: () => db.contracts,

@@ -1,14 +1,64 @@
 import { Router } from 'express';
 import { store } from '../store/db.js';
-import type { Appointment, Contract, VisitFrequency, Invoice } from '../../shared/types.js';
+import type { StoredProfile } from '../store/db.js';
+import { hashPassword } from '../lib/password.js';
+import type { Appointment, Contract, VisitFrequency, Invoice, Service } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
 export const api = Router();
 
+// Strip the password hash before a profile ever leaves the server.
+function toSafeProfile(p: StoredProfile) {
+  const { password_hash, ...safe } = p;
+  return safe;
+}
+
 // ---------------------------------------------------------------------------
-// Profiles (read-only demo directory — real auth/permissions can replace this)
+// Profiles / users — managed from Settings (add users, edit name/role,
+// set username + password). Login itself still uses the simple
+// pick-an-account flow (see src/client/lib/auth.tsx); these credentials are
+// stored ready for when that's swapped for real sign-in.
 // ---------------------------------------------------------------------------
-api.get('/profiles', (_req, res) => res.json(store.profiles.list()));
+api.get('/profiles', (_req, res) => res.json(store.profiles.list().map(toSafeProfile)));
+
+api.post('/profiles', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.full_name || !body.role) {
+    return res.status(400).json({ error: 'full_name و role مطلوبة' });
+  }
+  const now = new Date().toISOString();
+  const profile = store.profiles.insert({
+    id: store.id(),
+    full_name: body.full_name,
+    email: body.email ?? '',
+    phone: body.phone || undefined,
+    role: body.role,
+    supervisor_id: body.supervisor_id || undefined,
+    username: body.username || undefined,
+    password_hash: body.password ? hashPassword(body.password) : undefined,
+    is_active: true,
+    created_at: now,
+    updated_at: now,
+  });
+  res.status(201).json(toSafeProfile(profile));
+});
+
+api.patch('/profiles/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<StoredProfile> = {};
+  if (body.full_name !== undefined) patch.full_name = body.full_name;
+  if (body.email !== undefined) patch.email = body.email;
+  if (body.phone !== undefined) patch.phone = body.phone || undefined;
+  if (body.role !== undefined) patch.role = body.role;
+  if (body.supervisor_id !== undefined) patch.supervisor_id = body.supervisor_id || undefined;
+  if (body.username !== undefined) patch.username = body.username || undefined;
+  if (body.is_active !== undefined) patch.is_active = body.is_active;
+  if (body.password) patch.password_hash = hashPassword(body.password);
+
+  const updated = store.profiles.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(toSafeProfile(updated));
+});
 
 // ---------------------------------------------------------------------------
 // Customers
@@ -35,9 +85,38 @@ api.post('/customers', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Services
+// Services — managed from Settings (name, price, expected duration).
 // ---------------------------------------------------------------------------
 api.get('/services', (_req, res) => res.json(store.services.list()));
+
+api.post('/services', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const service: Service = {
+    id: store.id(),
+    name: body.name,
+    description: body.description || undefined,
+    default_price: Number(body.default_price ?? 0),
+    default_duration_minutes: Number(body.default_duration_minutes ?? 60),
+    is_active: body.is_active ?? true,
+  };
+  store.services.insert(service);
+  res.status(201).json(service);
+});
+
+api.patch('/services/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<Service> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.description !== undefined) patch.description = body.description || undefined;
+  if (body.default_price !== undefined) patch.default_price = Number(body.default_price);
+  if (body.default_duration_minutes !== undefined) patch.default_duration_minutes = Number(body.default_duration_minutes);
+  if (body.is_active !== undefined) patch.is_active = body.is_active;
+
+  const updated = store.services.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
 
 // ---------------------------------------------------------------------------
 // Appointments

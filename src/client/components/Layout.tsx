@@ -7,6 +7,7 @@ import {
   Receipt,
   Users,
   Smartphone,
+  Settings as SettingsIcon,
   LogOut,
   Sparkles,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
   { to: '/customers', label: 'العملاء', icon: Users, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
+  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin'] },
 ];
 
 export default function Layout() {
