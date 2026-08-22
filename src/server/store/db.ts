@@ -205,6 +205,13 @@ export const store = {
       persist();
       return db.customers[idx];
     },
+    delete: (id: string) => {
+      const idx = db.customers.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      db.customers.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   services: {
     list: () => db.services,

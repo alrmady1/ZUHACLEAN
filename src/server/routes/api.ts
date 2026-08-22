@@ -109,6 +109,12 @@ api.patch('/customers/:id', (req, res) => {
   res.json(updated);
 });
 
+api.delete('/customers/:id', (req, res) => {
+  const deleted = store.customers.delete(req.params.id);
+  if (!deleted) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // Services — managed from Settings (name, price, expected duration).
 // ---------------------------------------------------------------------------
