@@ -17,7 +17,11 @@ interface HolderSummary {
   invoices: CustodyInvoice[];
 }
 
-export default function Custody() {
+// Rendered as a tab inside the Expenses page (src/client/pages/Expenses.tsx)
+// — a per-employee custody ledger on a debit/credit (مدين/دائن) basis:
+// custody handed to them is a debit, invoices they submit against it are a
+// credit, and the remaining balance is debit − credit.
+export function CustodyTab() {
   const { user, allProfiles } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
@@ -64,8 +68,10 @@ export default function Custody() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">العهد</h1>
-        <p className="text-sm text-slate-400">متابعة عهدة كل موظف: المبالغ المستلمة، الفواتير المدخلة، والرصيد المتبقي</p>
+        <h2 className="text-lg font-bold text-slate-800">العهد</h2>
+        <p className="text-sm text-slate-400">
+          عهدة كل موظف على أساس مدين ودائن: العهدة المستلمة مدين، والفواتير المدخلة دائن، والفرق بينهما هو الرصيد المتبقي
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -86,11 +92,11 @@ export default function Custody() {
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-xl bg-slate-50 px-2 py-2">
-                <div className="text-[11px] text-slate-400">مستلمة</div>
+                <div className="text-[11px] text-slate-400">مدين</div>
                 <div className="text-sm font-semibold text-slate-700">{formatMoney(h.given)}</div>
               </div>
               <div className="rounded-xl bg-slate-50 px-2 py-2">
-                <div className="text-[11px] text-slate-400">فواتير</div>
+                <div className="text-[11px] text-slate-400">دائن</div>
                 <div className="text-sm font-semibold text-slate-700">{formatMoney(h.spent)}</div>
               </div>
               <div className={`rounded-xl px-2 py-2 ${h.remaining >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
@@ -104,7 +110,7 @@ export default function Custody() {
         ))}
         {holders.length === 0 && (
           <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
-            لا توجد عهد مسجّلة بعد — سجّل مصروفاً بتصنيف "{CUSTODY_CATEGORY_NAME}" من صفحة المصروفات لبدء عهدة موظف
+            لا توجد عهد مسجّلة بعد — سجّل مصروفاً بتصنيف "{CUSTODY_CATEGORY_NAME}" من تبويب "المصروفات العامة" لبدء عهدة موظف
           </div>
         )}
       </div>
@@ -186,13 +192,13 @@ function HolderDetail({
         <div className="mb-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-slate-50 p-3 text-center">
             <div className="mb-1 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-              <Wallet className="h-3 w-3" /> إجمالي العهدة المستلمة
+              <Wallet className="h-3 w-3" /> مدين (عهدة مستلمة)
             </div>
             <div className="text-base font-bold text-slate-800">{formatMoney(holder.given)}</div>
           </div>
           <div className="rounded-xl bg-slate-50 p-3 text-center">
             <div className="mb-1 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-              <Receipt className="h-3 w-3" /> إجمالي الفواتير
+              <Receipt className="h-3 w-3" /> دائن (فواتير مخصومة)
             </div>
             <div className="text-base font-bold text-slate-800">{formatMoney(holder.spent)}</div>
           </div>
@@ -235,7 +241,7 @@ function HolderDetail({
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === 'grant' ? 'bg-brand-50 text-brand-700' : 'bg-amber-50 text-amber-700'}`}
                     >
-                      {t.kind === 'grant' ? 'عهدة مستلمة' : 'فاتورة مصروفة'}
+                      {t.kind === 'grant' ? 'مدين' : 'دائن'}
                     </span>
                   </td>
                   <td className={`p-3 font-semibold ${t.kind === 'grant' ? 'text-emerald-700' : 'text-red-600'}`}>

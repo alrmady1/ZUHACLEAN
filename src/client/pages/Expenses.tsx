@@ -1,12 +1,49 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, Profile } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { CustodyTab } from './Custody.js';
 
 export default function Expenses() {
+  const { user } = useAuth();
+  const canSeeCustody = user ? CAN_SEE_CUSTODY_ROLES.includes(user.role) : false;
+  const [tab, setTab] = useState<'custody' | 'general'>(canSeeCustody ? 'custody' : 'general');
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-slate-800">{canSeeCustody ? 'المصروفات والعُهد' : 'المصروفات'}</h1>
+        <p className="text-sm text-slate-400">
+          {canSeeCustody ? 'قسم العهد الخاصة بكل موظف، وقسم المصروفات العامة للتشغيل' : 'تتبع المصروفات التشغيلية اليومية والشهرية'}
+        </p>
+      </div>
+
+      {canSeeCustody && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+          <button
+            onClick={() => setTab('custody')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'custody' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <CustodyIcon className="h-4 w-4" /> العهد
+          </button>
+          <button
+            onClick={() => setTab('general')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'general' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <GeneralIcon className="h-4 w-4" /> المصروفات العامة
+          </button>
+        </div>
+      )}
+
+      {tab === 'custody' && canSeeCustody ? <CustodyTab /> : <GeneralExpensesTab />}
+    </div>
+  );
+}
+
+function GeneralExpensesTab() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -83,8 +120,10 @@ export default function Expenses() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">المصروفات والعُهد</h1>
-          <p className="text-sm text-slate-400">تتبع المصروفات التشغيلية اليومية والشهرية</p>
+          <h2 className="text-lg font-bold text-slate-800">المصروفات العامة</h2>
+          <p className="text-sm text-slate-400">
+            رواتب، مصاريف سيارات، مواد تشغيل ونظافة، إقامات، إيجار، كهرباء وغاز، ومشتريات متفرقة
+          </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
