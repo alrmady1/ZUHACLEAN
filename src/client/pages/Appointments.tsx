@@ -10,6 +10,8 @@ import {
   UserRound,
   Search,
   ArrowUpRight,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus } from '../../shared/types.js';
@@ -62,6 +64,32 @@ function inPeriod(iso: string, period: PeriodFilter): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
+// Sunday-first, matching how the week actually flows in the DOM under
+// dir="rtl" (first child renders on the right) so Saturday ends up on the
+// visual left — same order the reference calendar uses.
+const WEEKDAYS_HEADER = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+function getMonthGridDays(monthRef: Date): Date[] {
+  const firstOfMonth = new Date(monthRef.getFullYear(), monthRef.getMonth(), 1);
+  const gridStart = new Date(firstOfMonth);
+  gridStart.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    return d;
+  });
+}
+
+function getWeekDays(ref: Date): Date[] {
+  const start = new Date(ref);
+  start.setDate(ref.getDate() - ref.getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+
 export default function Appointments() {
   const { user, allProfiles } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -74,6 +102,8 @@ export default function Appointments() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [search, setSearch] = useState('');
   const [showNewAppt, setShowNewAppt] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calSubView, setCalSubView] = useState<'month' | 'week' | 'day'>('month');
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -121,14 +151,27 @@ export default function Appointments() {
       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   }, [scoped, statusFilter, paymentFilter, periodFilter, search, customers]);
 
-  const grouped = useMemo(() => {
+  const apptsByDate = useMemo(() => {
     const byDate = new Map<string, Appointment[]>();
     for (const a of filtered) {
       const key = new Date(a.scheduled_at).toDateString();
       byDate.set(key, [...(byDate.get(key) ?? []), a]);
     }
-    return Array.from(byDate.entries());
+    return byDate;
   }, [filtered]);
+
+  function shiftCalendar(dir: 1 | -1) {
+    const d = new Date(calendarDate);
+    if (calSubView === 'month') d.setMonth(d.getMonth() + dir);
+    else if (calSubView === 'week') d.setDate(d.getDate() + dir * 7);
+    else d.setDate(d.getDate() + dir);
+    setCalendarDate(d);
+  }
+
+  const calendarHeaderLabel =
+    calSubView === 'day'
+      ? calendarDate.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' })
+      : calendarDate.toLocaleDateString('ar-SA', { month: 'long', year: 'numeric' });
 
   async function advanceStatus(a: Appointment) {
     const next = NEXT_STATUS[a.status];
@@ -337,32 +380,144 @@ export default function Appointments() {
           </table>
         </div>
       ) : (
-        <div className="space-y-5">
-          {grouped.map(([dateKey, items]) => (
-            <div key={dateKey} className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {weekdayAr(items[0].scheduled_at)}
-                </span>
-                <span className="text-sm font-medium text-slate-700">{formatDateAr(items[0].scheduled_at)}</span>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => shiftCalendar(-1)}
+                  aria-label="السابق"
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => shiftCalendar(1)}
+                  aria-label="التالي"
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map((a) => (
-                  <div key={a.id} className="rounded-xl border border-slate-100 p-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-700">{formatTimeAr(a.scheduled_at)}</span>
-                      <AppointmentStatusBadge status={a.status} />
-                    </div>
-                    <div className="text-sm text-slate-600">{a.customer_name_snapshot}</div>
-                    <div className="text-xs text-slate-400">{a.service_name_snapshot}</div>
-                  </div>
-                ))}
+              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+                {(['شهر', 'أسبوع', 'يوم'] as const).map((label, i) => {
+                  const v = (['month', 'week', 'day'] as const)[i];
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => setCalSubView(v)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${calSubView === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          ))}
-          {grouped.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
-              لا توجد مواعيد ضمن هذا العرض
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-700">{calendarHeaderLabel}</span>
+              <button
+                onClick={() => setCalendarDate(new Date())}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                اليوم
+              </button>
+            </div>
+          </div>
+
+          {calSubView === 'month' && (
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {WEEKDAYS_HEADER.map((d) => (
+                <div key={d} className="pb-1 text-center text-xs font-medium text-slate-400">
+                  {d}
+                </div>
+              ))}
+              {getMonthGridDays(calendarDate).map((day) => {
+                const key = day.toDateString();
+                const dayAppts = apptsByDate.get(key) ?? [];
+                const inMonth = day.getMonth() === calendarDate.getMonth();
+                const isToday = key === new Date().toDateString();
+                return (
+                  <div
+                    key={key}
+                    className={`min-h-[92px] rounded-xl border p-1.5 text-xs ${
+                      isToday ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-300' : 'border-slate-100'
+                    } ${!inMonth ? 'opacity-40' : ''}`}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      {dayAppts.length > 0 && (
+                        <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {dayAppts.length} مهام
+                        </span>
+                      )}
+                      <span className={`ms-auto font-medium ${isToday ? 'text-brand-700' : 'text-slate-500'}`}>{day.getDate()}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {dayAppts.slice(0, 2).map((a) => (
+                        <div key={a.id} className="truncate rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                          {formatTimeAr(a.scheduled_at)} {a.customer_name_snapshot}
+                        </div>
+                      ))}
+                      {dayAppts.length > 2 && <div className="text-[10px] text-slate-400">+{dayAppts.length - 2} أخرى</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {calSubView === 'week' && (
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {getWeekDays(calendarDate).map((day) => {
+                const key = day.toDateString();
+                const dayAppts = apptsByDate.get(key) ?? [];
+                const isToday = key === new Date().toDateString();
+                return (
+                  <div
+                    key={key}
+                    className={`min-h-[220px] rounded-xl border p-1.5 text-xs ${
+                      isToday ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-300' : 'border-slate-100'
+                    }`}
+                  >
+                    <div className={`mb-1 text-center font-medium ${isToday ? 'text-brand-700' : 'text-slate-500'}`}>
+                      {WEEKDAYS_HEADER[day.getDay()]}
+                      <div className="text-sm">{day.getDate()}</div>
+                    </div>
+                    <div className="space-y-1">
+                      {dayAppts.map((a) => (
+                        <div key={a.id} className="truncate rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                          {formatTimeAr(a.scheduled_at)} {a.customer_name_snapshot}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {calSubView === 'day' && (
+            <div className="space-y-2">
+              {(apptsByDate.get(calendarDate.toDateString()) ?? [])
+                .slice()
+                .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+                .map((a) => (
+                  <div key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">{a.customer_name_snapshot}</div>
+                      <div className="text-xs text-slate-400">{a.service_name_snapshot}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-500">{formatTimeAr(a.scheduled_at)}</span>
+                      <AppointmentStatusBadge status={a.status} />
+                    </div>
+                  </div>
+                ))}
+              {(apptsByDate.get(calendarDate.toDateString()) ?? []).length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
+                  لا توجد مواعيد في هذا اليوم
+                </div>
+              )}
             </div>
           )}
         </div>
