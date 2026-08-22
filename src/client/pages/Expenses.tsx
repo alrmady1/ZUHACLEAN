@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon } from 'lucide-react';
+import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategoryItem, PaymentMethodOption, Profile } from '../../shared/types.js';
+import type { Expense, ExpenseCategoryItem, PaymentMethodOption, Profile, CustodyInvoice } from '../../shared/types.js';
 import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -10,7 +10,7 @@ import { CustodyTab } from './Custody.js';
 export default function Expenses() {
   const { user } = useAuth();
   const canSeeCustody = user ? CAN_SEE_CUSTODY_ROLES.includes(user.role) : false;
-  const [tab, setTab] = useState<'custody' | 'general'>(canSeeCustody ? 'custody' : 'general');
+  const [tab, setTab] = useState<'overview' | 'custody' | 'general'>(canSeeCustody ? 'overview' : 'general');
 
   return (
     <div className="space-y-5">
@@ -24,21 +24,129 @@ export default function Expenses() {
       {canSeeCustody && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
           <button
+            onClick={() => setTab('overview')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'overview' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <OverviewIcon className="h-4 w-4" /> نظرة عامة
+          </button>
+          <button
             onClick={() => setTab('custody')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'custody' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <CustodyIcon className="h-4 w-4" /> العهد
+            <CustodyIcon className="h-4 w-4" /> العهد (عرض موسّع)
           </button>
           <button
             onClick={() => setTab('general')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'general' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <GeneralIcon className="h-4 w-4" /> المصروفات العامة
+            <GeneralIcon className="h-4 w-4" /> المصروفات (عرض موسّع)
           </button>
         </div>
       )}
 
-      {tab === 'custody' && canSeeCustody ? <CustodyTab /> : <GeneralExpensesTab />}
+      {tab === 'overview' && canSeeCustody ? (
+        <ExpensesOverview onOpenCustody={() => setTab('custody')} onOpenGeneral={() => setTab('general')} />
+      ) : tab === 'custody' && canSeeCustody ? (
+        <CustodyTab />
+      ) : (
+        <GeneralExpensesTab />
+      )}
+    </div>
+  );
+}
+
+function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () => void; onOpenGeneral: () => void }) {
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
+
+  useEffect(() => {
+    api.get<Expense[]>('/expenses').then(setExpenses);
+    api.get<CustodyInvoice[]>('/custody-invoices').then(setInvoices);
+  }, []);
+
+  const custody = useMemo(() => {
+    const holderIds = new Set<string>();
+    let given = 0;
+    for (const e of expenses) {
+      if (e.category === CUSTODY_CATEGORY_NAME && e.custody_holder_id) {
+        holderIds.add(e.custody_holder_id);
+        given += e.amount;
+      }
+    }
+    const spent = invoices.reduce((sum, i) => sum + i.amount, 0);
+    return { holders: holderIds.size, given, spent, remaining: given - spent };
+  }, [expenses, invoices]);
+
+  const generalTotals = useMemo(() => {
+    const today = new Date().toDateString();
+    const thisMonth = new Date().getMonth();
+    const thisYear = new Date().getFullYear();
+    let daily = 0,
+      monthly = 0,
+      annual = 0;
+    for (const e of expenses) {
+      const d = new Date(e.date);
+      if (d.toDateString() === today) daily += e.amount;
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.amount;
+      if (d.getFullYear() === thisYear) annual += e.amount;
+    }
+    return { daily, monthly, annual };
+  }, [expenses]);
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <button
+        onClick={onOpenCustody}
+        className="rounded-2xl border border-slate-200 bg-white p-5 text-start transition hover:border-brand-300 hover:shadow-sm"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <CustodyIcon className="h-4 w-4 text-brand-600" /> ملخص العهد
+          </span>
+          <span className="flex items-center gap-1 text-xs font-medium text-brand-600">
+            عرض موسّع <ChevronLeft className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <OverviewStat label="عدد الموظفين" value={String(custody.holders)} />
+          <OverviewStat label="مدين" value={formatMoney(custody.given)} />
+          <OverviewStat label="دائن" value={formatMoney(custody.spent)} />
+          <OverviewStat
+            label="الرصيد المتبقي"
+            value={formatMoney(custody.remaining)}
+            tone={custody.remaining >= 0 ? 'positive' : 'negative'}
+          />
+        </div>
+      </button>
+
+      <button
+        onClick={onOpenGeneral}
+        className="rounded-2xl border border-slate-200 bg-white p-5 text-start transition hover:border-brand-300 hover:shadow-sm"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <GeneralIcon className="h-4 w-4 text-brand-600" /> ملخص المصروفات العامة
+          </span>
+          <span className="flex items-center gap-1 text-xs font-medium text-brand-600">
+            عرض موسّع <ChevronLeft className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <OverviewStat label="اليوم" value={formatMoney(generalTotals.daily)} />
+          <OverviewStat label="هذا الشهر" value={formatMoney(generalTotals.monthly)} />
+          <OverviewStat label="هذه السنة" value={formatMoney(generalTotals.annual)} />
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function OverviewStat({ label, value, tone }: { label: string; value: string; tone?: 'positive' | 'negative' }) {
+  const toneClass = tone === 'positive' ? 'text-emerald-700' : tone === 'negative' ? 'text-red-600' : 'text-slate-800';
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-center">
+      <div className="mb-0.5 text-[11px] text-slate-400">{label}</div>
+      <div className={`text-sm font-bold ${toneClass}`}>{value}</div>
     </div>
   );
 }
