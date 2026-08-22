@@ -43,26 +43,23 @@ export type ContractType = 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 export type ContractStatus = 'active' | 'completed' | 'cancelled' | 'expired';
 export type VisitFrequency = 'weekly' | 'bi_weekly' | 'monthly';
 
-export type ExpenseCategory =
-  | 'custody'
-  | 'transport'
-  | 'fuel'
-  | 'cleaning_materials'
-  | 'salaries'
-  | 'iqama_and_visas'
-  | 'vehicle_maintenance'
-  | 'other';
+// Expense categories are a managed, two-level vocabulary (main group + an
+// optional sub-item under it) editable from Settings → العهد والمصروفات —
+// same "stored by name string" pattern as ServiceCategory/PaymentMethodOption.
+export interface ExpenseCategoryItem {
+  id: string;
+  name: string;
+  // Undefined = top-level group (e.g. "مركبات"). Set = a sub-item nested
+  // under that group's id (e.g. "بنزين" under "مركبات").
+  parent_id?: string;
+  is_active: boolean;
+}
 
-export const EXPENSE_CATEGORY_LABELS_AR: Record<ExpenseCategory, string> = {
-  custody: 'عهد مالية',
-  transport: 'أجور نقل',
-  fuel: 'بنزين ووقود',
-  cleaning_materials: 'مواد تنظيف',
-  salaries: 'رواتب ومكافآت',
-  iqama_and_visas: 'إقامات وتأشيرات',
-  vehicle_maintenance: 'صيانة سيارات',
-  other: 'أخرى',
-};
+// The main-category name that triggers the "custody holder" employee
+// picker in the expense form. Matched by name, like every other managed
+// vocabulary in this app — renaming this category in Settings also renames
+// the trigger.
+export const CUSTODY_CATEGORY_NAME = 'مصاريف عهدة';
 
 export interface Profile {
   id: string;
@@ -139,7 +136,10 @@ export interface Contract {
 export interface Expense {
   id: string;
   title: string;
-  category: ExpenseCategory;
+  category: string;
+  // Optional sub-item under the main category (e.g. category "مركبات",
+  // sub_category "بنزين") — names of an ExpenseCategoryItem pair.
+  sub_category?: string;
   period_type: 'daily' | 'monthly' | 'annual';
   amount: number;
   tax_amount?: number;
@@ -150,8 +150,8 @@ export interface Expense {
   recorded_by_name?: string;
   supervisor_id?: string;
   supervisor_name?: string;
-  // Only set when category === 'custody': which employee the cash
-  // custody/advance was handed to.
+  // Only set when category === CUSTODY_CATEGORY_NAME: which employee the
+  // cash custody/advance was handed to.
   custody_holder_id?: string;
   custody_holder_name?: string;
   payment_method: PaymentMethod;

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategory, PaymentMethodOption, Profile } from '../../shared/types.js';
-import { EXPENSE_CATEGORY_LABELS_AR, ROLE_LABELS_AR } from '../../shared/types.js';
+import type { Expense, ExpenseCategoryItem, PaymentMethodOption, Profile } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -11,9 +11,14 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [category, setCategory] = useState<ExpenseCategory>('custody');
+  const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
+  const [category, setCategory] = useState('');
+  const [subCategory, setSubCategory] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const mainCategories = categories.filter((c) => !c.parent_id && c.is_active);
+  const subCategories = categories.filter((c) => c.parent_id === mainCategories.find((m) => m.name === category)?.id);
 
   function refresh() {
     api.get<Expense[]>('/expenses').then(setExpenses);
@@ -23,6 +28,11 @@ export default function Expenses() {
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     api.get<Profile[]>('/profiles').then(setProfiles);
+    api.get<ExpenseCategoryItem[]>('/expense-categories').then((list) => {
+      setCategories(list);
+      const firstMain = list.find((c) => !c.parent_id && c.is_active);
+      if (firstMain) setCategory(firstMain.name);
+    });
   }, []);
 
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
@@ -50,7 +60,8 @@ export default function Expenses() {
     try {
       await api.post('/expenses', {
         title: form.get('title'),
-        category: form.get('category'),
+        category,
+        sub_category: subCategory || undefined,
         amount: Number(form.get('amount')),
         date: form.get('date'),
         invoice_number: form.get('invoice_number') || undefined,
@@ -61,7 +72,7 @@ export default function Expenses() {
         notes: form.get('notes') || undefined,
       });
       setShowForm(false);
-      setCategory('custody');
+      setSubCategory('');
       refresh();
     } finally {
       setSubmitting(false);
@@ -112,7 +123,8 @@ export default function Expenses() {
                   <td className="p-3 font-medium text-slate-700">{e.title}</td>
                   <td className="p-3">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                      {EXPENSE_CATEGORY_LABELS_AR[e.category as ExpenseCategory]}
+                      {e.category}
+                      {e.sub_category ? ` — ${e.sub_category}` : ''}
                     </span>
                   </td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
@@ -156,16 +168,33 @@ export default function Expenses() {
                   required
                   className="input"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setSubCategory('');
+                  }}
                 >
-                  {Object.entries(EXPENSE_CATEGORY_LABELS_AR).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
+                  {mainCategories.length === 0 && <option value="">لا توجد تصنيفات بعد</option>}
+                  {mainCategories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
               </label>
-              {category === 'custody' && (
+              {subCategories.length > 0 && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">البند الفرعي (اختياري)</span>
+                  <select name="sub_category" className="input" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
+                    <option value="">بدون تحديد</option>
+                    {subCategories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {category === CUSTODY_CATEGORY_NAME && (
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">الموظف المستلم للعُهدة</span>
                   <select name="custody_holder_id" required className="input">

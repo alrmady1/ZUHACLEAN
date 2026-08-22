@@ -21,9 +21,10 @@ import {
   Users as UsersIcon,
   Wrench as ServicesIcon,
   Banknote as PaymentIcon,
+  Wallet as ExpensesIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -1096,8 +1097,210 @@ function PaymentMethodsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Expense categories tab — two-level: main groups (e.g. مركبات، رواتب) each
+// with optional sub-items (e.g. بنزين، صيانة under مركبات).
+// ---------------------------------------------------------------------------
+function ExpenseCategoriesTab() {
+  const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
+  const [editing, setEditing] = useState<ExpenseCategoryItem | null>(null);
+  const [formParentId, setFormParentId] = useState<string | undefined>(undefined);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  function refresh() {
+    api.get<ExpenseCategoryItem[]>('/expense-categories').then(setCategories);
+  }
+  useEffect(refresh, []);
+
+  const mainCategories = categories.filter((c) => !c.parent_id);
+  const subsOf = (id: string) => categories.filter((c) => c.parent_id === id);
+
+  function toggleCollapse(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleDelete(item: ExpenseCategoryItem) {
+    const isMain = !item.parent_id;
+    const childCount = isMain ? subsOf(item.id).length : 0;
+    const message =
+      childCount > 0
+        ? `حذف "${item.name}" سيحذف أيضاً ${childCount} بنداً فرعياً تحته. هل أنت متأكد؟`
+        : `حذف "${item.name}"؟`;
+    if (!window.confirm(message)) return;
+    await api.del(`/expense-categories/${item.id}`);
+    refresh();
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      if (editing) {
+        await api.patch(`/expense-categories/${editing.id}`, { name: form.get('name') });
+      } else {
+        await api.post('/expense-categories', { name: form.get('name'), parent_id: formParentId });
+      }
+      setShowForm(false);
+      setEditing(null);
+      setFormParentId(undefined);
+      refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const parentNameOf = (id?: string) => mainCategories.find((m) => m.id === id)?.name;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">العهد والمصروفات</h2>
+          <p className="text-sm text-slate-400">إدارة بنود المصروفات الرئيسية (مثل مركبات، رواتب) والبنود الفرعية تحت كل بند</p>
+        </div>
+        <button
+          onClick={() => {
+            setEditing(null);
+            setFormParentId(undefined);
+            setShowForm(true);
+          }}
+          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> إضافة بند رئيسي
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {mainCategories.map((main) => {
+          const subs = subsOf(main.id);
+          const isCollapsed = collapsed.has(main.id);
+          return (
+            <div key={main.id} className="rounded-2xl border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-2 p-4">
+                <button
+                  type="button"
+                  onClick={() => toggleCollapse(main.id)}
+                  className="flex items-center gap-2 text-sm font-semibold text-slate-800"
+                >
+                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                  {main.name}
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                    {subs.length} بند فرعي
+                  </span>
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setEditing(null);
+                      setFormParentId(main.id);
+                      setShowForm(true);
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> إضافة بند فرعي
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(main);
+                      setShowForm(true);
+                    }}
+                    title="تعديل"
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(main)}
+                    title="حذف"
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div className="divide-y divide-slate-100 border-t border-slate-100">
+                  {subs.map((sub) => (
+                    <div key={sub.id} className="flex items-center justify-between gap-2 px-4 py-2.5 ps-10">
+                      <span className="text-sm text-slate-600">{sub.name}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditing(sub);
+                            setShowForm(true);
+                          }}
+                          title="تعديل"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(sub)}
+                          title="حذف"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {subs.length === 0 && <div className="px-4 py-3 ps-10 text-xs text-slate-400">لا توجد بنود فرعية بعد</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {mainCategories.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
+            لا توجد بنود بعد
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <Modal
+          title={editing ? `تعديل ${editing.name}` : formParentId ? 'بند فرعي جديد' : 'بند رئيسي جديد'}
+          subtitle={
+            editing?.parent_id
+              ? `بند فرعي تحت "${parentNameOf(editing.parent_id) ?? ''}"`
+              : formParentId
+                ? `تحت "${parentNameOf(formParentId) ?? ''}"`
+                : undefined
+          }
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+            setFormParentId(undefined);
+          }}
+        >
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <Field label="الاسم">
+              <input name="name" defaultValue={editing?.name} required className="input" placeholder="مثال: بنزين" />
+            </Field>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {submitting ? 'جارِ الحفظ…' : editing ? 'حفظ التعديلات' : 'حفظ'}
+            </button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 export default function Settings() {
-  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods'>('users');
+  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods' | 'expense_categories'>('users');
 
   return (
     <div className="space-y-5">
@@ -1106,7 +1309,7 @@ export default function Settings() {
         <p className="text-sm text-slate-400">إدارة المستخدمين والوظائف، وإدارة خدمات النظافة وأسعارها</p>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
         <button
           onClick={() => setTab('users')}
           className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'users' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
@@ -1125,9 +1328,23 @@ export default function Settings() {
         >
           <PaymentIcon className="h-4 w-4" /> طرق الدفع
         </button>
+        <button
+          onClick={() => setTab('expense_categories')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expense_categories' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <ExpensesIcon className="h-4 w-4" /> العهد والمصروفات
+        </button>
       </div>
 
-      {tab === 'users' ? <UsersTab /> : tab === 'services' ? <ServicesTab /> : <PaymentMethodsTab />}
+      {tab === 'users' ? (
+        <UsersTab />
+      ) : tab === 'services' ? (
+        <ServicesTab />
+      ) : tab === 'payment_methods' ? (
+        <PaymentMethodsTab />
+      ) : (
+        <ExpenseCategoriesTab />
+      )}
     </div>
   );
 }

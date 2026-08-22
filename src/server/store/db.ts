@@ -18,6 +18,7 @@ import type {
   Invoice,
   PaymentMethodOption,
   ServiceCategory,
+  ExpenseCategoryItem,
 } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -37,6 +38,7 @@ interface DbShape {
   invoices: Invoice[];
   paymentMethods: PaymentMethodOption[];
   serviceCategories: ServiceCategory[];
+  expenseCategories: ExpenseCategoryItem[];
 }
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
@@ -236,7 +238,31 @@ function seed(): DbShape {
     (name) => ({ id: seedCategoryId(name as string), name: name as string }),
   );
 
-  return { profiles, customers, services, contracts, expenses: [], appointments, invoices, paymentMethods, serviceCategories };
+  const expenseCategories: ExpenseCategoryItem[] = [
+    { id: 'ec-vehicles', name: 'مركبات', is_active: true },
+    { id: 'ec-salaries', name: 'رواتب', is_active: true },
+    { id: 'ec-custody', name: 'مصاريف عهدة', is_active: true },
+    { id: 'ec-veh-installment', name: 'قسط', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-fuel', name: 'بنزين', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-diesel', name: 'ديزل', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-oil', name: 'زيت', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-tires', name: 'كفرات', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-maintenance', name: 'صيانة', parent_id: 'ec-vehicles', is_active: true },
+    { id: 'ec-veh-other', name: 'أخرى', parent_id: 'ec-vehicles', is_active: true },
+  ];
+
+  return {
+    profiles,
+    customers,
+    services,
+    contracts,
+    expenses: [],
+    appointments,
+    invoices,
+    paymentMethods,
+    serviceCategories,
+    expenseCategories,
+  };
 }
 
 // A stable, deterministic id for seed categories (so the same seed data
@@ -258,6 +284,7 @@ function load(): DbShape {
           (name) => ({ id: seedCategoryId(name as string), name: name as string }),
         );
       }
+      if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
       return parsed;
     } catch {
       // fall through to reseed on corrupt file
@@ -364,6 +391,48 @@ export const store = {
       const name = db.serviceCategories[idx].name;
       db.serviceCategories.splice(idx, 1);
       for (const s of db.services) if (s.category === name) s.category = undefined;
+      persist();
+      return true;
+    },
+  },
+  expenseCategories: {
+    list: () => db.expenseCategories,
+    insert: (c: ExpenseCategoryItem) => { db.expenseCategories.push(c); persist(); return c; },
+    update: (id: string, patch: Partial<ExpenseCategoryItem>) => {
+      const idx = db.expenseCategories.findIndex((c) => c.id === id);
+      if (idx === -1) return undefined;
+      const item = db.expenseCategories[idx];
+      const oldName = item.name;
+      db.expenseCategories[idx] = { ...item, ...patch };
+      const newName = db.expenseCategories[idx].name;
+      if (newName !== oldName) {
+        // A top-level group's rename cascades into Expense.category; a
+        // sub-item's rename cascades into Expense.sub_category instead.
+        if (!item.parent_id) {
+          for (const e of db.expenses) if (e.category === oldName) e.category = newName;
+        } else {
+          for (const e of db.expenses) if (e.sub_category === oldName) e.sub_category = newName;
+        }
+      }
+      persist();
+      return db.expenseCategories[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.expenseCategories.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      const item = db.expenseCategories[idx];
+      const isMain = !item.parent_id;
+      // Deleting a main group cascades to remove its sub-items too, and
+      // clears the reference off any expense that used the deleted name(s).
+      db.expenseCategories = db.expenseCategories.filter((c) => c.id !== id && c.parent_id !== id);
+      for (const e of db.expenses) {
+        if (isMain && e.category === item.name) {
+          e.category = '';
+          e.sub_category = undefined;
+        } else if (!isMain && e.sub_category === item.name) {
+          e.sub_category = undefined;
+        }
+      }
       persist();
       return true;
     },

@@ -2,8 +2,17 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
-import { VAT_RATE } from '../../shared/types.js';
+import type {
+  Appointment,
+  Contract,
+  VisitFrequency,
+  Invoice,
+  Service,
+  PaymentMethodOption,
+  ServiceCategory,
+  ExpenseCategoryItem,
+} from '../../shared/types.js';
+import { VAT_RATE, CUSTODY_CATEGORY_NAME } from '../../shared/types.js';
 
 export const api = Router();
 
@@ -387,10 +396,12 @@ api.get('/expenses', (_req, res) => res.json(store.expenses.list()));
 
 api.post('/expenses', (req, res) => {
   const body = req.body ?? {};
+  const isCustody = body.category === CUSTODY_CATEGORY_NAME;
   const expense = store.expenses.insert({
     id: store.id(),
     title: body.title,
     category: body.category,
+    sub_category: body.sub_category || undefined,
     period_type: body.period_type ?? 'daily',
     amount: Number(body.amount ?? 0),
     tax_amount: body.tax_amount ? Number(body.tax_amount) : undefined,
@@ -401,16 +412,50 @@ api.post('/expenses', (req, res) => {
     recorded_by_name: body.recorded_by_name,
     supervisor_id: body.supervisor_id,
     supervisor_name: body.supervisor_name,
-    custody_holder_id: body.category === 'custody' ? body.custody_holder_id || undefined : undefined,
-    custody_holder_name:
-      body.category === 'custody' && body.custody_holder_id
-        ? store.profiles.get(body.custody_holder_id)?.full_name
-        : undefined,
+    custody_holder_id: isCustody ? body.custody_holder_id || undefined : undefined,
+    custody_holder_name: isCustody && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
     payment_method: body.payment_method ?? 'cash',
     notes: body.notes,
     created_at: new Date().toISOString(),
   });
   res.status(201).json(expense);
+});
+
+// ---------------------------------------------------------------------------
+// Expense categories — two-level (main group + optional sub-item), managed
+// from Settings → العهد والمصروفات. Renaming or deleting a group cascades
+// into every expense that referenced it (see store); deleting a group also
+// deletes its sub-items.
+// ---------------------------------------------------------------------------
+api.get('/expense-categories', (_req, res) => res.json(store.expenseCategories.list()));
+
+api.post('/expense-categories', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const item: ExpenseCategoryItem = {
+    id: store.id(),
+    name: body.name,
+    parent_id: body.parent_id || undefined,
+    is_active: body.is_active ?? true,
+  };
+  store.expenseCategories.insert(item);
+  res.status(201).json(item);
+});
+
+api.patch('/expense-categories/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<ExpenseCategoryItem> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.is_active !== undefined) patch.is_active = body.is_active;
+  const updated = store.expenseCategories.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/expense-categories/:id', (req, res) => {
+  const removed = store.expenseCategories.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------
