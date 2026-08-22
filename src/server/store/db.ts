@@ -19,6 +19,7 @@ import type {
   PaymentMethodOption,
   ServiceCategory,
   ExpenseCategoryItem,
+  CustodyInvoice,
 } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -39,6 +40,7 @@ interface DbShape {
   paymentMethods: PaymentMethodOption[];
   serviceCategories: ServiceCategory[];
   expenseCategories: ExpenseCategoryItem[];
+  custodyInvoices: CustodyInvoice[];
 }
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
@@ -262,6 +264,7 @@ function seed(): DbShape {
     paymentMethods,
     serviceCategories,
     expenseCategories,
+    custodyInvoices: [],
   };
 }
 
@@ -285,6 +288,7 @@ function load(): DbShape {
         );
       }
       if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
+      if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
       return parsed;
     } catch {
       // fall through to reseed on corrupt file
@@ -452,6 +456,10 @@ export const store = {
   expenses: {
     list: () => db.expenses,
     insert: (e: Expense) => { db.expenses.push(e); persist(); return e; },
+  },
+  custodyInvoices: {
+    list: () => db.custodyInvoices,
+    insert: (i: CustodyInvoice) => { db.custodyInvoices.push(i); persist(); return i; },
   },
   appointments: {
     list: () => db.appointments,

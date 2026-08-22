@@ -159,6 +159,25 @@ export interface Expense {
   created_at: string;
 }
 
+// A receipt/invoice an employee submits to account for money spent out of
+// their custody (عهدة). Each one is a deduction against that employee's
+// running custody balance:
+//   balance = Σ Expense.amount (category === CUSTODY_CATEGORY_NAME, this holder)
+//           − Σ CustodyInvoice.amount (this holder)
+export interface CustodyInvoice {
+  id: string;
+  custody_holder_id: string;
+  custody_holder_name?: string;
+  title: string;
+  amount: number;
+  invoice_number?: string;
+  date: string;
+  notes?: string;
+  recorded_by?: string;
+  recorded_by_name?: string;
+  created_at: string;
+}
+
 export interface AppointmentAssignment {
   id: string;
   technician_id: string;

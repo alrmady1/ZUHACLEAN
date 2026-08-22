@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard.js';
 import Appointments from './pages/Appointments.js';
 import Contracts from './pages/Contracts.js';
 import Expenses from './pages/Expenses.js';
+import Custody from './pages/Custody.js';
 import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
 import TechnicianPortal from './pages/TechnicianPortal.js';
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/expenses" element={<Expenses />} />
+        <Route path="/custody" element={<Custody />} />
         <Route path="/sales" element={<Sales />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/technician" element={<TechnicianPortal />} />

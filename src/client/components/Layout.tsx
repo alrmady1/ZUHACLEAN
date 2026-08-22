@@ -5,6 +5,7 @@ import {
   CalendarClock,
   FileSignature,
   Wallet,
+  PiggyBank,
   Receipt,
   Users,
   Smartphone,
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
   { to: '/contracts', label: 'العقود', icon: FileSignature, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  { to: '/custody', label: 'العهد', icon: PiggyBank, roles: ['general_manager', 'admin'] },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
   { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin'] },
 ];

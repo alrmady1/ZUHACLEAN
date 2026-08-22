@@ -11,6 +11,7 @@ import type {
   PaymentMethodOption,
   ServiceCategory,
   ExpenseCategoryItem,
+  CustodyInvoice,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME } from '../../shared/types.js';
 
@@ -456,6 +457,43 @@ api.delete('/expense-categories/:id', (req, res) => {
   const removed = store.expenseCategories.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Custody invoices — receipts an employee submits to account for money
+// spent out of their custody (عهدة). Each one deducts from that employee's
+// running balance; the balance itself is derived on the client from the
+// custody-category expenses (money handed to them) minus these invoices.
+// ---------------------------------------------------------------------------
+api.get('/custody-invoices', (req, res) => {
+  const { custody_holder_id } = req.query;
+  let list = store.custodyInvoices.list();
+  if (custody_holder_id && typeof custody_holder_id === 'string') {
+    list = list.filter((i) => i.custody_holder_id === custody_holder_id);
+  }
+  res.json(list);
+});
+
+api.post('/custody-invoices', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.custody_holder_id || !body.title || body.amount === undefined) {
+    return res.status(400).json({ error: 'custody_holder_id، title و amount مطلوبة' });
+  }
+  const invoice: CustodyInvoice = {
+    id: store.id(),
+    custody_holder_id: body.custody_holder_id,
+    custody_holder_name: store.profiles.get(body.custody_holder_id)?.full_name ?? body.custody_holder_name,
+    title: body.title,
+    amount: Number(body.amount) || 0,
+    invoice_number: body.invoice_number || undefined,
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    notes: body.notes || undefined,
+    recorded_by: body.recorded_by || undefined,
+    recorded_by_name: body.recorded_by_name || undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.custodyInvoices.insert(invoice);
+  res.status(201).json(invoice);
 });
 
 // ---------------------------------------------------------------------------
