@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { X, Plus, Wallet, Receipt, FileText } from 'lucide-react';
+import { X, Plus, Wallet, Receipt, FileText, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, CustodyInvoice, Profile } from '../../shared/types.js';
+import type { Expense, CustodyInvoice, Profile, PaymentMethodOption } from '../../shared/types.js';
 import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -21,18 +21,28 @@ interface HolderSummary {
 // — a per-employee custody ledger on a debit/credit (مدين/دائن) basis:
 // custody handed to them is a debit, invoices they submit against it are a
 // credit, and the remaining balance is debit − credit.
+//
+// Custody is granted from here (new grant, or topping up an existing
+// employee's balance) — not from the general expenses form — even though
+// both end up stored the same way (an Expense with category ===
+// CUSTODY_CATEGORY_NAME), so all the existing totals/reports keep working.
 export function CustodyTab() {
   const { user, allProfiles } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [openHolderId, setOpenHolderId] = useState<string | null>(null);
+  const [showNewGrant, setShowNewGrant] = useState(false);
 
   function refresh() {
     api.get<Expense[]>('/expenses').then(setExpenses);
     api.get<CustodyInvoice[]>('/custody-invoices').then(setInvoices);
   }
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    refresh();
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+  }, []);
 
   const holders = useMemo(() => {
     const map = new Map<string, HolderSummary>();
@@ -67,11 +77,19 @@ export function CustodyTab() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold text-slate-800">العهد</h2>
-        <p className="text-sm text-slate-400">
-          عهدة كل موظف على أساس مدين ودائن: العهدة المستلمة مدين، والفواتير المدخلة دائن، والفرق بينهما هو الرصيد المتبقي
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">العهد</h2>
+          <p className="text-sm text-slate-400">
+            عهدة كل موظف على أساس مدين ودائن: العهدة المستلمة مدين، والفواتير المدخلة دائن، والفرق بينهما هو الرصيد المتبقي
+          </p>
+        </div>
+        <button
+          onClick={() => setShowNewGrant(true)}
+          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> عهدة جديدة
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -110,7 +128,7 @@ export function CustodyTab() {
         ))}
         {holders.length === 0 && (
           <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
-            لا توجد عهد مسجّلة بعد — سجّل مصروفاً بتصنيف "{CUSTODY_CATEGORY_NAME}" من تبويب "المصروفات العامة" لبدء عهدة موظف
+            لا توجد عهد مسجّلة بعد — اضغط "عهدة جديدة" أعلاه لبدء عهدة موظف
           </div>
         )}
       </div>
@@ -118,10 +136,26 @@ export function CustodyTab() {
       {openHolder && (
         <HolderDetail
           holder={openHolder}
+          allProfiles={allProfiles}
+          paymentMethods={paymentMethods}
           recordedById={user?.id}
           recordedByName={user?.full_name}
           onClose={() => setOpenHolderId(null)}
-          onInvoiceAdded={refresh}
+          onChanged={refresh}
+        />
+      )}
+
+      {showNewGrant && (
+        <GrantForm
+          profiles={allProfiles}
+          paymentMethods={paymentMethods}
+          recordedById={user?.id}
+          recordedByName={user?.full_name}
+          onClose={() => setShowNewGrant(false)}
+          onSaved={() => {
+            setShowNewGrant(false);
+            refresh();
+          }}
         />
       )}
     </div>
@@ -130,18 +164,23 @@ export function CustodyTab() {
 
 function HolderDetail({
   holder,
+  allProfiles,
+  paymentMethods,
   recordedById,
   recordedByName,
   onClose,
-  onInvoiceAdded,
+  onChanged,
 }: {
   holder: HolderSummary;
+  allProfiles: Profile[];
+  paymentMethods: PaymentMethodOption[];
   recordedById?: string;
   recordedByName?: string;
   onClose: () => void;
-  onInvoiceAdded: () => void;
+  onChanged: () => void;
 }) {
-  const [showForm, setShowForm] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showTopUp, setShowTopUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -159,8 +198,8 @@ function HolderDetail({
         recorded_by: recordedById,
         recorded_by_name: recordedByName,
       });
-      setShowForm(false);
-      onInvoiceAdded();
+      setShowInvoiceForm(false);
+      onChanged();
     } finally {
       setSubmitting(false);
     }
@@ -210,14 +249,22 @@ function HolderDetail({
           </div>
         </div>
 
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-700">سجل الحركات</h3>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-          >
-            <Plus className="h-3.5 w-3.5" /> إضافة فاتورة لخصمها من العهدة
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowTopUp(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+            >
+              <TrendingUp className="h-3.5 w-3.5" /> زيادة العهدة
+            </button>
+            <button
+              onClick={() => setShowInvoiceForm(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+            >
+              <Plus className="h-3.5 w-3.5" /> إضافة فاتورة لخصمها من العهدة
+            </button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -262,7 +309,7 @@ function HolderDetail({
         </div>
       </div>
 
-      {showForm && (
+      {showInvoiceForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
           <form
             onSubmit={handleSubmit}
@@ -270,7 +317,7 @@ function HolderDetail({
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">فاتورة جديدة — خصم من عهدة {holder.name}</h2>
-              <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -310,6 +357,142 @@ function HolderDetail({
           </form>
         </div>
       )}
+
+      {showTopUp && (
+        <GrantForm
+          holderId={holder.holderId}
+          holderName={holder.name}
+          profiles={allProfiles}
+          paymentMethods={paymentMethods}
+          recordedById={recordedById}
+          recordedByName={recordedByName}
+          zIndexTop
+          onClose={() => setShowTopUp(false)}
+          onSaved={() => {
+            setShowTopUp(false);
+            onChanged();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Grants custody — either a brand-new grant (pick an employee) or a top-up
+// for a known employee (holderId/holderName pre-filled, no picker shown).
+// Both are stored the same way: an Expense with category ===
+// CUSTODY_CATEGORY_NAME, so they show up as "مدين" entries either way.
+function GrantForm({
+  holderId,
+  holderName,
+  profiles,
+  paymentMethods,
+  recordedById,
+  recordedByName,
+  zIndexTop,
+  onClose,
+  onSaved,
+}: {
+  holderId?: string;
+  holderName?: string;
+  profiles: Profile[];
+  paymentMethods: PaymentMethodOption[];
+  recordedById?: string;
+  recordedByName?: string;
+  zIndexTop?: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const isTopUp = Boolean(holderId);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const targetId = holderId || String(form.get('custody_holder_id'));
+    const targetProfile = profiles.find((p) => p.id === targetId);
+    try {
+      await api.post('/expenses', {
+        title: form.get('title') || (isTopUp ? `زيادة عهدة ${holderName}` : 'عهدة جديدة'),
+        category: CUSTODY_CATEGORY_NAME,
+        amount: Number(form.get('amount')),
+        date: form.get('date'),
+        payment_method: form.get('payment_method'),
+        custody_holder_id: targetId,
+        custody_holder_name: holderName ?? targetProfile?.full_name,
+        recorded_by: recordedById,
+        recorded_by_name: recordedByName,
+        notes: form.get('notes') || undefined,
+      });
+      onSaved();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className={`fixed inset-0 flex items-center justify-center bg-slate-900/40 p-4 ${zIndexTop ? 'z-[60]' : 'z-50'}`}>
+      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">{isTopUp ? `زيادة عهدة ${holderName}` : 'عهدة جديدة'}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          {!isTopUp && (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">الموظف</span>
+              <select name="custody_holder_id" required className="input">
+                <option value="">اختر موظف</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name} — {ROLE_LABELS_AR[p.role]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">البيان (اختياري)</span>
+            <input name="title" className="input" placeholder={isTopUp ? `مثال: زيادة عهدة ${holderName}` : 'مثال: عهدة شهر أغسطس'} />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+              <input type="number" name="amount" min={0} step="0.01" required className="input" />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">التاريخ</span>
+              <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+            <select name="payment_method" required className="input">
+              {paymentMethods
+                .filter((m) => m.is_active)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">ملاحظات (اختياري)</span>
+            <textarea name="notes" rows={2} className="input resize-none" />
+          </label>
+        </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {submitting ? 'جارِ الحفظ…' : isTopUp ? 'حفظ الزيادة' : 'حفظ العهدة الجديدة'}
+        </button>
+      </form>
     </div>
   );
 }

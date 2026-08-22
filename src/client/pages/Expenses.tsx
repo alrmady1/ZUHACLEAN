@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategoryItem, PaymentMethodOption, Profile, CustodyInvoice } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
+import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { CustodyTab } from './Custody.js';
@@ -85,6 +85,7 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
       monthly = 0,
       annual = 0;
     for (const e of expenses) {
+      if (e.category === CUSTODY_CATEGORY_NAME) continue; // custody has its own summary card
       const d = new Date(e.date);
       if (d.toDateString() === today) daily += e.amount;
       if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.amount;
@@ -155,14 +156,16 @@ function GeneralExpensesTab() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const mainCategories = categories.filter((c) => !c.parent_id && c.is_active);
+  // Custody grants are recorded and listed from the العهد tab now, not
+  // here — keep the general form and table focused on non-custody spending.
+  const generalExpenses = expenses.filter((e) => e.category !== CUSTODY_CATEGORY_NAME);
+  const mainCategories = categories.filter((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME);
   const subCategories = categories.filter((c) => c.parent_id === mainCategories.find((m) => m.name === category)?.id);
 
   function refresh() {
@@ -172,10 +175,9 @@ function GeneralExpensesTab() {
   useEffect(() => {
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
-    api.get<Profile[]>('/profiles').then(setProfiles);
     api.get<ExpenseCategoryItem[]>('/expense-categories').then((list) => {
       setCategories(list);
-      const firstMain = list.find((c) => !c.parent_id && c.is_active);
+      const firstMain = list.find((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME);
       if (firstMain) setCategory(firstMain.name);
     });
   }, []);
@@ -189,14 +191,14 @@ function GeneralExpensesTab() {
     let daily = 0,
       monthly = 0,
       annual = 0;
-    for (const e of expenses) {
+    for (const e of generalExpenses) {
       const d = new Date(e.date);
       if (d.toDateString() === today) daily += e.amount;
       if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.amount;
       if (d.getFullYear() === thisYear) annual += e.amount;
     }
     return { daily, monthly, annual };
-  }, [expenses]);
+  }, [generalExpenses]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -211,7 +213,6 @@ function GeneralExpensesTab() {
         date: form.get('date'),
         invoice_number: form.get('invoice_number') || undefined,
         payment_method: form.get('payment_method'),
-        custody_holder_id: form.get('custody_holder_id') || undefined,
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
@@ -256,12 +257,11 @@ function GeneralExpensesTab() {
               <th className="p-3 text-start font-medium">التصنيف</th>
               <th className="p-3 text-start font-medium">المبلغ</th>
               <th className="p-3 text-start font-medium">طريقة الدفع</th>
-              <th className="p-3 text-start font-medium">العُهدة لـ</th>
               <th className="p-3 text-start font-medium">سجّله</th>
             </tr>
           </thead>
           <tbody>
-            {expenses
+            {generalExpenses
               .slice()
               .reverse()
               .map((e) => (
@@ -276,13 +276,12 @@ function GeneralExpensesTab() {
                   </td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
                   <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
-                  <td className="p-3 text-slate-600">{e.custody_holder_name ?? '—'}</td>
                   <td className="p-3 text-slate-600">{e.recorded_by_name ?? '—'}</td>
                 </tr>
               ))}
-            {expenses.length === 0 && (
+            {generalExpenses.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">
+                <td colSpan={6} className="p-8 text-center text-slate-400">
                   لا توجد مصروفات مسجلة
                 </td>
               </tr>
@@ -336,19 +335,6 @@ function GeneralExpensesTab() {
                     {subCategories.map((c) => (
                       <option key={c.id} value={c.name}>
                         {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {category === CUSTODY_CATEGORY_NAME && (
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">الموظف المستلم للعُهدة</span>
-                  <select name="custody_holder_id" required className="input">
-                    <option value="">اختر موظف</option>
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.full_name} — {ROLE_LABELS_AR[p.role]}
                       </option>
                     ))}
                   </select>
