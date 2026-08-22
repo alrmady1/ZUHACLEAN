@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
@@ -6,9 +7,10 @@ import { AppointmentStatusBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 
 export default function Customers() {
+  const [searchParams] = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +25,14 @@ export default function Customers() {
     refresh();
     api.get<Appointment[]>('/appointments').then(setAppointments);
   }, []);
+
+  // Support deep-linking a search term from the global top bar (?q=...),
+  // even when navigating here while already on this page.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q !== null) setSearch(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const visitsByCustomer = useMemo(() => {
     const map = new Map<string, Appointment[]>();

@@ -11,11 +11,11 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Sparkles,
-  Menu,
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { ROLE_LABELS_AR, type UserRole } from '../../shared/types.js';
+import TopBar from './TopBar.js';
 
 interface NavItem {
   to: string;
@@ -56,17 +56,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <button
-          onClick={() => setMenuOpen(true)}
-          aria-label="فتح القائمة"
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <Sparkles className="h-5 w-5 text-brand-600" />
-        <span className="text-sm font-bold text-slate-800">زهى الأعمال</span>
-      </header>
+      <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
       <main className="flex-1 overflow-y-auto p-6">
         <Outlet />
