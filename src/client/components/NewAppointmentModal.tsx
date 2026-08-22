@@ -105,6 +105,11 @@ export default function NewAppointmentModal({
                   <input name="new_customer_district" placeholder="الحي (اختياري)" className="input" />
                   <input name="new_customer_city" placeholder="المدينة (اختياري)" className="input" />
                 </div>
+                <input
+                  name="new_customer_location_url"
+                  placeholder="رابط الموقع (خرائط جوجل) — اختياري"
+                  className="input"
+                />
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -124,6 +129,7 @@ export default function NewAppointmentModal({
                           address,
                           district: get('new_customer_district') || undefined,
                           city: get('new_customer_city') || undefined,
+                          location_url: get('new_customer_location_url') || undefined,
                         });
                         setAllCustomers((prev) => [...prev, created]);
                         setCustomerId(created.id);
