@@ -55,13 +55,16 @@ function seed(): DbShape {
   const now = new Date().toISOString();
 
   const profiles: Profile[] = [
-    { id: 'u-gm', full_name: 'سارة العتيبي', email: 'gm@zaha.sa', role: 'general_manager', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-admin', full_name: 'خالد المطيري', email: 'admin@zaha.sa', role: 'admin', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-asup', full_name: 'نورة الحربي', email: 'asup@zaha.sa', role: 'admin_supervisor', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-sup1', full_name: 'فهد القحطاني', email: 'sup1@zaha.sa', role: 'supervisor', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-sup2', full_name: 'منى الدوسري', email: 'sup2@zaha.sa', role: 'supervisor', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-tech1', full_name: 'عبدالله الشمري', email: 'tech1@zaha.sa', role: 'technician', supervisor_id: 'u-sup1', is_active: true, created_at: now, updated_at: now },
-    { id: 'u-tech2', full_name: 'ياسر العنزي', email: 'tech2@zaha.sa', role: 'technician', supervisor_id: 'u-sup1', is_active: true, created_at: now, updated_at: now },
+    {
+      id: 'u-gm',
+      full_name: 'عبدالله السقاف',
+      email: 'abadeee9@gmail.com',
+      phone: '0550406688',
+      role: 'general_manager',
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    },
   ];
 
   const services: Service[] = [
@@ -173,8 +176,7 @@ function seed(): DbShape {
       paid_amount: 1600,
       remaining_amount: 3200,
       payment_status: 'partial',
-      supervisor_id: 'u-sup1',
-      assigned_technician_ids: ['u-tech1'],
+      assigned_technician_ids: [],
       status: 'active',
       created_at: now,
       updated_at: now,
@@ -192,13 +194,12 @@ function seed(): DbShape {
       expected_duration_minutes: 120,
       amount: 250,
       status: 'scheduled',
-      supervisor_id: 'u-sup1',
       address_snapshot: 'حي النرجس، الرياض',
       contract_id: undefined,
       total_paid: 0,
       remaining_amount: 250,
       payment_status: 'unpaid',
-      assignments: [{ id: 'as-1', technician_id: 'u-tech1', technician_name: 'عبدالله الشمري' }],
+      assignments: [],
       photos: [],
       payments: [],
       created_at: now,
