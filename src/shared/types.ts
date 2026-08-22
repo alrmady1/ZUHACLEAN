@@ -104,6 +104,11 @@ export interface PaymentMethodOption {
   is_active: boolean;
 }
 
+export interface ServiceCategory {
+  id: string;
+  name: string;
+}
+
 export interface Contract {
   id: string;
   contract_number: string;

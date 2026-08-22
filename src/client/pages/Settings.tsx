@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Plus, X, Pencil, Trash2, Clock, Users as UsersIcon, Wrench as ServicesIcon, Banknote as PaymentIcon } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Clock, Tags, Users as UsersIcon, Wrench as ServicesIcon, Banknote as PaymentIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 
@@ -201,17 +201,24 @@ function UsersTab() {
 // ---------------------------------------------------------------------------
 function ServicesTab() {
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [category, setCategory] = useState<string>('__all__');
   const [editing, setEditing] = useState<Service | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   function refresh() {
     api.get<Service[]>('/services').then(setServices);
   }
-  useEffect(refresh, []);
+  function refreshCategories() {
+    api.get<ServiceCategory[]>('/service-categories').then(setCategories);
+  }
+  useEffect(() => {
+    refresh();
+    refreshCategories();
+  }, []);
 
-  const categories = Array.from(new Set(services.map((s) => s.category).filter((c): c is string => Boolean(c))));
   const filtered = category === '__all__' ? services : services.filter((s) => s.category === category);
 
   async function handleDelete(s: Service) {
@@ -253,15 +260,23 @@ function ServicesTab() {
           <h2 className="text-lg font-bold text-slate-800">دليل الخدمات وقائمة الأسعار</h2>
           <p className="text-sm text-slate-400">إدارة خدمات النظافة والصيانة والمدد التقديرية والتسعيرات الافتراضية</p>
         </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> إضافة خدمة جديدة
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCategories(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <Tags className="h-4 w-4" /> تعديل الأقسام
+          </button>
+          <button
+            onClick={() => {
+              setEditing(null);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> إضافة خدمة جديدة
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -273,11 +288,11 @@ function ServicesTab() {
         </button>
         {categories.map((c) => (
           <button
-            key={c}
-            onClick={() => setCategory(c)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${category === c ? 'bg-brand-600 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
+            key={c.id}
+            onClick={() => setCategory(c.name)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${category === c.name ? 'bg-brand-600 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
           >
-            {c}
+            {c.name}
           </button>
         ))}
       </div>
@@ -351,12 +366,14 @@ function ServicesTab() {
               <input name="name" defaultValue={editing?.name} required className="input" />
             </Field>
             <Field label="التصنيف">
-              <input name="category" defaultValue={editing?.category} className="input" placeholder="مثال: تنظيف منازل" list="service-categories" />
-              <datalist id="service-categories">
+              <select name="category" defaultValue={editing?.category ?? ''} className="input">
+                <option value="">بدون تصنيف</option>
                 {categories.map((c) => (
-                  <option key={c} value={c} />
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </Field>
             <Field label="وصف مختصر (اختياري)">
               <input name="description" defaultValue={editing?.description} className="input" />
@@ -398,7 +415,140 @@ function ServicesTab() {
           </form>
         </Modal>
       )}
+
+      {showCategories && (
+        <CategoriesModal
+          categories={categories}
+          onClose={() => setShowCategories(false)}
+          onChanged={() => {
+            refreshCategories();
+            refresh();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function CategoriesModal({
+  categories,
+  onClose,
+  onChanged,
+}: {
+  categories: ServiceCategory[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function addCategory() {
+    if (!newName.trim()) return;
+    setBusy(true);
+    try {
+      await api.post('/service-categories', { name: newName.trim() });
+      setNewName('');
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEdit(id: string) {
+    if (!editValue.trim()) return;
+    setBusy(true);
+    try {
+      await api.patch(`/service-categories/${id}`, { name: editValue.trim() });
+      setEditingId(null);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeCategory(c: ServiceCategory) {
+    if (!window.confirm(`حذف قسم "${c.name}"؟ ستفقد الخدمات المرتبطة به تصنيفها (بدون حذف الخدمات نفسها).`)) return;
+    setBusy(true);
+    try {
+      await api.del(`/service-categories/${c.id}`);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="تعديل أقسام الخدمات" onClose={onClose}>
+      <div className="space-y-2">
+        {categories.map((c) => (
+          <div key={c.id} className="flex items-center gap-2">
+            {editingId === c.id ? (
+              <>
+                <input
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="input flex-1"
+                  autoFocus
+                />
+                <button
+                  disabled={busy}
+                  onClick={() => saveEdit(c.id)}
+                  className="shrink-0 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  حفظ
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-500"
+                >
+                  إلغاء
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{c.name}</span>
+                <button
+                  onClick={() => {
+                    setEditingId(c.id);
+                    setEditValue(c.name);
+                  }}
+                  title="تعديل"
+                  className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => removeCategory(c)}
+                  title="حذف"
+                  className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+        {categories.length === 0 && <div className="text-center text-sm text-slate-400">لا توجد أقسام بعد</div>}
+      </div>
+      <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="اسم قسم جديد"
+          className="input flex-1"
+        />
+        <button
+          disabled={busy}
+          onClick={addCategory}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" /> إضافة
+        </button>
+      </div>
+    </Modal>
   );
 }
 

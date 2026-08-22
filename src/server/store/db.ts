@@ -16,6 +16,7 @@ import type {
   Appointment,
   Invoice,
   PaymentMethodOption,
+  ServiceCategory,
 } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -34,6 +35,7 @@ interface DbShape {
   appointments: Appointment[];
   invoices: Invoice[];
   paymentMethods: PaymentMethodOption[];
+  serviceCategories: ServiceCategory[];
 }
 
 // Lives outside `src/` on purpose: production containers only ship `dist/`,
@@ -211,15 +213,32 @@ function seed(): DbShape {
     { id: 'bank_transfer', name: 'حوالة بنكية', is_active: true },
   ];
 
-  return { profiles, customers, services, contracts, expenses: [], appointments, invoices, paymentMethods };
+  const serviceCategories: ServiceCategory[] = Array.from(new Set(services.map((s) => s.category).filter(Boolean))).map(
+    (name) => ({ id: seedCategoryId(name as string), name: name as string }),
+  );
+
+  return { profiles, customers, services, contracts, expenses: [], appointments, invoices, paymentMethods, serviceCategories };
+}
+
+// A stable, deterministic id for seed categories (so the same seed data
+// produces the same ids across reseeds — real inserts use randomUUID via
+// store.id() instead).
+function seedCategoryId(name: string): string {
+  return `cat-${name.replace(/\s+/g, '-')}`;
 }
 
 function load(): DbShape {
   if (fs.existsSync(DATA_FILE)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
-      // Migrate data files saved before payment methods existed.
+      // Migrate data files saved before payment methods / service
+      // categories existed.
       if (!parsed.paymentMethods) parsed.paymentMethods = seed().paymentMethods;
+      if (!parsed.serviceCategories) {
+        parsed.serviceCategories = Array.from(new Set(parsed.services.map((s) => s.category).filter(Boolean))).map(
+          (name) => ({ id: seedCategoryId(name as string), name: name as string }),
+        );
+      }
       return parsed;
     } catch {
       // fall through to reseed on corrupt file
@@ -290,6 +309,35 @@ export const store = {
       const idx = db.services.findIndex((s) => s.id === id);
       if (idx === -1) return false;
       db.services.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  // Categories are just a managed vocabulary of names — Service.category
+  // stores the name itself (not this id), so renaming/removing a category
+  // here cascades by rewriting that string across every service that used
+  // the old name.
+  serviceCategories: {
+    list: () => db.serviceCategories,
+    insert: (c: ServiceCategory) => { db.serviceCategories.push(c); persist(); return c; },
+    update: (id: string, patch: Partial<ServiceCategory>) => {
+      const idx = db.serviceCategories.findIndex((c) => c.id === id);
+      if (idx === -1) return undefined;
+      const oldName = db.serviceCategories[idx].name;
+      db.serviceCategories[idx] = { ...db.serviceCategories[idx], ...patch };
+      const newName = db.serviceCategories[idx].name;
+      if (newName !== oldName) {
+        for (const s of db.services) if (s.category === oldName) s.category = newName;
+      }
+      persist();
+      return db.serviceCategories[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.serviceCategories.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      const name = db.serviceCategories[idx].name;
+      db.serviceCategories.splice(idx, 1);
+      for (const s of db.services) if (s.category === name) s.category = undefined;
       persist();
       return true;
     },

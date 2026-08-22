@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword } from '../lib/password.js';
-import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption } from '../../shared/types.js';
+import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
 export const api = Router();
@@ -144,6 +144,34 @@ api.patch('/services/:id', (req, res) => {
 
 api.delete('/services/:id', (req, res) => {
   const removed = store.services.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Service categories — managed from the services catalog. Renaming or
+// deleting one cascades to every service that used it (see store).
+// ---------------------------------------------------------------------------
+api.get('/service-categories', (_req, res) => res.json(store.serviceCategories.list()));
+
+api.post('/service-categories', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const category: ServiceCategory = { id: store.id(), name: body.name };
+  store.serviceCategories.insert(category);
+  res.status(201).json(category);
+});
+
+api.patch('/service-categories/:id', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const updated = store.serviceCategories.update(req.params.id, { name: body.name });
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/service-categories/:id', (req, res) => {
+  const removed = store.serviceCategories.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
 });
