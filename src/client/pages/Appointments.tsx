@@ -8,6 +8,11 @@ import { useAuth } from '../lib/auth.js';
 
 type ScopeFilter = 'mine' | 'all' | string; // string = a specific supervisor id
 
+// Field supervisors and technicians only ever see their own schedule — the
+// "الجدول العام" tab and other supervisors' schedules are restricted to
+// admin_supervisor / admin / general_manager.
+const CAN_SEE_ALL_SCHEDULES_ROLES = ['general_manager', 'admin', 'admin_supervisor'];
+
 export default function Appointments() {
   const { user, allProfiles } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -18,13 +23,21 @@ export default function Appointments() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
   }, []);
 
+  const canSeeAllSchedules = user ? CAN_SEE_ALL_SCHEDULES_ROLES.includes(user.role) : false;
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
 
   const filtered = useMemo(() => {
-    if (scope === 'all') return appointments;
-    if (scope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
+    if (scope === 'all' && canSeeAllSchedules) return appointments;
+    if (scope === 'mine' || !canSeeAllSchedules) {
+      // Technicians don't have a supervisor_id of their own on an
+      // appointment — they're matched via the assignments list instead.
+      if (user?.role === 'technician') {
+        return appointments.filter((a) => a.assignments.some((x) => x.technician_id === user.id));
+      }
+      return appointments.filter((a) => a.supervisor_id === user?.id);
+    }
     return appointments.filter((a) => a.supervisor_id === scope);
-  }, [appointments, scope, user]);
+  }, [appointments, scope, user, canSeeAllSchedules]);
 
   const grouped = useMemo(() => {
     const byDate = new Map<string, Appointment[]>();
@@ -63,27 +76,31 @@ export default function Appointments() {
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setScope('mine')}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'mine' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'mine' || !canSeeAllSchedules ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
         >
           جدولي
         </button>
-        <button
-          onClick={() => setScope('all')}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          الجدول العام
-        </button>
-        {supervisors
-          .filter((s) => s.id !== user?.id)
-          .map((s) => (
+        {canSeeAllSchedules && (
+          <>
             <button
-              key={s.id}
-              onClick={() => setScope(s.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === s.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+              onClick={() => setScope('all')}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
             >
-              جدول {s.full_name}
+              الجدول العام
             </button>
-          ))}
+            {supervisors
+              .filter((s) => s.id !== user?.id)
+              .map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setScope(s.id)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === s.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+                >
+                  جدول {s.full_name}
+                </button>
+              ))}
+          </>
+        )}
       </div>
 
       {grouped.length === 0 && (
