@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile } from '../../shared/types.js';
 
@@ -10,6 +10,7 @@ export default function NewAppointmentModal({
   technicians,
   onClose,
   onCreated,
+  onCustomerCreated,
 }: {
   customers: Customer[];
   services: Service[];
@@ -17,16 +18,20 @@ export default function NewAppointmentModal({
   technicians: Profile[];
   onClose: () => void;
   onCreated: () => void;
+  onCustomerCreated?: (customer: Customer) => void;
 }) {
+  const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
+  const [customerId, setCustomerId] = useState<string>(customers[0]?.id ?? '');
+  const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
+  const [addingCustomer, setAddingCustomer] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
-    const customerId = String(form.get('customer_id'));
     const serviceId = String(form.get('service_id'));
-    const customer = customers.find((c) => c.id === customerId);
+    const customer = allCustomers.find((c) => c.id === customerId);
     const service = services.find((s) => s.id === serviceId);
     const technicianId = form.get('technician_id');
     try {
@@ -61,16 +66,90 @@ export default function NewAppointmentModal({
           </button>
         </div>
         <div className="space-y-3">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">العميل</span>
-            <select name="customer_id" required className="input">
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-600">العميل</span>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomer((v) => !v)}
+                className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+              >
+                <Plus className="h-3.5 w-3.5" /> إضافة عميل جديد
+              </button>
+            </div>
+            {!showAddCustomer && (
+              <select
+                name="customer_id"
+                required
+                className="input"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+              >
+                {allCustomers.length === 0 && <option value="">لا يوجد عملاء بعد</option>}
+                {allCustomers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {showAddCustomer && (
+              <div className="space-y-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="new_customer_name" placeholder="الاسم" required={showAddCustomer} className="input" />
+                  <input name="new_customer_phone" placeholder="الجوال" required={showAddCustomer} className="input" />
+                </div>
+                <input name="new_customer_address" placeholder="العنوان" required={showAddCustomer} className="input" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="new_customer_district" placeholder="الحي (اختياري)" className="input" />
+                  <input name="new_customer_city" placeholder="المدينة (اختياري)" className="input" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={addingCustomer}
+                    onClick={async (e) => {
+                      const container = e.currentTarget.closest('div.space-y-2') as HTMLElement;
+                      const get = (n: string) => (container.querySelector(`[name="${n}"]`) as HTMLInputElement)?.value;
+                      const name = get('new_customer_name');
+                      const phone = get('new_customer_phone');
+                      const address = get('new_customer_address');
+                      if (!name || !phone || !address) return;
+                      setAddingCustomer(true);
+                      try {
+                        const created = await api.post<Customer>('/customers', {
+                          name,
+                          phone,
+                          address,
+                          district: get('new_customer_district') || undefined,
+                          city: get('new_customer_city') || undefined,
+                        });
+                        setAllCustomers((prev) => [...prev, created]);
+                        setCustomerId(created.id);
+                        setShowAddCustomer(false);
+                        onCustomerCreated?.(created);
+                      } finally {
+                        setAddingCustomer(false);
+                      }
+                    }}
+                    className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {addingCustomer ? 'جارِ الحفظ…' : 'حفظ العميل'}
+                  </button>
+                  {allCustomers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomer(false)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500"
+                    >
+                      إلغاء
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">الخدمة</span>
             <select
@@ -127,7 +206,7 @@ export default function NewAppointmentModal({
         </div>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !customerId}
           className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
         >
           {submitting ? 'جارِ الحفظ…' : 'حفظ الموعد'}

@@ -540,6 +540,7 @@ export default function Appointments() {
           technicians={technicians}
           onClose={() => setShowNewAppt(false)}
           onCreated={refresh}
+          onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
         />
       )}
 

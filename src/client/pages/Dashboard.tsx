@@ -305,6 +305,7 @@ export default function Dashboard() {
           technicians={technicians}
           onClose={() => setShowNewAppt(false)}
           onCreated={refreshAppointments}
+          onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
         />
       )}
     </div>
