@@ -1,15 +1,66 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Invoice, PaymentMethodOption } from '../../shared/types.js';
+import type { Customer, Invoice, PaymentMethodOption, Appointment } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 
+type ReportPeriod = 'week' | 'month' | 'year';
+
+const PERIOD_LABELS: Record<ReportPeriod, string> = {
+  week: 'آخر 7 أيام',
+  month: 'آخر 30 يوم',
+  year: 'هذا العام',
+};
+
+function inReportPeriod(iso: string, period: ReportPeriod): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  if (period === 'year') return d.getFullYear() === now.getFullYear();
+  const days = period === 'week' ? 7 : 30;
+  const cutoff = new Date(now);
+  cutoff.setDate(now.getDate() - days);
+  cutoff.setHours(0, 0, 0, 0);
+  return d >= cutoff && d <= now;
+}
+
+const PIE_TINTS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#f43f5e'];
+
+function ReportStat({
+  icon: Icon,
+  iconTint,
+  label,
+  value,
+  sub,
+}: {
+  icon: typeof TrendingUp;
+  iconTint: string;
+  label: string;
+  value: string;
+  sub: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+      <span className={`shrink-0 rounded-xl p-2.5 ${iconTint}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 text-end flex-1">
+        <div className="text-xs text-slate-400">{label}</div>
+        <div className="text-xl font-bold text-slate-800">{value}</div>
+        <div className="text-[11px] text-slate-400">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Sales() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [period, setPeriod] = useState<ReportPeriod>('month');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewSubtotal, setPreviewSubtotal] = useState(0);
@@ -21,14 +72,48 @@ export default function Sales() {
   useEffect(() => {
     refresh();
     api.get<Customer[]>('/customers').then(setCustomers);
+    api.get<Appointment[]>('/appointments').then(setAppointments);
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
 
   const methodName = (id?: string) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : '—');
 
-  const revenue = invoices.reduce((s, i) => s + i.total, 0);
-  const vatCollected = invoices.reduce((s, i) => s + i.vat_amount, 0);
-  const avgInvoice = invoices.length ? revenue / invoices.length : 0;
+  // --- Financial report section (scoped to the selected period) ---------
+  const periodAppts = useMemo(() => appointments.filter((a) => inReportPeriod(a.scheduled_at, period)), [appointments, period]);
+  const completedPeriodAppts = useMemo(() => periodAppts.filter((a) => a.status === 'completed'), [periodAppts]);
+  const totalSales = completedPeriodAppts.reduce((s, a) => s + a.amount, 0);
+  const servicesCompletedCount = completedPeriodAppts.length;
+  const remainingUnderCollection = periodAppts.reduce((s, a) => s + a.remaining_amount, 0);
+
+  const collectedActual = useMemo(() => {
+    let total = 0;
+    for (const a of appointments) for (const p of a.payments) if (inReportPeriod(p.recorded_at, period)) total += p.amount;
+    return total;
+  }, [appointments, period]);
+
+  const collectionRate = totalSales > 0 ? Math.round((collectedActual / totalSales) * 100) : 0;
+
+  const dailyMovement = useMemo(() => {
+    const sorted = periodAppts.slice().sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+    const map = new Map<string, number>();
+    for (const a of sorted) {
+      const key = new Date(a.scheduled_at).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
+      map.set(key, (map.get(key) ?? 0) + a.amount);
+    }
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [periodAppts]);
+
+  const paymentBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of appointments) {
+      for (const p of a.payments) {
+        if (!inReportPeriod(p.recorded_at, period)) continue;
+        const name = methodName(p.method);
+        map.set(name, (map.get(name) ?? 0) + p.amount);
+      }
+    }
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [appointments, paymentMethods, period]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,10 +137,103 @@ export default function Sales() {
   const vatPreview = Math.round(previewSubtotal * VAT_RATE * 100) / 100;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">المبيعات والتقارير المالية</h1>
+          <p className="text-sm text-slate-400">تحليل الإيرادات، التحصيلات النقدية والشبكة، وحجم المبيعات حسب نوع الخدمة</p>
+        </div>
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+          {(Object.keys(PERIOD_LABELS) as ReportPeriod[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === p ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <ReportStat
+          icon={CheckCircle2}
+          iconTint="bg-emerald-100 text-emerald-600"
+          label="المحصّل الفعلي (SAR)"
+          value={formatMoney(collectedActual)}
+          sub={`نسبة التحصيل: ${collectionRate}%`}
+        />
+        <ReportStat
+          icon={TrendingUp}
+          iconTint="bg-blue-100 text-blue-600"
+          label="إجمالي المبيعات (SAR)"
+          value={formatMoney(totalSales)}
+          sub="مجموع قيمة الخدمات المكتملة"
+        />
+        <ReportStat
+          icon={Sparkles}
+          iconTint="bg-violet-100 text-violet-600"
+          label="الخدمات المنجزة"
+          value={String(servicesCompletedCount)}
+          sub="عملية صيانة وتنظيف ناجحة"
+        />
+        <ReportStat
+          icon={AlertCircle}
+          iconTint="bg-red-100 text-red-600"
+          label="المتبقي تحت التحصيل"
+          value={formatMoney(remainingUnderCollection)}
+          sub="مستحقات معلقة على العملاء"
+        />
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-700">حركة المبيعات اليومية</h2>
+        <p className="mb-4 text-xs text-slate-400">تطور حجم المبيعات بالريال السعودي على مدار الفترة</p>
+        {dailyMovement.length > 0 ? (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyMovement}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(v: number) => formatMoney(v)} />
+                <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex h-40 items-center justify-center text-sm text-slate-400">
+            لا توجد بيانات حركة مبيعات للفترة المحددة
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-700">طرق الدفع والتحصيل</h2>
+        <p className="mb-4 text-xs text-slate-400">توزيع المبالغ المحصّلة حسب قناة الدفع</p>
+        {paymentBreakdown.length > 0 ? (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={paymentBreakdown} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
+                  {paymentBreakdown.map((_, i) => (
+                    <Cell key={i} fill={PIE_TINTS[i % PIE_TINTS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v: number) => formatMoney(v)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex h-40 items-center justify-center text-sm text-slate-400">لا توجد دفعات مسجلة</div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">المبيعات والفواتير الضريبية</h1>
+          <h2 className="text-lg font-bold text-slate-800">سجل الفواتير الضريبية</h2>
           <p className="text-sm text-slate-400">تحتسب ضريبة القيمة المضافة (15٪) تلقائياً</p>
         </div>
         <button
@@ -64,12 +242,6 @@ export default function Sales() {
         >
           <Plus className="h-4 w-4" /> فاتورة جديدة
         </button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <MiniStat label="إجمالي الإيرادات" value={formatMoney(revenue)} />
-        <MiniStat label="ضريبة القيمة المضافة المحصّلة" value={formatMoney(vatCollected)} />
-        <MiniStat label="متوسط قيمة الفاتورة" value={formatMoney(avgInvoice)} />
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
@@ -195,15 +367,6 @@ export default function Sales() {
           </form>
         </div>
       )}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="text-xl font-bold text-slate-800">{value}</div>
-      <div className="text-xs text-slate-400">{label}</div>
     </div>
   );
 }
