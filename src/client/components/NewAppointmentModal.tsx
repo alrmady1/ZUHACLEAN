@@ -1,7 +1,23 @@
-import { useState, type FormEvent } from 'react';
-import { X, Plus, Map as MapIcon } from 'lucide-react';
+import { useState, type FormEvent, type ReactNode } from 'react';
+import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile } from '../../shared/types.js';
+import { formatDuration, formatTimeAr } from '../lib/date.js';
+
+function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          {title}
+          {icon}
+        </span>
+        {extra}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export default function NewAppointmentModal({
   customers,
@@ -20,31 +36,62 @@ export default function NewAppointmentModal({
   onCreated: () => void;
   onCustomerCreated?: (customer: Customer) => void;
 }) {
+  const today = new Date().toISOString().slice(0, 10);
+
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
-  const [customerId, setCustomerId] = useState<string>(customers[0]?.id ?? '');
+  const [customerId, setCustomerId] = useState<string>('');
+  const [address, setAddress] = useState('');
+  const [locationUrl, setLocationUrl] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
   const [addingCustomer, setAddingCustomer] = useState(false);
+
+  const [serviceId, setServiceId] = useState('');
+  const [amount, setAmount] = useState<number | ''>(0);
+  const [duration, setDuration] = useState<number | ''>(120);
+
+  const [date, setDate] = useState(today);
+  const [time, setTime] = useState('10:00');
+
   const [submitting, setSubmitting] = useState(false);
+
+  function applyCustomer(customer: Customer | undefined) {
+    setAddress(customer?.address ?? '');
+    setLocationUrl(customer?.location_url ?? '');
+  }
+
+  function applyService(service: Service | undefined) {
+    if (!service) return;
+    setAmount(service.default_price);
+    setDuration(service.default_duration_minutes);
+  }
+
+  const previewEnd = (() => {
+    if (!date || !time || !duration) return null;
+    const start = new Date(`${date}T${time}`);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start.getTime() + Number(duration) * 60000);
+    return { time: formatTimeAr(end.toISOString()), duration: formatDuration(Number(duration)) };
+  })();
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
-    const serviceId = String(form.get('service_id'));
-    const customer = allCustomers.find((c) => c.id === customerId);
     const service = services.find((s) => s.id === serviceId);
     const technicianId = form.get('technician_id');
+    const scheduledAt = new Date(`${date}T${time}`).toISOString();
     try {
       await api.post('/appointments', {
         customer_id: customerId,
         service_id: serviceId,
         service_name_snapshot: service?.name,
-        scheduled_at: form.get('scheduled_at'),
-        expected_duration_minutes: service?.default_duration_minutes ?? 120,
-        amount: Number(form.get('amount')),
+        scheduled_at: scheduledAt,
+        expected_duration_minutes: Number(duration) || service?.default_duration_minutes || 120,
+        amount: Number(amount) || 0,
         supervisor_id: form.get('supervisor_id') || undefined,
-        address_snapshot: customer?.address ?? '',
-        location_url: customer?.location_url,
+        address_snapshot: address,
+        location_url: locationUrl || undefined,
+        notes: form.get('notes') || undefined,
         assignments: technicianId
           ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((t) => t.id === technicianId)?.full_name }]
           : [],
@@ -59,39 +106,81 @@ export default function NewAppointmentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">حجز موعد جديد</h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">إضافة حجز موعد جديد</h2>
+            <p className="mt-0.5 text-xs text-slate-400">تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ</p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="space-y-3">
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">العميل</span>
+
+        <div className="space-y-4">
+          <Section
+            icon={<User className="h-3.5 w-3.5 text-brand-500" />}
+            title="العميل *"
+            extra={
               <button
                 type="button"
                 onClick={() => setShowAddCustomer((v) => !v)}
                 className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
               >
-                <Plus className="h-3.5 w-3.5" /> إضافة عميل جديد
+                <Plus className="h-3.5 w-3.5" /> إنشاء عميل جديد
               </button>
-            </div>
+            }
+          >
             {!showAddCustomer && (
-              <select
-                name="customer_id"
-                required
-                className="input"
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-              >
-                {allCustomers.length === 0 && <option value="">لا يوجد عملاء بعد</option>}
-                {allCustomers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  name="customer_id"
+                  required
+                  className="input"
+                  value={customerId}
+                  onChange={(e) => {
+                    setCustomerId(e.target.value);
+                    applyCustomer(allCustomers.find((c) => c.id === e.target.value));
+                  }}
+                >
+                  <option value="">-- اختر العميل من القائمة --</option>
+                  {allCustomers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">عنوان موقع التنفيذ</span>
+                    <input
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="مثال: الرياض، حي الملقا، شارع..."
+                      className="input"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">رابط الخريطة (Google Maps)</span>
+                    <div className="flex gap-2">
+                      <input
+                        value={locationUrl}
+                        onChange={(e) => setLocationUrl(e.target.value)}
+                        placeholder="https://maps.google.com/..."
+                        className="input"
+                      />
+                      <a
+                        href="https://www.google.com/maps"
+                        target="_blank"
+                        rel="noreferrer"
+                        title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                        className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
+                      >
+                        <MapIcon className="h-4 w-4" />
+                      </a>
+                    </div>
+                  </label>
+                </div>
+              </>
             )}
 
             {showAddCustomer && (
@@ -130,20 +219,21 @@ export default function NewAppointmentModal({
                       const get = (n: string) => (container.querySelector(`[name="${n}"]`) as HTMLInputElement)?.value;
                       const name = get('new_customer_name');
                       const phone = get('new_customer_phone');
-                      const address = get('new_customer_address');
-                      if (!name || !phone || !address) return;
+                      const custAddress = get('new_customer_address');
+                      if (!name || !phone || !custAddress) return;
                       setAddingCustomer(true);
                       try {
                         const created = await api.post<Customer>('/customers', {
                           name,
                           phone,
-                          address,
+                          address: custAddress,
                           district: get('new_customer_district') || undefined,
                           city: get('new_customer_city') || undefined,
                           location_url: get('new_customer_location_url') || undefined,
                         });
                         setAllCustomers((prev) => [...prev, created]);
                         setCustomerId(created.id);
+                        applyCustomer(created);
                         setShowAddCustomer(false);
                         onCustomerCreated?.(created);
                       } finally {
@@ -166,68 +256,121 @@ export default function NewAppointmentModal({
                 </div>
               </div>
             )}
-          </div>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">الخدمة</span>
+          </Section>
+
+          <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title="نوع الخدمة المطلوبة *">
             <select
               name="service_id"
               required
               className="input"
+              value={serviceId}
               onChange={(e) => {
-                const form = e.currentTarget.form;
-                const svc = services.find((s) => s.id === e.currentTarget.value);
-                if (form && svc) (form.elements.namedItem('amount') as HTMLInputElement).value = String(svc.default_price);
+                setServiceId(e.target.value);
+                applyService(services.find((s) => s.id === e.target.value));
               }}
             >
+              <option value="">-- اختر نوع الخدمة --</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
             </select>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">سعر الخدمة المتفق عليه (SAR) *</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="input"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">المدة المتوقعة (بالدقائق) *</span>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="input"
+                />
+              </label>
+            </div>
+          </Section>
+
+          <Section icon={<Clock className="h-3.5 w-3.5 text-brand-500" />} title="موعد وتوقيت الزيارة *">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">تاريخ الزيارة</span>
+                <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="input" />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">وقت البدء</span>
+                <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="input" />
+              </label>
+            </div>
+            {previewEnd && (
+              <div className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
+                الوقت المتوقع لإنهاء العمل: {previewEnd.time} ({previewEnd.duration})
+              </div>
+            )}
+          </Section>
+
+          <Section icon={<TeamIcon className="h-3.5 w-3.5 text-brand-500" />} title="إسناد المهمة (المشرف والفريق الفني)">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
+                <select name="supervisor_id" defaultValue="" className="input">
+                  <option value="">-- اختياري: حدد المشرف --</option>
+                  {supervisors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">الفني الرئيسي / الفريق</span>
+                <select name="technician_id" defaultValue="" className="input">
+                  <option value="">-- اختياري: حدد الفني --</option>
+                  {technicians.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </Section>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">ملاحظات وتعليمات خاصة بالموعد</span>
+            <textarea
+              name="notes"
+              rows={3}
+              placeholder="مثال: يرجى التركيز على تعقيم المطبخ والحمام الرئيسي وتجهيز مواد خاصة..."
+              className="input resize-none"
+            />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">التاريخ والوقت</span>
-              <input type="datetime-local" name="scheduled_at" required className="input" />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
-              <input type="number" name="amount" min={0} step="0.01" defaultValue={services[0]?.default_price} required className="input" />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
-              <select name="supervisor_id" className="input">
-                <option value="">بدون تحديد</option>
-                {supervisors.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">الفني المسند (اختياري)</span>
-              <select name="technician_id" className="input">
-                <option value="">بدون تحديد</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
         </div>
-        <button
-          type="submit"
-          disabled={submitting || !customerId}
-          className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-        >
-          {submitting ? 'جارِ الحفظ…' : 'حفظ الموعد'}
-        </button>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={submitting || !customerId}
+            className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? 'جارِ الحفظ…' : 'تأكيد وحجز الموعد'}
+          </button>
+          <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-slate-600">
+            إلغاء
+          </button>
+        </div>
       </form>
     </div>
   );
