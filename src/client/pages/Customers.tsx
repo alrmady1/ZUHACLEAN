@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
+import { waLink } from '../lib/whatsapp.js';
 
 export default function Customers() {
   const [searchParams] = useSearchParams();
@@ -153,6 +154,16 @@ export default function Customers() {
                         <span className="flex items-center gap-1">
                           <Phone className="h-3.5 w-3.5 shrink-0" /> {c.phone}
                         </span>
+                        <a
+                          href={waLink(c.phone)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="تواصل عبر واتساب"
+                          className="flex items-center gap-1 text-emerald-600 hover:underline"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5 shrink-0" /> واتساب
+                        </a>
                         {c.address && (
                           <span className="flex items-center gap-1">
                             <MapPin className="h-3.5 w-3.5 shrink-0" /> {c.address}
@@ -227,8 +238,19 @@ export default function Customers() {
                 </span>
               </div>
               <div className="mb-1 text-sm font-semibold text-slate-800">{c.name}</div>
-              <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-500">
-                <Phone className="h-3.5 w-3.5 shrink-0" /> {c.phone}
+              <div className="mb-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                <span className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 shrink-0" /> {c.phone}
+                </span>
+                <a
+                  href={waLink(c.phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="تواصل عبر واتساب"
+                  className="flex items-center gap-1 text-emerald-600 hover:underline"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 shrink-0" /> واتساب
+                </a>
               </div>
               {c.address && (
                 <div className="flex items-start gap-1.5 text-xs text-slate-500">

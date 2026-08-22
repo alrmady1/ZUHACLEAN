@@ -1,12 +1,14 @@
-import { useRef, useState, type FormEvent } from 'react';
-import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment } from '../../shared/types.js';
-import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
+import InvoiceDocument from './InvoiceDocument.js';
 import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { waLink } from '../lib/whatsapp.js';
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -41,12 +43,23 @@ export default function AppointmentDetailModal({
 }) {
   const { user } = useAuth();
   const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
+  const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [showInvoice, setShowInvoice] = useState(false);
   const beforeInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
+
+  // Look up whether this appointment already has an invoice, so a
+  // "reprint" option can be offered once the work is completed and paid.
+  useEffect(() => {
+    api
+      .get<Invoice[]>(`/invoices?appointment_id=${appointment.id}`)
+      .then((list) => setInvoice(list[list.length - 1] ?? null));
+  }, [appointment.id, appointment.total_paid]);
 
   const supervisor = allProfiles.find((p) => p.id === appointment.supervisor_id);
   const endTime = new Date(new Date(appointment.scheduled_at).getTime() + appointment.expected_duration_minutes * 60000);
@@ -118,6 +131,16 @@ export default function AppointmentDetailModal({
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
                 >
                   <Phone className="h-3.5 w-3.5" /> اتصال
+                </a>
+              )}
+              {customer?.phone && (
+                <a
+                  href={waLink(customer.phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> واتساب
                 </a>
               )}
             </div>
@@ -275,15 +298,30 @@ export default function AppointmentDetailModal({
                 </div>
                 <p className="text-xs text-slate-400">تسجيل الدفعات النقدية والشبكة ومتابعة المتبقي</p>
               </div>
-              {appointment.remaining_amount > 0 && (
-                <button
-                  onClick={() => setShowPay(true)}
-                  className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
-                >
-                  + تسجيل دفعة
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {appointment.remaining_amount > 0 && appointment.status === 'completed' && (
+                  <button
+                    onClick={() => setShowPay(true)}
+                    className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                  >
+                    + تسجيل دفعة
+                  </button>
+                )}
+                {invoice && appointment.status === 'completed' && canReprintInvoice && (
+                  <button
+                    onClick={() => setShowInvoice(true)}
+                    className="flex items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> إعادة طباعة الفاتورة
+                  </button>
+                )}
+              </div>
             </div>
+            {appointment.remaining_amount > 0 && appointment.status !== 'completed' && (
+              <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                لا يمكن تحصيل الدفعة وإصدار الفاتورة إلا بعد اختيار حالة المهمة "مكتملة" أعلاه.
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-red-50 p-3 text-center">
                 <div className="text-xs text-red-600">المتبقي المطلوب</div>
@@ -346,6 +384,16 @@ export default function AppointmentDetailModal({
           paymentMethods={paymentMethods}
           onClose={() => setShowPay(false)}
           onPaid={onChanged}
+        />
+      )}
+
+      {showInvoice && invoice && (
+        <InvoiceDocument
+          invoice={invoice}
+          customer={customer}
+          appointment={appointment}
+          paymentMethods={paymentMethods}
+          onClose={() => setShowInvoice(false)}
         />
       )}
     </div>

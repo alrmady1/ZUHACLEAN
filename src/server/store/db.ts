@@ -462,10 +462,24 @@ export const store = {
   expenses: {
     list: () => db.expenses,
     insert: (e: Expense) => { db.expenses.push(e); persist(); return e; },
+    remove: (id: string) => {
+      const idx = db.expenses.findIndex((e) => e.id === id);
+      if (idx === -1) return false;
+      db.expenses.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   custodyInvoices: {
     list: () => db.custodyInvoices,
     insert: (i: CustodyInvoice) => { db.custodyInvoices.push(i); persist(); return i; },
+    remove: (id: string) => {
+      const idx = db.custodyInvoices.findIndex((i) => i.id === id);
+      if (idx === -1) return false;
+      db.custodyInvoices.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   appointments: {
     list: () => db.appointments,

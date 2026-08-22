@@ -349,7 +349,7 @@ export default function Appointments() {
                             <PaymentStatusBadge status={a.payment_status} />
                           </div>
                         </div>
-                        {a.remaining_amount > 0 && (
+                        {a.remaining_amount > 0 && a.status === 'completed' && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -360,6 +360,11 @@ export default function Appointments() {
                           >
                             <Wallet className="h-4 w-4" />
                           </button>
+                        )}
+                        {a.remaining_amount > 0 && a.status !== 'completed' && (
+                          <span title="أكمل المهمة أولاً لتحصيل الدفعة" className="rounded-lg p-1.5 text-slate-200">
+                            <Wallet className="h-4 w-4" />
+                          </span>
                         )}
                       </div>
                     </td>

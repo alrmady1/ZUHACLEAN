@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { X, Plus, Wallet, Receipt, FileText, TrendingUp } from 'lucide-react';
+import { X, Plus, Wallet, Receipt, FileText, TrendingUp, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, CustodyInvoice, Profile, PaymentMethodOption } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -179,6 +179,8 @@ function HolderDetail({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { user } = useAuth();
+  const canDelete = user ? CAN_DELETE_CUSTODY_ROLES.includes(user.role) : false;
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -205,9 +207,19 @@ function HolderDetail({
     }
   }
 
+  async function handleDeleteEntry(kind: 'grant' | 'invoice', id: string) {
+    const message =
+      kind === 'grant'
+        ? 'حذف قيد العهدة (مدين) هذا؟ سيقل رصيد الموظف المستحق بهذا المبلغ. لا يمكن التراجع عن هذا الإجراء.'
+        : 'حذف هذه الفاتورة (دائن)؟ سيعود المبلغ لرصيد العهدة المتبقي. لا يمكن التراجع عن هذا الإجراء.';
+    if (!window.confirm(message)) return;
+    await api.del(kind === 'grant' ? `/expenses/${id}` : `/custody-invoices/${id}`);
+    onChanged();
+  }
+
   const timeline = [
-    ...holder.grants.map((g) => ({ kind: 'grant' as const, date: g.date, title: g.title, amount: g.amount, ref: undefined as string | undefined })),
-    ...holder.invoices.map((i) => ({ kind: 'invoice' as const, date: i.date, title: i.title, amount: i.amount, ref: i.invoice_number })),
+    ...holder.grants.map((g) => ({ kind: 'grant' as const, id: g.id, date: g.date, title: g.title, amount: g.amount, ref: undefined as string | undefined })),
+    ...holder.invoices.map((i) => ({ kind: 'invoice' as const, id: i.id, date: i.date, title: i.title, amount: i.amount, ref: i.invoice_number })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
@@ -276,11 +288,12 @@ function HolderDetail({
                 <th className="p-3 text-start font-medium">رقم الفاتورة</th>
                 <th className="p-3 text-start font-medium">النوع</th>
                 <th className="p-3 text-start font-medium">المبلغ</th>
+                {canDelete && <th className="p-3 text-start font-medium"></th>}
               </tr>
             </thead>
             <tbody>
-              {timeline.map((t, idx) => (
-                <tr key={idx} className="border-b border-slate-50 last:border-0">
+              {timeline.map((t) => (
+                <tr key={t.id} className="border-b border-slate-50 last:border-0">
                   <td className="p-3 text-slate-600">{formatDateAr(t.date)}</td>
                   <td className="p-3 font-medium text-slate-700">{t.title}</td>
                   <td className="p-3 text-slate-500">{t.ref ?? '—'}</td>
@@ -295,11 +308,22 @@ function HolderDetail({
                     {t.kind === 'grant' ? '+' : '-'}
                     {formatMoney(t.amount)}
                   </td>
+                  {canDelete && (
+                    <td className="p-3">
+                      <button
+                        onClick={() => handleDeleteEntry(t.kind, t.id)}
+                        title="حذف"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {timeline.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400">
+                  <td colSpan={canDelete ? 6 : 5} className="p-8 text-center text-slate-400">
                     لا توجد حركات بعد
                   </td>
                 </tr>

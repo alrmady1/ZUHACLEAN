@@ -439,6 +439,14 @@ api.post('/expenses', (req, res) => {
   res.status(201).json(expense);
 });
 
+// Deleting an expense (used for custody grants — see CAN_DELETE_CUSTODY_ROLES,
+// المدير العام only) is unrestricted server-side like the rest of this app.
+api.delete('/expenses/:id', (req, res) => {
+  const removed = store.expenses.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // Expense categories — two-level (main group + optional sub-item), managed
 // from Settings → العهد والمصروفات. Renaming or deleting a group cascades
@@ -513,6 +521,14 @@ api.post('/custody-invoices', (req, res) => {
   res.status(201).json(invoice);
 });
 
+// Deleting custody entries (grants or the invoices submitted against them)
+// is gated client-side to المدير العام only (see CAN_DELETE_CUSTODY_ROLES).
+api.delete('/custody-invoices/:id', (req, res) => {
+  const removed = store.custodyInvoices.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // Payment methods — managed from Settings (cash / card / bank transfer by
 // default, admins can add or rename more). Expense.payment_method and
@@ -546,7 +562,14 @@ api.patch('/payment-methods/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 // Invoices (VAT 15%)
 // ---------------------------------------------------------------------------
-api.get('/invoices', (_req, res) => res.json(store.invoices.list()));
+api.get('/invoices', (req, res) => {
+  const { appointment_id } = req.query;
+  let list = store.invoices.list();
+  if (appointment_id && typeof appointment_id === 'string') {
+    list = list.filter((i) => i.appointment_id === appointment_id);
+  }
+  res.json(list);
+});
 
 api.post('/invoices', (req, res) => {
   const body = req.body ?? {};

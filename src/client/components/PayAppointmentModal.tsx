@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { X, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Invoice, PaymentMethodOption } from '../../shared/types.js';
+import { VAT_RATE } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from './InvoiceDocument.js';
 
@@ -33,13 +34,17 @@ export default function PayAppointmentModal({
       //    السعر والدفع badge in the schedule table).
       await api.post(`/appointments/${appointment.id}/payments`, { amount, method });
       // 2) Issue a formal VAT invoice for the same amount, so paying from
-      //    the schedule always leaves a proper invoice behind.
+      //    the schedule always leaves a proper invoice behind. Service
+      //    prices are VAT-inclusive, so back out the pre-tax subtotal —
+      //    /invoices still expects a pre-tax subtotal and derives vat/total
+      //    from it itself.
       const fullySettled = amount >= appointment.remaining_amount;
+      const subtotal = Math.round((appointment.amount / (1 + VAT_RATE)) * 100) / 100;
       const invoice = await api.post<Invoice>('/invoices', {
         customer_id: appointment.customer_id,
         appointment_id: appointment.id,
         contract_id: appointment.contract_id,
-        subtotal: appointment.amount,
+        subtotal,
         payment_status: fullySettled ? 'paid' : 'partial',
         payment_method: method,
       });
@@ -78,7 +83,7 @@ export default function PayAppointmentModal({
 
         <div className="mb-4 space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
           <div className="flex justify-between text-slate-500">
-            <span>إجمالي مبلغ الموعد</span>
+            <span>إجمالي مبلغ الموعد (شامل الضريبة)</span>
             <span className="font-semibold text-slate-800">{formatMoney(appointment.amount)}</span>
           </div>
           {appointment.total_paid > 0 && (

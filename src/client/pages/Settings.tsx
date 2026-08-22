@@ -648,7 +648,7 @@ function ServicesTab() {
                   <div className="text-sm font-semibold text-slate-700">{formatDuration(s.default_duration_minutes)}</div>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-3 py-2">
-                  <div className="mb-0.5 text-[11px] text-slate-400">السعر الافتراضي</div>
+                  <div className="mb-0.5 text-[11px] text-slate-400">السعر الافتراضي (شامل الضريبة)</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(s.default_price)}</div>
                 </div>
               </div>
@@ -774,7 +774,7 @@ function ServicesTab() {
                   className="input"
                 />
               </Field>
-              <Field label="السعر الافتراضي (SAR) *" icon={<DollarSign className="h-3.5 w-3.5 text-brand-500" />}>
+              <Field label="السعر الافتراضي (SAR، شامل الضريبة) *" icon={<DollarSign className="h-3.5 w-3.5 text-brand-500" />}>
                 <input
                   type="number"
                   name="default_price"

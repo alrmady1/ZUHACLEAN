@@ -34,6 +34,7 @@ export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin
 export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
+export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
 
 export type AppointmentStatus =
   | 'scheduled'

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
@@ -53,8 +53,14 @@ export default function NewAppointmentModal({
 
   const [date, setDate] = useState(today);
   const [time, setTime] = useState('10:00');
+  const [supervisorId, setSupervisorId] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
+
+  useEffect(() => {
+    api.get<Appointment[]>('/appointments').then(setExistingAppointments);
+  }, []);
 
   function applyCustomer(customer: Customer | undefined) {
     setAddress(customer?.address ?? '');
@@ -92,8 +98,31 @@ export default function NewAppointmentModal({
     return { time: formatTimeAr(end.toISOString()), duration: formatDuration(Number(duration)) };
   })();
 
+  // The same supervisor's other bookings that day — used both for the
+  // mini availability schedule and to block an overlapping new one.
+  const supervisorDayBookings = useMemo(() => {
+    if (!supervisorId || !date) return [];
+    return existingAppointments
+      .filter((a) => a.supervisor_id === supervisorId && a.status !== 'cancelled' && a.scheduled_at.slice(0, 10) === date)
+      .map((a) => {
+        const start = new Date(a.scheduled_at);
+        const end = new Date(start.getTime() + a.expected_duration_minutes * 60000);
+        return { id: a.id, start, end, customerName: a.customer_name_snapshot ?? 'عميل' };
+      })
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [existingAppointments, supervisorId, date]);
+
+  const conflict = (() => {
+    if (!supervisorId || !date || !time || !duration) return null;
+    const start = new Date(`${date}T${time}`);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start.getTime() + Number(duration) * 60000);
+    return supervisorDayBookings.find((b) => start < b.end && end > b.start) ?? null;
+  })();
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (conflict) return; // guarded again below the fields, but never submit over a clash
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     const technicianId = form.get('technician_id');
@@ -106,7 +135,7 @@ export default function NewAppointmentModal({
         scheduled_at: scheduledAt,
         expected_duration_minutes: Number(duration) || 120,
         amount: Number(amount) || 0,
-        supervisor_id: form.get('supervisor_id') || undefined,
+        supervisor_id: supervisorId || undefined,
         address_snapshot: address,
         location_url: locationUrl || undefined,
         notes: form.get('notes') || undefined,
@@ -316,7 +345,7 @@ export default function NewAppointmentModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">سعر الخدمة المتفق عليه (SAR) *</span>
+                <span className="mb-1 block font-medium text-slate-600">سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *</span>
                 <input
                   type="number"
                   min={0}
@@ -363,7 +392,12 @@ export default function NewAppointmentModal({
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
-                <select name="supervisor_id" defaultValue="" className="input">
+                <select
+                  name="supervisor_id"
+                  value={supervisorId}
+                  onChange={(e) => setSupervisorId(e.target.value)}
+                  className="input"
+                >
                   <option value="">-- اختياري: حدد المشرف --</option>
                   {supervisors.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -384,6 +418,37 @@ export default function NewAppointmentModal({
                 </select>
               </label>
             </div>
+
+            {conflict && (
+              <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  هناك مهمة مجدولة لهذا المشرف في هذا الوقت (عميل {conflict.customerName}، من {formatTimeAr(conflict.start.toISOString())}{' '}
+                  إلى {formatTimeAr(conflict.end.toISOString())})، فيرجى اختيار وقت آخر.
+                </span>
+              </div>
+            )}
+
+            {supervisorId && supervisorDayBookings.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-500">
+                  جدول {supervisors.find((s) => s.id === supervisorId)?.full_name} المصغّر لهذا اليوم:
+                </div>
+                <div className="space-y-1">
+                  {supervisorDayBookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex items-center justify-between rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-600"
+                    >
+                      <span>{b.customerName}</span>
+                      <span dir="ltr" className="text-slate-400">
+                        {formatTimeAr(b.start.toISOString())} - {formatTimeAr(b.end.toISOString())}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Section>
 
           <label className="block text-sm">
@@ -400,7 +465,7 @@ export default function NewAppointmentModal({
         <div className="mt-5 flex items-center gap-3">
           <button
             type="submit"
-            disabled={submitting || !customerId || selectedServiceIds.length === 0}
+            disabled={submitting || !customerId || selectedServiceIds.length === 0 || !!conflict}
             className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {submitting ? 'جارِ الحفظ…' : 'تأكيد وحجز الموعد'}
