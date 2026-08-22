@@ -71,6 +71,18 @@ function seed(): DbShape {
       created_at: now,
       updated_at: now,
     },
+    {
+      id: 'u-mohammed',
+      full_name: 'محمد المطري',
+      email: '',
+      phone: '0538553069',
+      role: 'supervisor',
+      username: 'mohammed',
+      password_hash: hashPassword('54321'),
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    },
   ];
 
   const services: Service[] = [
