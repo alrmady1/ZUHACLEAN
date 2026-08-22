@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, Clock, Plus } from 'lucide-react';
+import { Menu, Search, Plus } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
@@ -14,18 +14,12 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { user, allProfiles } = useAuth();
   const navigate = useNavigate();
 
-  const [now, setNow] = useState(new Date());
   const [query, setQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -39,13 +33,6 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
   }, []);
-
-  const timeLabel = now.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Riyadh',
-  });
 
   const q = query.trim().toLowerCase();
   const results = q
@@ -65,11 +52,6 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   return (
     <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-      <div className="hidden shrink-0 items-center gap-1.5 text-xs font-medium text-slate-400 lg:flex">
-        <Clock className="h-3.5 w-3.5" />
-        التوقيت المحلي: Asia/Riyadh | {timeLabel}
-      </div>
-
       <button
         onClick={onOpenMenu}
         aria-label="فتح القائمة"
