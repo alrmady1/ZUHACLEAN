@@ -64,7 +64,7 @@ export default function Sales() {
   const [period, setPeriod] = useState<ReportPeriod>('month');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [previewSubtotal, setPreviewSubtotal] = useState(0);
+  const [previewTotal, setPreviewTotal] = useState(0);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
 
   function refresh() {
@@ -121,22 +121,28 @@ export default function Sales() {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
+    // The field collects the VAT-inclusive amount — back out the pre-tax
+    // subtotal before sending, since that's still what /invoices expects
+    // (it derives vat_amount/total from subtotal itself).
+    const totalAmount = Number(form.get('total_amount'));
+    const subtotal = Math.round((totalAmount / (1 + VAT_RATE)) * 100) / 100;
     try {
       await api.post('/invoices', {
         customer_id: form.get('customer_id'),
-        subtotal: Number(form.get('subtotal')),
+        subtotal,
         payment_status: form.get('payment_status'),
         payment_method: form.get('payment_method') || undefined,
       });
       setShowForm(false);
-      setPreviewSubtotal(0);
+      setPreviewTotal(0);
       refresh();
     } finally {
       setSubmitting(false);
     }
   }
 
-  const vatPreview = Math.round(previewSubtotal * VAT_RATE * 100) / 100;
+  const subtotalPreview = Math.round((previewTotal / (1 + VAT_RATE)) * 100) / 100;
+  const vatPreview = Math.round((previewTotal - subtotalPreview) * 100) / 100;
 
   return (
     <div className="space-y-6">
@@ -322,15 +328,15 @@ export default function Sales() {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">المبلغ قبل الضريبة (ر.س)</span>
+                <span className="mb-1 block font-medium text-slate-600">المبلغ شامل الضريبة (ر.س)</span>
                 <input
                   type="number"
-                  name="subtotal"
+                  name="total_amount"
                   min={0}
                   step="0.01"
                   required
                   className="input"
-                  onChange={(e) => setPreviewSubtotal(Number(e.target.value) || 0)}
+                  onChange={(e) => setPreviewTotal(Number(e.target.value) || 0)}
                 />
               </label>
               <div className="grid grid-cols-2 gap-3">
@@ -357,14 +363,18 @@ export default function Sales() {
                 </label>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-3 text-sm">
+              <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
+                <div className="flex justify-between text-slate-500">
+                  <span>المبلغ قبل الضريبة</span>
+                  <span>{formatMoney(subtotalPreview)}</span>
+                </div>
                 <div className="flex justify-between text-slate-500">
                   <span>الضريبة (15٪)</span>
                   <span>{formatMoney(vatPreview)}</span>
                 </div>
-                <div className="flex justify-between font-semibold text-slate-800">
-                  <span>الإجمالي</span>
-                  <span>{formatMoney(previewSubtotal + vatPreview)}</span>
+                <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-800">
+                  <span>الإجمالي شامل الضريبة</span>
+                  <span>{formatMoney(previewTotal)}</span>
                 </div>
               </div>
             </div>
