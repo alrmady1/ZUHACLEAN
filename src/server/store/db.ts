@@ -184,6 +184,20 @@ export const store = {
     list: () => db.customers,
     get: (id: string) => db.customers.find((c) => c.id === id),
     insert: (c: Customer) => { db.customers.push(c); persist(); return c; },
+    update: (id: string, patch: Partial<Customer>) => {
+      const idx = db.customers.findIndex((c) => c.id === id);
+      if (idx === -1) return undefined;
+      db.customers[idx] = { ...db.customers[idx], ...patch };
+      persist();
+      return db.customers[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.customers.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      db.customers.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   services: {
     list: () => db.services,

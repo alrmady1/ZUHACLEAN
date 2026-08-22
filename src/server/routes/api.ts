@@ -84,6 +84,28 @@ api.post('/customers', (req, res) => {
   res.status(201).json(customer);
 });
 
+api.patch('/customers/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<{ name: string; phone: string; address: string; district?: string; city?: string; location_url?: string; notes?: string }> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.phone !== undefined) patch.phone = body.phone;
+  if (body.address !== undefined) patch.address = body.address;
+  if (body.district !== undefined) patch.district = body.district || undefined;
+  if (body.city !== undefined) patch.city = body.city || undefined;
+  if (body.location_url !== undefined) patch.location_url = body.location_url || undefined;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+
+  const updated = store.customers.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/customers/:id', (req, res) => {
+  const removed = store.customers.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // Services — managed from Settings (name, price, expected duration).
 // ---------------------------------------------------------------------------
