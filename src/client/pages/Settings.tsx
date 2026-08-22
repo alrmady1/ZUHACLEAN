@@ -1,11 +1,45 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Plus, X, Pencil, Trash2, Clock, Tags, Users as UsersIcon, Wrench as ServicesIcon, Banknote as PaymentIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Plus,
+  X,
+  Pencil,
+  Trash2,
+  Clock,
+  Tags,
+  Rows3,
+  LayoutGrid,
+  Search,
+  Mail,
+  Phone,
+  LogIn,
+  Users as UsersIcon,
+  Wrench as ServicesIcon,
+  Banknote as PaymentIcon,
+} from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
+import { useAuth } from '../lib/auth.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
+
+const ROLE_PLURAL_LABELS_AR: Record<UserRole, string> = {
+  general_manager: 'المدير العام',
+  admin: 'مدراء النظام',
+  admin_supervisor: 'مشرفين إداريين',
+  supervisor: 'مشرفين ميدانيين',
+  technician: 'فنيين ميدانيين',
+};
+
+const ROLE_BADGE_STYLES: Record<UserRole, string> = {
+  general_manager: 'bg-violet-100 text-violet-700',
+  admin: 'bg-rose-100 text-rose-700',
+  admin_supervisor: 'bg-amber-100 text-amber-700',
+  supervisor: 'bg-blue-100 text-blue-700',
+  technician: 'bg-emerald-100 text-emerald-700',
+};
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -36,10 +70,15 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 // Users tab
 // ---------------------------------------------------------------------------
 function UsersTab() {
+  const { user: currentUser, loginAs } = useAuth();
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
+  const [search, setSearch] = useState('');
 
   function refresh() {
     api.get<Profile[]>('/profiles').then(setProfiles);
@@ -47,6 +86,18 @@ function UsersTab() {
   useEffect(refresh, []);
 
   const supervisors = profiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+
+  const filtered = profiles.filter((p) => {
+    if (roleFilter !== 'all' && p.role !== roleFilter) return false;
+    const q = search.trim().toLowerCase();
+    if (q && ![p.full_name, p.phone, p.email].filter(Boolean).join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  function switchToAccount(p: Profile) {
+    loginAs(p.id);
+    navigate('/');
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -77,62 +128,181 @@ function UsersTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">إدارة حسابات المستخدمين: الاسم، الوظيفة، واسم المستخدم/كلمة المرور</p>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> مستخدم جديد
-        </button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">إدارة فريق العمل والهيكل التنظيمي</h2>
+          <p className="text-sm text-slate-400">توزيع أدوار المشرفين الميدانيين والإداريين، وربط الفنيين بالمشرف المسؤول</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setEditing(null);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> إضافة عضو جديد
+          </button>
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              onClick={() => setView('grid')}
+              title="مربعات"
+              className={`rounded-lg p-1.5 ${view === 'grid' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setView('list')}
+              title="صفوف"
+              className={`rounded-lg p-1.5 ${view === 'list' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <Rows3 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-start text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">الاسم</th>
-              <th className="p-3 text-start font-medium">البريد / الجوال</th>
-              <th className="p-3 text-start font-medium">الوظيفة</th>
-              <th className="p-3 text-start font-medium">اسم المستخدم</th>
-              <th className="p-3 text-start font-medium">الحالة</th>
-              <th className="p-3 text-start font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {profiles.map((p) => (
-              <tr key={p.id} className="border-b border-slate-50 last:border-0">
-                <td className="p-3 font-medium text-slate-700">{p.full_name}</td>
-                <td className="p-3 text-slate-600">{p.email || p.phone || '—'}</td>
-                <td className="p-3">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                    {ROLE_LABELS_AR[p.role]}
-                  </span>
-                </td>
-                <td className="p-3 text-slate-600">{p.username || '—'}</td>
-                <td className="p-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                    {p.is_active ? 'نشط' : 'موقوف'}
-                  </span>
-                </td>
-                <td className="p-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setRoleFilter('all')}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium ${roleFilter === 'all' ? 'bg-brand-600 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
+        >
+          الكل ({profiles.length})
+        </button>
+        {ROLES.filter((r) => profiles.some((p) => p.role === r)).map((r) => (
+          <button
+            key={r}
+            onClick={() => setRoleFilter(r)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${roleFilter === r ? 'bg-brand-600 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
+          >
+            {ROLE_PLURAL_LABELS_AR[r]} ({profiles.filter((p) => p.role === r).length})
+          </button>
+        ))}
+      </div>
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="بحث بالاسم أو الهاتف..."
+          className="input ps-9"
+        />
+      </div>
+
+      <div className={view === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : 'divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white'}>
+        {filtered.map((p) => {
+          const isSelf = p.id === currentUser?.id;
+          const team = profiles.filter((t) => t.role === 'technician' && t.supervisor_id === p.id);
+          const supervisor = profiles.find((s) => s.id === p.supervisor_id);
+          const initial = p.full_name.trim().charAt(0);
+          const wrapperClass =
+            view === 'grid'
+              ? `rounded-2xl border bg-white p-4 ${isSelf ? 'border-brand-400 ring-1 ring-brand-200' : 'border-slate-200'}`
+              : `p-4 ${isSelf ? 'bg-brand-50/40' : ''}`;
+
+          return (
+            <div key={p.id} className={wrapperClass}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${ROLE_BADGE_STYLES[p.role]}`}
+                  >
+                    {initial}
+                  </div>
+                  <div>
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                        {p.is_active ? 'نشط' : 'موقوف'}
+                      </span>
+                      {isSelf && (
+                        <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-700">أنت</span>
+                      )}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-800">{p.full_name}</div>
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${ROLE_BADGE_STYLES[p.role]}`}>
+                      {ROLE_LABELS_AR[p.role]}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 space-y-1 text-xs text-slate-500">
+                {p.email && (
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 shrink-0" /> {p.email}
+                  </div>
+                )}
+                {p.phone && (
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 shrink-0" /> {p.phone}
+                  </div>
+                )}
+              </div>
+
+              {(p.role === 'supervisor' || p.role === 'admin_supervisor') && (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">الفنيين التابعين للمشرف:</span>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600">{team.length} فني</span>
+                  </div>
+                  {team.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {team.map((t) => (
+                        <span key={t.id} className="rounded-full bg-white px-2.5 py-1 text-[11px] text-slate-600 ring-1 ring-slate-200">
+                          {t.full_name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">لا يوجد فنيين مرتبطين بعد</div>
+                  )}
+                </div>
+              )}
+
+              {p.role === 'technician' && (
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                  <div className="mb-1.5 text-xs text-slate-500">المشرف الميداني المسؤول:</div>
+                  {supervisor ? (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] text-slate-600 ring-1 ring-slate-200">
+                      {supervisor.full_name} ({ROLE_LABELS_AR[supervisor.role]})
+                    </span>
+                  ) : (
+                    <div className="text-[11px] text-slate-400">بدون مشرف محدد</div>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                <button
+                  onClick={() => {
+                    setEditing(p);
+                    setShowForm(true);
+                  }}
+                  title="تعديل"
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                {isSelf ? (
+                  <span className="rounded-lg px-2 py-1 text-xs font-medium text-slate-300">الحساب الفعلي</span>
+                ) : (
                   <button
-                    onClick={() => {
-                      setEditing(p);
-                      setShowForm(true);
-                    }}
+                    onClick={() => switchToAccount(p)}
                     className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                   >
-                    <Pencil className="h-3.5 w-3.5" /> تعديل
+                    الدخول بهذا الحساب <LogIn className="h-3.5 w-3.5" />
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className={view === 'grid' ? 'col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400' : 'p-10 text-center text-slate-400'}>
+            لا يوجد أعضاء مطابقون
+          </div>
+        )}
       </div>
 
       {showForm && (
