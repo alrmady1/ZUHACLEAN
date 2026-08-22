@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Map as MapIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile } from '../../shared/types.js';
 
@@ -105,11 +105,22 @@ export default function NewAppointmentModal({
                   <input name="new_customer_district" placeholder="الحي (اختياري)" className="input" />
                   <input name="new_customer_city" placeholder="المدينة (اختياري)" className="input" />
                 </div>
-                <input
-                  name="new_customer_location_url"
-                  placeholder="رابط الموقع (خرائط جوجل) — اختياري"
-                  className="input"
-                />
+                <div className="flex gap-2">
+                  <input
+                    name="new_customer_location_url"
+                    placeholder="رابط الموقع (خرائط جوجل) — اختياري"
+                    className="input"
+                  />
+                  <a
+                    href="https://www.google.com/maps"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                    className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
+                  >
+                    <MapIcon className="h-4 w-4" />
+                  </a>
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

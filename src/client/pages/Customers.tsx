@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -330,12 +330,23 @@ export default function Customers() {
               </div>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">رابط الموقع (خرائط جوجل)</span>
-                <input
-                  name="location_url"
-                  defaultValue={editing?.location_url}
-                  className="input"
-                  placeholder="https://maps.google.com/..."
-                />
+                <div className="flex gap-2">
+                  <input
+                    name="location_url"
+                    defaultValue={editing?.location_url}
+                    className="input"
+                    placeholder="https://maps.google.com/..."
+                  />
+                  <a
+                    href="https://www.google.com/maps"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                    className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
+                  >
+                    <MapIcon className="h-4 w-4" />
+                  </a>
+                </div>
               </label>
             </div>
             <button
