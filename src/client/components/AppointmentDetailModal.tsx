@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react';
-import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
+import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus } from '../../shared/types.js';
-import { ROLE_LABELS_AR } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/date.js';
+import { useAuth } from '../lib/auth.js';
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -38,9 +39,12 @@ export default function AppointmentDetailModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { user } = useAuth();
+  const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const beforeInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
 
@@ -294,9 +298,46 @@ export default function AppointmentDetailModal({
                 <div className="text-sm font-bold text-slate-700">{formatMoney(appointment.amount)}</div>
               </div>
             </div>
+
+            {appointment.payments.length > 0 && (
+              <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100 pt-2">
+                {appointment.payments.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-700">{formatMoney(p.amount)}</div>
+                      <div className="text-xs text-slate-400">
+                        {paymentMethods.find((m) => m.id === p.method)?.name ?? p.method} — {formatDateAr(p.recorded_at)}
+                      </div>
+                    </div>
+                    {canEditPayments && (
+                      <button
+                        onClick={() => setEditingPayment(p)}
+                        title="تعديل المبلغ"
+                        className="flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {editingPayment && (
+        <EditPaymentModal
+          appointmentId={appointment.id}
+          payment={editingPayment}
+          paymentMethods={paymentMethods}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null);
+            onChanged();
+          }}
+        />
+      )}
 
       {showPay && (
         <PayAppointmentModal
@@ -307,6 +348,75 @@ export default function AppointmentDetailModal({
           onPaid={onChanged}
         />
       )}
+    </div>
+  );
+}
+
+// المدير العام / مدير النظام فقط يصلون لهذا (see CAN_EDIT_PAYMENTS_ROLES) —
+// تصحيح مبلغ أو طريقة دفعة مسجّلة مسبقاً، بدل حذفها وتسجيل واحدة جديدة.
+function EditPaymentModal({
+  appointmentId,
+  payment,
+  paymentMethods,
+  onClose,
+  onSaved,
+}: {
+  appointmentId: string;
+  payment: Payment;
+  paymentMethods: PaymentMethodOption[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await api.patch(`/appointments/${appointmentId}/payments/${payment.id}`, {
+        amount: Number(form.get('amount')),
+        method: form.get('method'),
+      });
+      onSaved();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">تعديل الدفعة</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+            <input type="number" name="amount" min={0} step="0.01" defaultValue={payment.amount} required className="input" />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+            <select name="method" defaultValue={payment.method} required className="input">
+              {paymentMethods.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {submitting ? 'جارِ الحفظ…' : 'حفظ التعديل'}
+        </button>
+      </form>
     </div>
   );
 }

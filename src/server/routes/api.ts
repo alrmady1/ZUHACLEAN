@@ -287,6 +287,23 @@ api.post('/appointments/:id/payments', (req, res) => {
   res.status(201).json(updated);
 });
 
+// Correct an already-recorded payment amount/method — gated client-side to
+// المدير العام / مدير النظام (see CAN_EDIT_PAYMENTS_ROLES).
+api.patch('/appointments/:id/payments/:paymentId', (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  const payment = appt.payments.find((p) => p.id === req.params.paymentId);
+  if (!payment) return res.status(404).json({ error: 'payment not found' });
+  const { amount, method } = req.body ?? {};
+  if (amount !== undefined) payment.amount = Number(amount);
+  if (method !== undefined) payment.method = method;
+  const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
+  const remaining_amount = Math.max(appt.amount - total_paid, 0);
+  const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
+  const updated = store.appointments.update(appt.id, { payments: appt.payments, total_paid, remaining_amount, payment_status });
+  res.json(updated);
+});
+
 // ---------------------------------------------------------------------------
 // Contracts + automatic visit generation engine
 // ---------------------------------------------------------------------------

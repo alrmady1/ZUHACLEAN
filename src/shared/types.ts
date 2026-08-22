@@ -32,6 +32,7 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
 export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
+export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
 
 export type AppointmentStatus =
