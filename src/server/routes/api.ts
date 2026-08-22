@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
+import { uploadAppointmentPhoto } from '../lib/storage.js';
 import type {
   Appointment,
   Contract,
@@ -264,14 +265,23 @@ api.patch('/appointments/:id', (req, res) => {
   res.json(updated);
 });
 
-// Technician: attach a before/after photo (base64 data URL)
-api.post('/appointments/:id/photos', (req, res) => {
+// Technician: attach a before/after photo. The client sends a base64 data
+// URL; we upload it to Supabase Storage and keep only the resulting URL
+// (never the raw base64) on the appointment record.
+api.post('/appointments/:id/photos', async (req, res) => {
   const appt = store.appointments.get(req.params.id);
   if (!appt) return res.status(404).json({ error: 'not found' });
   const { stage, data_url } = req.body ?? {};
-  appt.photos.push({ id: store.id(), stage, data_url, taken_at: new Date().toISOString() });
-  store.appointments.update(appt.id, { photos: appt.photos });
-  res.status(201).json(appt);
+  if (!stage || !data_url) return res.status(400).json({ error: 'stage و data_url مطلوبان' });
+  try {
+    const url = await uploadAppointmentPhoto(appt.id, stage, data_url);
+    appt.photos.push({ id: store.id(), stage, data_url: url, taken_at: new Date().toISOString() });
+    store.appointments.update(appt.id, { photos: appt.photos });
+    res.status(201).json(appt);
+  } catch (err) {
+    console.error('❌ فشل رفع الصورة إلى Supabase Storage:', err);
+    res.status(500).json({ error: 'فشل رفع الصورة' });
+  }
 });
 
 // Technician: record a field payment
