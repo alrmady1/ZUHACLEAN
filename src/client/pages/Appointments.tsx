@@ -9,7 +9,7 @@ import {
   Users as UsersIcon,
   UserRound,
   Search,
-  ArrowUpRight,
+  Eye,
   ChevronRight,
   ChevronLeft,
   Wallet,
@@ -17,9 +17,10 @@ import {
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
-import { AppointmentStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
+import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
+import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -31,24 +32,15 @@ type PeriodFilter = 'all' | 'today' | 'week' | 'month';
 // restricted to admin_supervisor / admin / general_manager.
 const CAN_SEE_ALL_SCHEDULES_ROLES = ['general_manager', 'admin', 'admin_supervisor'];
 
-const STATUS_OPTIONS: { value: AppointmentStatus; label: string }[] = [
-  { value: 'scheduled', label: 'مجدولة' },
-  { value: 'on_the_way', label: 'في الطريق' },
-  { value: 'in_progress', label: 'جارية' },
-  { value: 'completed', label: 'مكتملة' },
-  { value: 'cancelled', label: 'ملغاة' },
-];
+const STATUS_OPTIONS = (Object.entries(APPT_STATUS_STYLE) as [AppointmentStatus, { label: string }][]).map(([value, { label }]) => ({
+  value,
+  label,
+}));
 const PAYMENT_OPTIONS: { value: PaymentStatus; label: string }[] = [
   { value: 'unpaid', label: 'غير مسدد' },
   { value: 'partial', label: 'مسدد جزئياً' },
   { value: 'paid', label: 'مسدد بالكامل' },
 ];
-// Quick "move it forward" action for the last table column.
-const NEXT_STATUS: Partial<Record<AppointmentStatus, AppointmentStatus>> = {
-  scheduled: 'on_the_way',
-  on_the_way: 'in_progress',
-  in_progress: 'completed',
-};
 
 function inPeriod(iso: string, period: PeriodFilter): boolean {
   if (period === 'all') return true;
@@ -106,6 +98,7 @@ export default function Appointments() {
   const [search, setSearch] = useState('');
   const [showNewAppt, setShowNewAppt] = useState(false);
   const [payingAppt, setPayingAppt] = useState<Appointment | null>(null);
+  const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calSubView, setCalSubView] = useState<'month' | 'week' | 'day'>('month');
 
@@ -177,13 +170,6 @@ export default function Appointments() {
     calSubView === 'day'
       ? calendarDate.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' })
       : calendarDate.toLocaleDateString('ar-SA', { month: 'long', year: 'numeric' });
-
-  async function advanceStatus(a: Appointment) {
-    const next = NEXT_STATUS[a.status];
-    if (!next) return;
-    await api.patch(`/appointments/${a.id}`, { status: next });
-    refresh();
-  }
 
   return (
     <div className="space-y-5">
@@ -310,9 +296,12 @@ export default function Appointments() {
               {filtered.map((a) => {
                 const customer = customers.find((c) => c.id === a.customer_id);
                 const supervisor = allProfiles.find((p) => p.id === a.supervisor_id);
-                const next = NEXT_STATUS[a.status];
                 return (
-                  <tr key={a.id} className="border-b border-slate-50 last:border-0 align-top">
+                  <tr
+                    key={a.id}
+                    onClick={() => setViewingAppt(a)}
+                    className="cursor-pointer border-b border-slate-50 align-top last:border-0 hover:bg-slate-50"
+                  >
                     <td className="p-3">
                       <div className="font-medium text-slate-700">
                         {weekdayAr(a.scheduled_at)} {formatDateAr(a.scheduled_at)}
@@ -359,7 +348,10 @@ export default function Appointments() {
                         </div>
                         {a.remaining_amount > 0 && (
                           <button
-                            onClick={() => setPayingAppt(a)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPayingAppt(a);
+                            }}
                             title="تحصيل الدفعة وإصدار الفاتورة"
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                           >
@@ -372,17 +364,16 @@ export default function Appointments() {
                       <AppointmentStatusBadge status={a.status} />
                     </td>
                     <td className="p-3">
-                      {next ? (
-                        <button
-                          onClick={() => advanceStatus(a)}
-                          title="الانتقال للحالة التالية"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                        >
-                          <ArrowUpRight className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingAppt(a);
+                        }}
+                        title="عرض التفاصيل"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -558,6 +549,17 @@ export default function Appointments() {
           paymentMethods={paymentMethods}
           onClose={() => setPayingAppt(null)}
           onPaid={refresh}
+        />
+      )}
+
+      {viewingAppt && (
+        <AppointmentDetailModal
+          appointment={appointments.find((a) => a.id === viewingAppt.id) ?? viewingAppt}
+          customer={customers.find((c) => c.id === viewingAppt.customer_id)}
+          allProfiles={allProfiles}
+          paymentMethods={paymentMethods}
+          onClose={() => setViewingAppt(null)}
+          onChanged={refresh}
         />
       )}
     </div>

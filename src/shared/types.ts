@@ -31,6 +31,7 @@ export type AppointmentStatus =
   | 'on_the_way'
   | 'in_progress'
   | 'completed'
+  | 'delayed'
   | 'cancelled';
 
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';

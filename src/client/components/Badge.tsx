@@ -4,11 +4,12 @@ import type {
   ContractStatus,
 } from '../../shared/types.js';
 
-const APPT_STATUS_STYLE: Record<AppointmentStatus, { label: string; className: string }> = {
+export const APPT_STATUS_STYLE: Record<AppointmentStatus, { label: string; className: string }> = {
   scheduled: { label: 'مجدولة', className: 'bg-slate-100 text-slate-700' },
   on_the_way: { label: 'في الطريق', className: 'bg-blue-100 text-blue-700' },
   in_progress: { label: 'جارية', className: 'bg-amber-100 text-amber-700' },
   completed: { label: 'مكتملة', className: 'bg-emerald-100 text-emerald-700' },
+  delayed: { label: 'مؤجلة', className: 'bg-orange-100 text-orange-700' },
   cancelled: { label: 'ملغاة', className: 'bg-red-100 text-red-700' },
 };
 
