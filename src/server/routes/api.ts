@@ -311,6 +311,11 @@ api.post('/expenses', (req, res) => {
     recorded_by_name: body.recorded_by_name,
     supervisor_id: body.supervisor_id,
     supervisor_name: body.supervisor_name,
+    custody_holder_id: body.category === 'custody' ? body.custody_holder_id || undefined : undefined,
+    custody_holder_name:
+      body.category === 'custody' && body.custody_holder_id
+        ? store.profiles.get(body.custody_holder_id)?.full_name
+        : undefined,
     payment_method: body.payment_method ?? 'cash',
     notes: body.notes,
     created_at: new Date().toISOString(),

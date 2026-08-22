@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategory, PaymentMethodOption } from '../../shared/types.js';
-import { EXPENSE_CATEGORY_LABELS_AR } from '../../shared/types.js';
+import type { Expense, ExpenseCategory, PaymentMethodOption, Profile } from '../../shared/types.js';
+import { EXPENSE_CATEGORY_LABELS_AR, ROLE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -10,6 +10,8 @@ export default function Expenses() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [category, setCategory] = useState<ExpenseCategory>('custody');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,6 +22,7 @@ export default function Expenses() {
   useEffect(() => {
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+    api.get<Profile[]>('/profiles').then(setProfiles);
   }, []);
 
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
@@ -52,11 +55,13 @@ export default function Expenses() {
         date: form.get('date'),
         invoice_number: form.get('invoice_number') || undefined,
         payment_method: form.get('payment_method'),
+        custody_holder_id: form.get('custody_holder_id') || undefined,
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
       });
       setShowForm(false);
+      setCategory('custody');
       refresh();
     } finally {
       setSubmitting(false);
@@ -93,6 +98,7 @@ export default function Expenses() {
               <th className="p-3 text-start font-medium">التصنيف</th>
               <th className="p-3 text-start font-medium">المبلغ</th>
               <th className="p-3 text-start font-medium">طريقة الدفع</th>
+              <th className="p-3 text-start font-medium">العُهدة لـ</th>
               <th className="p-3 text-start font-medium">سجّله</th>
             </tr>
           </thead>
@@ -111,12 +117,13 @@ export default function Expenses() {
                   </td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
                   <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
+                  <td className="p-3 text-slate-600">{e.custody_holder_name ?? '—'}</td>
                   <td className="p-3 text-slate-600">{e.recorded_by_name ?? '—'}</td>
                 </tr>
               ))}
             {expenses.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-slate-400">
+                <td colSpan={7} className="p-8 text-center text-slate-400">
                   لا توجد مصروفات مسجلة
                 </td>
               </tr>
@@ -144,7 +151,13 @@ export default function Expenses() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">التصنيف</span>
-                <select name="category" required className="input">
+                <select
+                  name="category"
+                  required
+                  className="input"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+                >
                   {Object.entries(EXPENSE_CATEGORY_LABELS_AR).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -152,6 +165,19 @@ export default function Expenses() {
                   ))}
                 </select>
               </label>
+              {category === 'custody' && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">الموظف المستلم للعُهدة</span>
+                  <select name="custody_holder_id" required className="input">
+                    <option value="">اختر موظف</option>
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name} — {ROLE_LABELS_AR[p.role]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>

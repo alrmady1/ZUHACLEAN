@@ -143,6 +143,10 @@ export interface Expense {
   recorded_by_name?: string;
   supervisor_id?: string;
   supervisor_name?: string;
+  // Only set when category === 'custody': which employee the cash
+  // custody/advance was handed to.
+  custody_holder_id?: string;
+  custody_holder_name?: string;
   payment_method: PaymentMethod;
   notes?: string;
   created_at: string;
