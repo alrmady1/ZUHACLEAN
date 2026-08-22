@@ -2,12 +2,14 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Contract, Customer, Service } from '../../shared/types.js';
+import { CAN_SEE_CONTRACT_VALUE_ROLES } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
 export default function Contracts() {
   const { user, allProfiles } = useAuth();
+  const canSeeValue = user ? CAN_SEE_CONTRACT_VALUE_ROLES.includes(user.role) : false;
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -73,7 +75,7 @@ export default function Contracts() {
               <th className="p-3 text-start font-medium">الخدمة</th>
               <th className="p-3 text-start font-medium">التكرار</th>
               <th className="p-3 text-start font-medium">الزيارات</th>
-              <th className="p-3 text-start font-medium">القيمة</th>
+              {canSeeValue && <th className="p-3 text-start font-medium">القيمة</th>}
               <th className="p-3 text-start font-medium">السداد</th>
               <th className="p-3 text-start font-medium">الحالة</th>
             </tr>
@@ -90,7 +92,7 @@ export default function Contracts() {
                 <td className="p-3 text-slate-600">
                   {c.completed_visits} / {c.total_visits}
                 </td>
-                <td className="p-3 text-slate-600">{formatMoney(c.total_amount)}</td>
+                {canSeeValue && <td className="p-3 text-slate-600">{formatMoney(c.total_amount)}</td>}
                 <td className="p-3">
                   <PaymentStatusBadge status={c.payment_status} />
                 </td>
@@ -101,7 +103,7 @@ export default function Contracts() {
             ))}
             {contracts.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
+                <td colSpan={canSeeValue ? 8 : 7} className="p-8 text-center text-slate-400">
                   لا توجد عقود بعد
                 </td>
               </tr>

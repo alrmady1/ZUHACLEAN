@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
-import { ROLE_LABELS_AR } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
@@ -114,6 +114,7 @@ export default function Appointments() {
   }, []);
 
   const canSeeAllSchedules = user ? CAN_SEE_ALL_SCHEDULES_ROLES.includes(user.role) : false;
+  const canBook = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicians = allProfiles.filter((p) => p.role === 'technician');
 
@@ -179,12 +180,14 @@ export default function Appointments() {
           <p className="text-sm text-slate-400">إدارة ومتابعة المواعيد، مع فصل جداول المشرفين وإمكانية الاطلاع المتبادل</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowNewAppt(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-          >
-            <Plus className="h-4 w-4" /> حجز موعد جديد
-          </button>
+          {canBook && (
+            <button
+              onClick={() => setShowNewAppt(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Plus className="h-4 w-4" /> حجز موعد جديد
+            </button>
+          )}
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
             <button
               onClick={() => setView('calendar')}
@@ -532,7 +535,7 @@ export default function Appointments() {
         </div>
       )}
 
-      {showNewAppt && (
+      {canBook && showNewAppt && (
         <NewAppointmentModal
           customers={customers}
           services={services}

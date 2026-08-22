@@ -4,7 +4,7 @@ import { Menu, Search, Plus } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
-import { ROLE_LABELS_AR } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 
 // The global top bar: lives in Layout's <header>, which sits outside the
@@ -49,6 +49,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicians = allProfiles.filter((p) => p.role === 'technician');
+  const canBook = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
 
   return (
     <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
@@ -96,13 +97,15 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowQuickAdd(true)}
-        className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-      >
-        <Plus className="h-4 w-4" /> حجز موعد جديد
-      </button>
+      {canBook && (
+        <button
+          type="button"
+          onClick={() => setShowQuickAdd(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> حجز موعد جديد
+        </button>
+      )}
 
       {user && (
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
@@ -116,7 +119,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         </div>
       )}
 
-      {showQuickAdd && (
+      {canBook && showQuickAdd && (
         <NewAppointmentModal
           customers={customers}
           services={services}

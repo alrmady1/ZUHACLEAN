@@ -26,6 +26,13 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
   technician: 'Technician',
 };
 
+// Centralized role-permission groups. This app has no real session/token
+// auth (login just returns the matching profile), so these gate the UI
+// only — not a server-enforced security boundary.
+export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
+export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
+export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
+
 export type AppointmentStatus =
   | 'scheduled'
   | 'on_the_way'

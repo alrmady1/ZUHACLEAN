@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Plus,
   X,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
-import { ROLE_LABELS_AR } from '../../shared/types.js';
+import { ROLE_LABELS_AR, SETTINGS_ACCESS_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -1300,7 +1300,13 @@ function ExpenseCategoriesTab() {
 
 // ---------------------------------------------------------------------------
 export default function Settings() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<'users' | 'services' | 'payment_methods' | 'expense_categories'>('users');
+
+  // Settings (including adding/editing users) is restricted to the general
+  // manager and system admin — redirect anyone else away, in case they
+  // reach the URL directly instead of via the (already role-filtered) nav.
+  if (user && !SETTINGS_ACCESS_ROLES.includes(user.role)) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-5">
