@@ -14,7 +14,7 @@ export default function Login() {
         <div className="mb-6 flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-brand-600" />
           <div>
-            <h1 className="text-xl font-bold text-slate-800">زهى للأعمال</h1>
+            <h1 className="text-xl font-bold text-slate-800">زهى الأعمال</h1>
             <p className="text-xs text-slate-400">نظام إدارة خدمات النظافة والتشغيل والصيانة</p>
           </div>
         </div>

@@ -65,7 +65,7 @@ export default function Layout() {
           <Menu className="h-5 w-5" />
         </button>
         <Sparkles className="h-5 w-5 text-brand-600" />
-        <span className="text-sm font-bold text-slate-800">زهى للأعمال</span>
+        <span className="text-sm font-bold text-slate-800">زهى الأعمال</span>
       </header>
 
       <main className="flex-1 overflow-y-auto p-6">
@@ -89,7 +89,7 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-brand-400" />
             <div>
-              <div className="text-lg font-bold text-white">زهى للأعمال</div>
+              <div className="text-lg font-bold text-white">زهى الأعمال</div>
               <div className="text-xs text-slate-400">نظام التشغيل والصيانة</div>
             </div>
           </div>
