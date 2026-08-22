@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { hashPassword } from '../lib/password.js';
 import type {
   Profile,
   Customer,
@@ -54,13 +55,18 @@ const DATA_FILE = path.join(DATA_DIR, 'data.json');
 function seed(): DbShape {
   const now = new Date().toISOString();
 
-  const profiles: Profile[] = [
+  const profiles: StoredProfile[] = [
     {
       id: 'u-gm',
       full_name: 'عبدالله السقاف',
       email: 'abadeee9@gmail.com',
       phone: '0550406688',
       role: 'general_manager',
+      // Default bootstrap credentials so the very first login is possible
+      // (Settings, where these are normally changed, requires being logged
+      // in already). Change these from Settings → المستخدمون after first login.
+      username: 'abdullah',
+      password_hash: hashPassword('Zaha@2026'),
       is_active: true,
       created_at: now,
       updated_at: now,

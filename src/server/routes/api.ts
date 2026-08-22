@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
-import { hashPassword } from '../lib/password.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 import type { Appointment, Contract, VisitFrequency, Invoice, Service, PaymentMethodOption, ServiceCategory } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 
@@ -15,11 +15,26 @@ function toSafeProfile(p: StoredProfile) {
 
 // ---------------------------------------------------------------------------
 // Profiles / users — managed from Settings (add users, edit name/role,
-// set username + password). Login itself still uses the simple
-// pick-an-account flow (see src/client/lib/auth.tsx); these credentials are
-// stored ready for when that's swapped for real sign-in.
+// set username + password).
 // ---------------------------------------------------------------------------
 api.get('/profiles', (_req, res) => res.json(store.profiles.list().map(toSafeProfile)));
+
+// Real username/password sign-in. Credentials are set per-user from
+// Settings → المستخدمون (تعديل).
+api.post('/auth/login', (req, res) => {
+  const { username, password } = req.body ?? {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
+  }
+  const profile = store.profiles.list().find((p) => p.username === username);
+  if (!profile || !profile.password_hash || !verifyPassword(password, profile.password_hash)) {
+    return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+  }
+  if (!profile.is_active) {
+    return res.status(403).json({ error: 'هذا الحساب موقوف، تواصل مع الإدارة' });
+  }
+  res.json(toSafeProfile(profile));
+});
 
 api.post('/profiles', (req, res) => {
   const body = req.body ?? {};

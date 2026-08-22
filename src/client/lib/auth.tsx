@@ -6,6 +6,7 @@ interface AuthState {
   user: Profile | null;
   allProfiles: Profile[];
   loading: boolean;
+  login: (username: string, password: string, remember: boolean) => Promise<void>;
   loginAs: (profileId: string) => void;
   logout: () => void;
 }
@@ -21,13 +22,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.get<Profile[]>('/profiles').then((profiles) => {
       setAllProfiles(profiles);
-      const savedId = localStorage.getItem(STORAGE_KEY);
+      const savedId = localStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(STORAGE_KEY);
       const restored = profiles.find((p) => p.id === savedId);
       if (restored) setUser(restored);
       setLoading(false);
     });
   }, []);
 
+  // Real sign-in with username + password (set from Settings → المستخدمون).
+  const login = async (username: string, password: string, remember: boolean) => {
+    const profile = await api.post<Profile>('/auth/login', { username, password });
+    setUser(profile);
+    setAllProfiles((prev) => (prev.some((p) => p.id === profile.id) ? prev : [...prev, profile]));
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+    (remember ? localStorage : sessionStorage).setItem(STORAGE_KEY, profile.id);
+  };
+
+  // Manager-only account impersonation from Settings (jump into another
+  // user's account without their password).
   const loginAs = (profileId: string) => {
     const profile = allProfiles.find((p) => p.id === profileId) ?? null;
     setUser(profile);
@@ -37,10 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
   };
 
   return (
-    <AuthContext.Provider value={{ user, allProfiles, loading, loginAs, logout }}>
+    <AuthContext.Provider value={{ user, allProfiles, loading, login, loginAs, logout }}>
       {children}
     </AuthContext.Provider>
   );
