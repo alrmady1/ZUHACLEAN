@@ -247,5 +247,13 @@ export interface Invoice {
   payment_status: PaymentStatus;
   payment_method?: PaymentMethod;
   issue_date: string;
+  // Precise issue timestamp (ISO 8601) — issue_date is just the display
+  // date; this is what the ZATCA QR code's timestamp field uses.
+  created_at?: string;
   notes?: string;
 }
+
+// The seller identity ZATCA (Saudi Zakat, Tax and Customs Authority) prints
+// on simplified tax invoices and encodes into the compliance QR code.
+export const COMPANY_NAME = 'زهى الأعمال';
+export const COMPANY_VAT_NUMBER = '314739292200003';

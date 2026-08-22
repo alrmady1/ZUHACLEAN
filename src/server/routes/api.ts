@@ -549,6 +549,7 @@ api.post('/invoices', (req, res) => {
     payment_status: body.payment_status ?? 'unpaid',
     payment_method: body.payment_method || undefined,
     issue_date: body.issue_date ?? new Date().toISOString().slice(0, 10),
+    created_at: new Date().toISOString(),
     notes: body.notes,
   };
   store.invoices.insert(invoice);

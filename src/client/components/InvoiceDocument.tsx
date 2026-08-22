@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
-import JsBarcode from 'jsbarcode';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { X, Printer } from 'lucide-react';
 import type { Invoice, Customer, Appointment, PaymentMethodOption } from '../../shared/types.js';
+import { COMPANY_NAME, COMPANY_VAT_NUMBER } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
+import { buildZatcaQrPayload } from '../lib/zatca.js';
 
 // A printable/exportable VAT invoice for one Invoice record, shown right
 // after a payment is collected (see PayAppointmentModal) or re-opened later
@@ -23,19 +25,18 @@ export default function InvoiceDocument({
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
 }) {
-  const barcodeRef = useRef<SVGSVGElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState('');
 
   useEffect(() => {
-    if (!barcodeRef.current) return;
-    JsBarcode(barcodeRef.current, invoice.invoice_number, {
-      format: 'CODE128',
-      width: 1.6,
-      height: 46,
-      fontSize: 12,
-      margin: 4,
-      displayValue: true,
+    const payload = buildZatcaQrPayload({
+      sellerName: COMPANY_NAME,
+      vatNumber: COMPANY_VAT_NUMBER,
+      timestamp: invoice.created_at ?? `${invoice.issue_date}T00:00:00Z`,
+      totalWithVat: invoice.total,
+      vatAmount: invoice.vat_amount,
     });
-  }, [invoice.invoice_number]);
+    QRCode.toDataURL(payload, { width: 160, margin: 1 }).then(setQrDataUrl);
+  }, [invoice.created_at, invoice.issue_date, invoice.total, invoice.vat_amount]);
 
   const methodName = paymentMethods.find((m) => m.id === invoice.payment_method)?.name ?? invoice.payment_method ?? '—';
   const workDescription = appointment?.service_name_snapshot || invoice.notes || 'خدمات نظافة وصيانة';
@@ -62,8 +63,9 @@ export default function InvoiceDocument({
         <div className="invoice-print-area overflow-y-auto p-6">
           <div className="mb-5 flex items-start justify-between border-b border-dashed border-slate-200 pb-4">
             <div>
-              <div className="text-lg font-bold text-slate-800">زهى الأعمال</div>
+              <div className="text-lg font-bold text-slate-800">{COMPANY_NAME}</div>
               <div className="text-xs text-slate-400">لأعمال الصيانة والتنظيف</div>
+              <div className="mt-1 text-xs text-slate-400">الرقم الضريبي: {COMPANY_VAT_NUMBER}</div>
             </div>
             <div className="text-end">
               <div className="text-sm font-bold text-brand-700">فاتورة ضريبية مبسطة</div>
@@ -121,8 +123,9 @@ export default function InvoiceDocument({
             </div>
           </div>
 
-          <div className="flex flex-col items-center gap-1 border-t border-dashed border-slate-200 pt-4">
-            <svg ref={barcodeRef} />
+          <div className="flex flex-col items-center gap-1.5 border-t border-dashed border-slate-200 pt-4">
+            {qrDataUrl && <img src={qrDataUrl} alt="رمز الفاتورة الضريبية (متوافق مع هيئة الزكاة والضريبة)" className="h-36 w-36" />}
+            <div className="text-[11px] text-slate-400">رمز الاستجابة السريعة متوافق مع متطلبات هيئة الزكاة والضريبة والجمارك</div>
           </div>
         </div>
       </div>
