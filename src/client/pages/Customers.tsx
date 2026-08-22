@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -13,6 +13,7 @@ export default function Customers() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<'list' | 'grid'>('list');
 
   function refresh() {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -85,15 +86,33 @@ export default function Customers() {
           <h1 className="text-xl font-bold text-slate-800">سجل العملاء</h1>
           <p className="text-sm text-slate-400">إدارة بيانات العملاء، المواقع، وأرقام التواصل وسجل الزيارات السابقة</p>
         </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> إضافة عميل جديد
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setEditing(null);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> إضافة عميل جديد
+          </button>
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              onClick={() => setView('list')}
+              title="صفوف"
+              className={`rounded-lg p-1.5 ${view === 'list' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <Rows3 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setView('grid')}
+              title="مربعات"
+              className={`rounded-lg p-1.5 ${view === 'grid' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="relative">
@@ -106,6 +125,86 @@ export default function Customers() {
         />
       </div>
 
+      {view === 'list' && (
+        <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
+          {filtered.map((c) => {
+            const visits = visitsByCustomer.get(c.id) ?? [];
+            const isOpen = expanded.has(c.id);
+            return (
+              <div key={c.id} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+                      {visits.length} زيارات
+                    </span>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{c.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3.5 w-3.5 shrink-0" /> {c.phone}
+                        </span>
+                        {c.address && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" /> {c.address}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => handleDelete(c)}
+                      title="حذف"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditing(c);
+                        setShowForm(true);
+                      }}
+                      title="تعديل"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => toggleExpanded(c.id)}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      عرض السجل
+                      {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {isOpen && (
+                  <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                    {visits.length === 0 && <div className="text-xs text-slate-400">لا يوجد سجل زيارات بعد</div>}
+                    {visits
+                      .slice()
+                      .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
+                      .map((v) => (
+                        <div key={v.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                          <div>
+                            <div className="font-medium text-slate-700">{v.service_name_snapshot}</div>
+                            <div className="text-slate-400">
+                              {formatDateAr(v.scheduled_at)} · {formatTimeAr(v.scheduled_at)} · {formatMoney(v.amount)}
+                            </div>
+                          </div>
+                          <AppointmentStatusBadge status={v.status} />
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === 'grid' && (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {filtered.map((c) => {
           const visits = visitsByCustomer.get(c.id) ?? [];
@@ -179,6 +278,7 @@ export default function Customers() {
           );
         })}
       </div>
+      )}
 
       {filtered.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
