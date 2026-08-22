@@ -265,7 +265,7 @@ function ServicesTab() {
             onClick={() => setShowCategories(true)}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
-            <Tags className="h-4 w-4" /> تعديل الأقسام
+            <Tags className="h-4 w-4" /> تعديل التصنيف
           </button>
           <button
             onClick={() => {
