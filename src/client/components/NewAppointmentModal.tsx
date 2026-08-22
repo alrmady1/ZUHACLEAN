@@ -1,8 +1,8 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile } from '../../shared/types.js';
-import { formatDuration, formatTimeAr } from '../lib/date.js';
+import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -45,7 +45,9 @@ export default function NewAppointmentModal({
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
   const [addingCustomer, setAddingCustomer] = useState(false);
 
-  const [serviceId, setServiceId] = useState('');
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const serviceBoxRef = useRef<HTMLDivElement>(null);
   const [amount, setAmount] = useState<number | ''>(0);
   const [duration, setDuration] = useState<number | ''>(120);
 
@@ -59,11 +61,28 @@ export default function NewAppointmentModal({
     setLocationUrl(customer?.location_url ?? '');
   }
 
-  function applyService(service: Service | undefined) {
-    if (!service) return;
-    setAmount(service.default_price);
-    setDuration(service.default_duration_minutes);
+  const selectedServices = services.filter((s) => selectedServiceIds.includes(s.id));
+
+  // Selecting/deselecting a service recomputes the totals as the sum of the
+  // selected services' defaults — still editable afterwards if the agreed
+  // price differs.
+  function toggleService(id: string) {
+    setSelectedServiceIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const chosen = services.filter((s) => next.includes(s.id));
+      setAmount(chosen.reduce((sum, s) => sum + s.default_price, 0));
+      setDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
+      return next;
+    });
   }
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (serviceBoxRef.current && !serviceBoxRef.current.contains(e.target as Node)) setShowServiceDropdown(false);
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
 
   const previewEnd = (() => {
     if (!date || !time || !duration) return null;
@@ -77,16 +96,15 @@ export default function NewAppointmentModal({
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
-    const service = services.find((s) => s.id === serviceId);
     const technicianId = form.get('technician_id');
     const scheduledAt = new Date(`${date}T${time}`).toISOString();
     try {
       await api.post('/appointments', {
         customer_id: customerId,
-        service_id: serviceId,
-        service_name_snapshot: service?.name,
+        service_id: selectedServiceIds[0],
+        service_name_snapshot: selectedServices.map((s) => s.name).join('، '),
         scheduled_at: scheduledAt,
-        expected_duration_minutes: Number(duration) || service?.default_duration_minutes || 120,
+        expected_duration_minutes: Number(duration) || 120,
         amount: Number(amount) || 0,
         supervisor_id: form.get('supervisor_id') || undefined,
         address_snapshot: address,
@@ -259,23 +277,43 @@ export default function NewAppointmentModal({
           </Section>
 
           <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title="نوع الخدمة المطلوبة *">
-            <select
-              name="service_id"
-              required
-              className="input"
-              value={serviceId}
-              onChange={(e) => {
-                setServiceId(e.target.value);
-                applyService(services.find((s) => s.id === e.target.value));
-              }}
-            >
-              <option value="">-- اختر نوع الخدمة --</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <div ref={serviceBoxRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowServiceDropdown((v) => !v)}
+                className="input flex items-center justify-between gap-2 text-start"
+              >
+                <span className={`truncate ${selectedServices.length ? 'text-slate-700' : 'text-slate-400'}`}>
+                  {selectedServices.length > 0
+                    ? selectedServices.map((s) => s.name).join('، ')
+                    : '-- اختر نوعاً أو أكثر من الخدمة --'}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+              </button>
+              {showServiceDropdown && (
+                <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                  {services.map((s) => {
+                    const checked = selectedServiceIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300'}`}
+                        >
+                          {checked && <Check className="h-3 w-3" />}
+                        </span>
+                        <input type="checkbox" checked={checked} onChange={() => toggleService(s.id)} className="hidden" />
+                        <span className="flex-1 text-slate-700">{s.name}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                      </label>
+                    );
+                  })}
+                  {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">لا توجد خدمات بعد</div>}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">سعر الخدمة المتفق عليه (SAR) *</span>
@@ -362,7 +400,7 @@ export default function NewAppointmentModal({
         <div className="mt-5 flex items-center gap-3">
           <button
             type="submit"
-            disabled={submitting || !customerId}
+            disabled={submitting || !customerId || selectedServiceIds.length === 0}
             className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {submitting ? 'جارِ الحفظ…' : 'تأكيد وحجز الموعد'}

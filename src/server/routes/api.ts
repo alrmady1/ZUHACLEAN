@@ -225,7 +225,9 @@ api.post('/appointments', (req, res) => {
     customer_id: body.customer_id,
     customer_name_snapshot: store.customers.get(body.customer_id)?.name,
     service_id: body.service_id,
-    service_name_snapshot: store.services.get(body.service_id)?.name ?? body.service_name_snapshot ?? '',
+    // Prefer the client-supplied snapshot (it may combine several service
+    // names into one appointment) and only fall back to a fresh lookup.
+    service_name_snapshot: body.service_name_snapshot || store.services.get(body.service_id)?.name || '',
     scheduled_at: body.scheduled_at,
     expected_duration_minutes: body.expected_duration_minutes ?? 120,
     amount: body.amount ?? 0,
