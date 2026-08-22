@@ -12,12 +12,14 @@ import {
   ArrowUpRight,
   ChevronRight,
   ChevronLeft,
+  Wallet,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus } from '../../shared/types.js';
+import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
 import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
+import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 
@@ -95,6 +97,7 @@ export default function Appointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [scope, setScope] = useState<ScopeFilter>('mine');
   const [view, setView] = useState<'table' | 'calendar'>('table');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'all'>('all');
@@ -102,6 +105,7 @@ export default function Appointments() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [search, setSearch] = useState('');
   const [showNewAppt, setShowNewAppt] = useState(false);
+  const [payingAppt, setPayingAppt] = useState<Appointment | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calSubView, setCalSubView] = useState<'month' | 'week' | 'day'>('month');
 
@@ -113,6 +117,7 @@ export default function Appointments() {
     refresh();
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
 
   const canSeeAllSchedules = user ? CAN_SEE_ALL_SCHEDULES_ROLES.includes(user.role) : false;
@@ -345,9 +350,22 @@ export default function Appointments() {
                       )}
                     </td>
                     <td className="p-3">
-                      <div className="font-medium text-slate-700">{formatMoney(a.amount)}</div>
-                      <div className="mt-1">
-                        <PaymentStatusBadge status={a.payment_status} />
+                      <div className="flex items-center gap-1.5">
+                        <div>
+                          <div className="font-medium text-slate-700">{formatMoney(a.amount)}</div>
+                          <div className="mt-1">
+                            <PaymentStatusBadge status={a.payment_status} />
+                          </div>
+                        </div>
+                        {a.remaining_amount > 0 && (
+                          <button
+                            onClick={() => setPayingAppt(a)}
+                            title="تحصيل الدفعة وإصدار الفاتورة"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                          >
+                            <Wallet className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="p-3">
@@ -531,6 +549,15 @@ export default function Appointments() {
           technicians={technicians}
           onClose={() => setShowNewAppt(false)}
           onCreated={refresh}
+        />
+      )}
+
+      {payingAppt && (
+        <PayAppointmentModal
+          appointment={payingAppt}
+          paymentMethods={paymentMethods}
+          onClose={() => setPayingAppt(null)}
+          onPaid={refresh}
         />
       )}
     </div>
