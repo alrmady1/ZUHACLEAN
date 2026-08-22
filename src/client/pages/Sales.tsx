@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Invoice, PaymentMethodOption, Appointment } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
+import InvoiceDocument from '../components/InvoiceDocument.js';
 
 type ReportPeriod = 'week' | 'month' | 'year';
 
@@ -64,6 +65,7 @@ export default function Sales() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewSubtotal, setPreviewSubtotal] = useState(0);
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
 
   function refresh() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
@@ -256,6 +258,7 @@ export default function Sales() {
               <th className="p-3 text-start font-medium">طريقة الدفع</th>
               <th className="p-3 text-start font-medium">الحالة</th>
               <th className="p-3 text-start font-medium">التاريخ</th>
+              <th className="p-3 text-start font-medium"></th>
             </tr>
           </thead>
           <tbody>
@@ -274,11 +277,19 @@ export default function Sales() {
                     <PaymentStatusBadge status={i.payment_status} />
                   </td>
                   <td className="p-3 text-slate-500">{i.issue_date}</td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => setViewingInvoice(i)}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      <Printer className="h-3.5 w-3.5" /> عرض / طباعة
+                    </button>
+                  </td>
                 </tr>
               ))}
             {invoices.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
+                <td colSpan={9} className="p-8 text-center text-slate-400">
                   لا توجد فواتير بعد
                 </td>
               </tr>
@@ -366,6 +377,16 @@ export default function Sales() {
             </button>
           </form>
         </div>
+      )}
+
+      {viewingInvoice && (
+        <InvoiceDocument
+          invoice={viewingInvoice}
+          customer={customers.find((c) => c.id === viewingInvoice.customer_id)}
+          appointment={appointments.find((a) => a.id === viewingInvoice.appointment_id)}
+          paymentMethods={paymentMethods}
+          onClose={() => setViewingInvoice(null)}
+        />
       )}
     </div>
   );

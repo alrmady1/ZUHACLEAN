@@ -38,3 +38,22 @@ body {
     @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100;
   }
 }
+
+/* Printing an invoice (see InvoiceDocument.tsx): hide the whole app and
+   show only the invoice content, filling the printed page on its own. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .invoice-print-area,
+  .invoice-print-area * {
+    visibility: visible;
+  }
+  .invoice-print-area {
+    position: absolute;
+    inset: 0;
+    max-height: none;
+    overflow: visible;
+    padding: 16px;
+  }
+}

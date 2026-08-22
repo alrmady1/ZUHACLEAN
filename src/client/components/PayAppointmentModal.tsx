@@ -1,16 +1,19 @@
 import { useState, type FormEvent } from 'react';
 import { X, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, PaymentMethodOption } from '../../shared/types.js';
+import type { Appointment, Customer, Invoice, PaymentMethodOption } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
+import InvoiceDocument from './InvoiceDocument.js';
 
 export default function PayAppointmentModal({
   appointment,
+  customer,
   paymentMethods,
   onClose,
   onPaid,
 }: {
   appointment: Appointment;
+  customer?: Customer;
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onPaid: () => void;
@@ -19,6 +22,7 @@ export default function PayAppointmentModal({
   const [amount, setAmount] = useState(appointment.remaining_amount);
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const [issuedInvoice, setIssuedInvoice] = useState<Invoice | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,7 +35,7 @@ export default function PayAppointmentModal({
       // 2) Issue a formal VAT invoice for the same amount, so paying from
       //    the schedule always leaves a proper invoice behind.
       const fullySettled = amount >= appointment.remaining_amount;
-      await api.post('/invoices', {
+      const invoice = await api.post<Invoice>('/invoices', {
         customer_id: appointment.customer_id,
         appointment_id: appointment.id,
         contract_id: appointment.contract_id,
@@ -40,10 +44,24 @@ export default function PayAppointmentModal({
         payment_method: method,
       });
       onPaid();
-      onClose();
+      // Work is done and paid — show the tax invoice immediately (with its
+      // barcode) instead of just closing, so it can be printed/exported now.
+      setIssuedInvoice(invoice);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (issuedInvoice) {
+    return (
+      <InvoiceDocument
+        invoice={issuedInvoice}
+        customer={customer}
+        appointment={appointment}
+        paymentMethods={paymentMethods}
+        onClose={onClose}
+      />
+    );
   }
 
   return (

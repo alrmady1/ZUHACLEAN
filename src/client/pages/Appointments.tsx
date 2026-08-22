@@ -550,6 +550,7 @@ export default function Appointments() {
       {payingAppt && (
         <PayAppointmentModal
           appointment={payingAppt}
+          customer={customers.find((c) => c.id === payingAppt.customer_id)}
           paymentMethods={paymentMethods}
           onClose={() => setPayingAppt(null)}
           onPaid={refresh}

@@ -301,6 +301,7 @@ export default function AppointmentDetailModal({
       {showPay && (
         <PayAppointmentModal
           appointment={appointment}
+          customer={customer}
           paymentMethods={paymentMethods}
           onClose={() => setShowPay(false)}
           onPaid={onChanged}
