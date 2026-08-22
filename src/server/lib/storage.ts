@@ -7,20 +7,10 @@
 // avoids re-signing URLs on every read while keeping the objects
 // unlistable/unguessable to anyone without the link.
 import { randomUUID } from 'node:crypto';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient.js';
 
 const BUCKET = 'appointment-photos';
 const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
-
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    'SUPABASE_URL أو SUPABASE_SERVICE_ROLE_KEY غير مضبوطين. أضِفهما في ملف .env (انظر .env.example).',
-  );
-}
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
 
 let bucketReady: Promise<void> | null = null;
 

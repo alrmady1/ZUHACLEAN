@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { hashPassword } from '../lib/password.js';
+import { runBackupIfDue } from '../lib/backup.js';
 import type {
   Profile,
   Customer,
@@ -344,6 +345,7 @@ export async function initStore(): Promise<void> {
 // small window before this finishes — logged loudly if it ever fails.
 function persist() {
   save(db).catch((err) => console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err));
+  runBackupIfDue(db);
 }
 
 export const store = {
