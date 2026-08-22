@@ -7,12 +7,17 @@ import {
   Trash2,
   Clock,
   Tags,
+  Tag,
   Rows3,
   LayoutGrid,
   Search,
   Mail,
   Phone,
   LogIn,
+  Sparkles,
+  ChevronDown,
+  DollarSign,
+  FileText,
   Users as UsersIcon,
   Wrench as ServicesIcon,
   Banknote as PaymentIcon,
@@ -41,22 +46,38 @@ const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   technician: 'bg-emerald-100 text-emerald-700',
 };
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-600">{label}</span>
+      <span className="mb-1 flex items-center gap-1.5 font-medium text-slate-600">
+        {label}
+        {icon}
+      </span>
       {children}
     </label>
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function Modal({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">{title}</h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -705,31 +726,54 @@ function ServicesTab() {
 
       {showForm && (
         <Modal
-          title={editing ? `تعديل ${editing.name}` : 'خدمة جديدة'}
+          title={editing ? `تعديل ${editing.name}` : 'إضافة خدمة جديدة'}
+          subtitle="تحديد تفاصيل وباقة الخدمة والأسعار الافتراضية بالريال السعودي"
           onClose={() => {
             setShowForm(false);
             setEditing(null);
           }}
         >
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <Field label="اسم الخدمة">
-              <input name="name" defaultValue={editing?.name} required className="input" />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Field label="اسم الخدمة *" icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />}>
+              <input
+                name="name"
+                defaultValue={editing?.name}
+                required
+                placeholder="مثال: تنظيف وتلميع واجهات الزجاج"
+                className="input"
+              />
             </Field>
-            <Field label="التصنيف">
-              <select name="category" defaultValue={editing?.category ?? ''} className="input">
-                <option value="">بدون تصنيف</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+
+            <Field label="تصنيف وقسم الخدمة" icon={<Tag className="h-3.5 w-3.5 text-brand-500" />}>
+              <div className="relative">
+                <select
+                  name="category"
+                  defaultValue={editing?.category ?? ''}
+                  className="input appearance-none pe-9"
+                >
+                  <option value="">بدون تصنيف</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
             </Field>
-            <Field label="وصف مختصر (اختياري)">
-              <input name="description" defaultValue={editing?.description} className="input" />
-            </Field>
+
             <div className="grid grid-cols-2 gap-3">
-              <Field label="السعر الافتراضي (ر.س)">
+              <Field label="المدة التقريبية (دقيقة) *" icon={<Clock className="h-3.5 w-3.5 text-brand-500" />}>
+                <input
+                  type="number"
+                  name="default_duration_minutes"
+                  min={1}
+                  defaultValue={editing?.default_duration_minutes ?? 60}
+                  required
+                  className="input"
+                />
+              </Field>
+              <Field label="السعر الافتراضي (SAR) *" icon={<DollarSign className="h-3.5 w-3.5 text-brand-500" />}>
                 <input
                   type="number"
                   name="default_price"
@@ -740,28 +784,54 @@ function ServicesTab() {
                   className="input"
                 />
               </Field>
-              <Field label="الوقت المتوقع (دقيقة)">
-                <input
-                  type="number"
-                  name="default_duration_minutes"
-                  min={1}
-                  defaultValue={editing?.default_duration_minutes ?? 60}
-                  required
-                  className="input"
-                />
-              </Field>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" name="is_active" defaultChecked={editing?.is_active ?? true} />
-              الخدمة مفعّلة (تظهر عند إنشاء موعد أو عقد جديد)
+
+            <Field label="وصف الخدمة والمميزات المشمولة" icon={<FileText className="h-3.5 w-3.5 text-brand-500" />}>
+              <textarea
+                name="description"
+                defaultValue={editing?.description}
+                rows={3}
+                placeholder="مثال: يشمل غسيل الأرضيات، تلميع الأسطح، غسيل الشبابيك واستخدام مواد معتمدة..."
+                className="input resize-none"
+              />
+            </Field>
+
+            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <span>
+                <span className="block text-sm font-medium text-slate-700">حالة تفعيل الخدمة</span>
+                <span className="block text-xs text-slate-400">الخدمة متاحة للحجز في قائمة المواعيد</span>
+              </span>
+              <span className="relative inline-block h-6 w-11 shrink-0">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  defaultChecked={editing?.is_active ?? true}
+                  className="peer sr-only"
+                />
+                <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500" />
+                <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
+              </span>
             </label>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-            >
-              {submitting ? 'جارِ الحفظ…' : editing ? 'حفظ التعديلات' : 'حفظ الخدمة'}
-            </button>
+
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {submitting ? 'جارِ الحفظ…' : editing ? 'حفظ التعديلات' : 'إضافة الخدمة'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditing(null);
+                }}
+                className="text-sm font-medium text-slate-400 hover:text-slate-600"
+              >
+                إلغاء
+              </button>
+            </div>
           </form>
         </Modal>
       )}
