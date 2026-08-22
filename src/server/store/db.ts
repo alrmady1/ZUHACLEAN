@@ -274,6 +274,13 @@ export const store = {
       persist();
       return db.profiles[idx];
     },
+    remove: (id: string) => {
+      const idx = db.profiles.findIndex((p) => p.id === id);
+      if (idx === -1) return false;
+      db.profiles.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   customers: {
     list: () => db.customers,

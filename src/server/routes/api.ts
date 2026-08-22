@@ -60,6 +60,21 @@ api.patch('/profiles/:id', (req, res) => {
   res.json(toSafeProfile(updated));
 });
 
+api.delete('/profiles/:id', (req, res) => {
+  const target = store.profiles.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'not found' });
+  // Never allow the last general_manager account to be removed — that
+  // would lock everyone out of the Settings/Users screen entirely.
+  if (target.role === 'general_manager') {
+    const managerCount = store.profiles.list().filter((p) => p.role === 'general_manager').length;
+    if (managerCount <= 1) {
+      return res.status(400).json({ error: 'لا يمكن حذف آخر حساب مدير عام في النظام' });
+    }
+  }
+  store.profiles.remove(req.params.id);
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------

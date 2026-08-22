@@ -126,6 +126,16 @@ function UsersTab() {
     }
   }
 
+  async function handleDeleteUser(p: Profile) {
+    if (!window.confirm(`حذف حساب "${p.full_name}"؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
+    try {
+      await api.del(`/profiles/${p.id}`);
+      refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'تعذّر حذف الحساب');
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -193,6 +203,7 @@ function UsersTab() {
       <div className={view === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : 'divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white'}>
         {filtered.map((p) => {
           const isSelf = p.id === currentUser?.id;
+          const isLastManager = p.role === 'general_manager' && profiles.filter((x) => x.role === 'general_manager').length <= 1;
           const team = profiles.filter((t) => t.role === 'technician' && t.supervisor_id === p.id);
           const supervisor = profiles.find((s) => s.id === p.supervisor_id);
           const initial = p.full_name.trim().charAt(0);
@@ -274,16 +285,26 @@ function UsersTab() {
               )}
 
               <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-                <button
-                  onClick={() => {
-                    setEditing(p);
-                    setShowForm(true);
-                  }}
-                  title="تعديل"
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleDeleteUser(p)}
+                    disabled={isSelf || isLastManager}
+                    title={isSelf ? 'لا يمكن حذف حسابك الحالي' : isLastManager ? 'لا يمكن حذف آخر مدير عام' : 'حذف'}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(p);
+                      setShowForm(true);
+                    }}
+                    title="تعديل"
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
                 {isSelf ? (
                   <span className="rounded-lg px-2 py-1 text-xs font-medium text-slate-300">الحساب الفعلي</span>
                 ) : (
