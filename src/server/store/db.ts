@@ -63,11 +63,87 @@ function seed(): DbShape {
   ];
 
   const services: Service[] = [
-    { id: 'svc-home', name: 'تنظيف منازل', default_price: 250, default_duration_minutes: 120, is_active: true },
-    { id: 'svc-office', name: 'تنظيف مكاتب', default_price: 400, default_duration_minutes: 180, is_active: true },
-    { id: 'svc-deep', name: 'تنظيف عميق', default_price: 600, default_duration_minutes: 240, is_active: true },
-    { id: 'svc-postc', name: 'تنظيف ما بعد البناء', default_price: 900, default_duration_minutes: 300, is_active: true },
-    { id: 'svc-pest', name: 'مكافحة حشرات', default_price: 300, default_duration_minutes: 90, is_active: true },
+    {
+      id: 'svc-home',
+      name: 'تنظيف شقق وفلل شامل',
+      category: 'تنظيف منازل',
+      description: 'غسيل وتلميع الأرضيات، تنظيف النوافذ، تعقيم المطابخ والحمامات وإزالة الأتربة',
+      default_price: 650,
+      default_duration_minutes: 240,
+      is_active: true,
+    },
+    {
+      id: 'svc-office',
+      name: 'تنظيف مكاتب',
+      category: 'تنظيف مكاتب',
+      description: 'تنظيف يومي أو دوري لصالات ومكاتب العمل وقاعات الاجتماعات',
+      default_price: 400,
+      default_duration_minutes: 180,
+      is_active: true,
+    },
+    {
+      id: 'svc-deep',
+      name: 'تنظيف عميق بعد التشطيب',
+      category: 'تنظيف بعد التشطيب',
+      description: 'إزالة بقايا الدهان والإسمنت وتلميع السيراميك والرخام لكامل العقار',
+      default_price: 1200,
+      default_duration_minutes: 360,
+      is_active: true,
+    },
+    {
+      id: 'svc-postc',
+      name: 'غسيل وتعقيم سجاد وموكيت',
+      category: 'تنظيف مفروشات',
+      description: 'غسيل سجاد بتقنية الرغوة الجافة والتعقيم الفوري ضد البكتيريا والروائح',
+      default_price: 200,
+      default_duration_minutes: 90,
+      is_active: true,
+    },
+    {
+      id: 'svc-pest',
+      name: 'مكافحة حشرات',
+      category: 'مكافحة حشرات',
+      description: 'رش ومكافحة الحشرات الزاحفة والطائرة بمواد آمنة معتمدة',
+      default_price: 300,
+      default_duration_minutes: 90,
+      is_active: true,
+    },
+    {
+      id: 'svc-upholstery',
+      name: 'تنظيف كنب ومجالس بالبخار',
+      category: 'تنظيف مفروشات',
+      description: 'غسيل عميق للكنب والمجالس بأحدث أجهزة البخار مع إزالة البقع الصعبة والتعطير',
+      default_price: 300,
+      default_duration_minutes: 120,
+      is_active: true,
+    },
+    {
+      id: 'svc-plumbing',
+      name: 'صيانة سباكة وكشف تسريبات',
+      category: 'سباكة',
+      description: 'فحص شبكة المياه، صيانة الخلاطات، ومعالجة التسريبات وانسداد المجاري',
+      default_price: 250,
+      default_duration_minutes: 90,
+      is_active: true,
+    },
+    {
+      id: 'svc-ac',
+      name: 'صيانة وتنظيف مكيفات سبليت',
+      category: 'صيانة تكييف',
+      description: 'تنظيف الوحدة الداخلية والخارجية، فحص الفريون وتنظيف الفلاتر وتطهير مجرى الصرف',
+      default_price: 150,
+      default_duration_minutes: 60,
+      is_active: true,
+    },
+    {
+      id: 'svc-electric',
+      name: 'صيانة كهرباء وتأسيس إضاءة',
+      category: 'كهرباء',
+      description: 'صيانة الأعطال الكهربائية وتمديد نقاط الإضاءة ومتابعة الأحمال والفلطية',
+      default_price: 350,
+      default_duration_minutes: 120,
+      is_active: true,
+    },
   ];
 
   const customers: Customer[] = [
@@ -209,6 +285,13 @@ export const store = {
       db.services[idx] = { ...db.services[idx], ...patch };
       persist();
       return db.services[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.services.findIndex((s) => s.id === id);
+      if (idx === -1) return false;
+      db.services.splice(idx, 1);
+      persist();
+      return true;
     },
   },
   contracts: {

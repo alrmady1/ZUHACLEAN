@@ -118,6 +118,7 @@ api.post('/services', (req, res) => {
     id: store.id(),
     name: body.name,
     description: body.description || undefined,
+    category: body.category || undefined,
     default_price: Number(body.default_price ?? 0),
     default_duration_minutes: Number(body.default_duration_minutes ?? 60),
     is_active: body.is_active ?? true,
@@ -131,6 +132,7 @@ api.patch('/services/:id', (req, res) => {
   const patch: Partial<Service> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.description !== undefined) patch.description = body.description || undefined;
+  if (body.category !== undefined) patch.category = body.category || undefined;
   if (body.default_price !== undefined) patch.default_price = Number(body.default_price);
   if (body.default_duration_minutes !== undefined) patch.default_duration_minutes = Number(body.default_duration_minutes);
   if (body.is_active !== undefined) patch.is_active = body.is_active;
@@ -138,6 +140,12 @@ api.patch('/services/:id', (req, res) => {
   const updated = store.services.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
   res.json(updated);
+});
+
+api.delete('/services/:id', (req, res) => {
+  const removed = store.services.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------

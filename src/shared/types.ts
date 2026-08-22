@@ -92,6 +92,7 @@ export interface Service {
   id: string;
   name: string;
   description?: string;
+  category?: string;
   default_price: number;
   default_duration_minutes: number;
   is_active: boolean;
