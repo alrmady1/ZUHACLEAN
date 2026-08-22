@@ -1,13 +1,19 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
 import { api } from './routes/api.js';
+import { initStore } from './store/db.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT ?? 3000);
 
 async function createServer() {
+  // Load app state from Postgres before accepting any request — every
+  // store.* method assumes this has already happened.
+  await initStore();
+
   const app = express();
   const httpServer = http.createServer(app);
   app.use(express.json({ limit: '8mb' })); // generous limit: before/after photos are base64

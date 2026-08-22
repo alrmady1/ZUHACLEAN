@@ -1,12 +1,12 @@
 // ============================================================================
-// طبقة تخزين بسيطة (JSON على القرص) — بديل مؤقت لقاعدة بيانات حقيقية.
-// يمكن استبدالها لاحقاً بـ Postgres / Supabase دون تغيير واجهة الراوترات،
-// طالما أن الدوال هنا (list/get/insert/update) تبقى بنفس التوقيع.
+// طبقة تخزين — PostgreSQL دائم (بدل ملف JSON السابق الذي كان يُفقد عند حذف
+// الملف أو إعادة تشغيل بيئات بدون قرص دائم مثل Vercel). كامل حالة التطبيق
+// تُحفظ كسجل JSONB واحد في جدول app_state، فتبقى كل دوال list/get/insert/
+// update/remove في الأسفل تعمل على نفس الكائن db في الذاكرة تماماً كما كانت
+// — التغيير الوحيد هو من أين يُحمَّل db وإلى أين يُحفظ (persist).
 // ============================================================================
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import pg from 'pg';
 import { hashPassword } from '../lib/password.js';
 import type {
   Profile,
@@ -43,18 +43,29 @@ interface DbShape {
   custodyInvoices: CustodyInvoice[];
 }
 
-// Lives outside `src/` on purpose: production containers only ship `dist/`,
-// so the JSON store must resolve to a path that exists in both dev and prod.
-//
-// On Vercel the deployment bundle is read-only and `process.cwd()` isn't
-// writable, so we fall back to /tmp there. Fine for a demo — NOTE this
-// means data does NOT persist across cold starts or separate function
-// instances on Vercel. Swap this whole file for a real database
-// (Postgres/Supabase/etc.) before relying on this for real data.
-const DATA_DIR = process.env.VERCEL
-  ? path.join(os.tmpdir(), 'zaha-ops-data')
-  : path.resolve(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'data.json');
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    'DATABASE_URL غير مضبوط. أضِف رابط الاتصال بقاعدة بيانات PostgreSQL في ملف .env (انظر .env.example).',
+  );
+}
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+// The whole app state lives in one JSONB row — same shape as the old JSON
+// file, just durable now. A future step could split this into real
+// relational tables, but this already fixes the actual problem (data
+// disappearing on restarts / missing files / Vercel cold starts) with
+// minimal risk to the extensive list/get/insert/update/remove logic below,
+// none of which had to change.
+async function ensureSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      id text PRIMARY KEY,
+      data jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
 
 function seed(): DbShape {
   const now = new Date().toISOString();
@@ -281,39 +292,58 @@ function seedCategoryId(name: string): string {
   return `cat-${name.replace(/\s+/g, '-')}`;
 }
 
-function load(): DbShape {
-  if (fs.existsSync(DATA_FILE)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as DbShape;
-      // Migrate data files saved before payment methods / service
-      // categories existed.
-      if (!parsed.paymentMethods) parsed.paymentMethods = seed().paymentMethods;
-      if (!parsed.serviceCategories) {
-        parsed.serviceCategories = Array.from(new Set(parsed.services.map((s) => s.category).filter(Boolean))).map(
-          (name) => ({ id: seedCategoryId(name as string), name: name as string }),
-        );
-      }
-      if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
-      if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
-      return parsed;
-    } catch {
-      // fall through to reseed on corrupt file
+async function load(): Promise<DbShape> {
+  await ensureSchema();
+  const { rows } = await pool.query<{ data: DbShape }>('SELECT data FROM app_state WHERE id = $1', ['main']);
+  if (rows.length > 0) {
+    const parsed = rows[0].data;
+    // Migrate rows saved before payment methods / service categories /
+    // expense categories / custody invoices existed.
+    if (!parsed.paymentMethods) parsed.paymentMethods = seed().paymentMethods;
+    if (!parsed.serviceCategories) {
+      parsed.serviceCategories = Array.from(new Set(parsed.services.map((s) => s.category).filter(Boolean))).map(
+        (name) => ({ id: seedCategoryId(name as string), name: name as string }),
+      );
     }
+    if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
+    if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
+    return parsed;
   }
   const initial = seed();
-  save(initial);
+  await save(initial);
   return initial;
 }
 
-function save(data: DbShape) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+async function save(data: DbShape) {
+  await pool.query(
+    `INSERT INTO app_state (id, data, updated_at) VALUES ('main', $1, now())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+    [JSON.stringify(data)],
+  );
 }
 
-const db = load();
+// Populated by initStore() before the HTTP server starts accepting
+// requests (see src/server/index.ts) — the definite-assignment assertion
+// is safe under that guarantee, and keeps every store.* method below
+// exactly as it was (plain sync access to `db`, no null-checks needed).
+let db!: DbShape;
 
+// Call once at startup, before httpServer.listen(). Everything below this
+// point in the module (the `store` export) is defined synchronously as
+// before — its methods just close over `db`, which becomes valid the
+// moment this resolves.
+export async function initStore(): Promise<void> {
+  db = await load();
+}
+
+// Fire-and-forget: the in-memory `db` mutation already happened
+// synchronously before persist() is called, so every store method still
+// returns the correct value immediately without needing to become async
+// (which would ripple into an `await` at every call site in api.ts). The
+// only risk is losing the very last write if the process crashes in the
+// small window before this finishes — logged loudly if it ever fails.
 function persist() {
-  save(db);
+  save(db).catch((err) => console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err));
 }
 
 export const store = {
