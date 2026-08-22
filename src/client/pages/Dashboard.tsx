@@ -1,10 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { CalendarClock, FileSignature, Wallet, TrendingUp } from 'lucide-react';
+import { CalendarClock, FileSignature, Wallet, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Contract, Expense } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+
+type Period = 'day' | 'month' | 'year';
+
+const PERIOD_LABELS: Record<Period, string> = {
+  day: 'اليوم',
+  month: 'هذا الشهر',
+  year: 'هذه السنة',
+};
+
+function inPeriod(iso: string, period: Period): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  if (period === 'day') return d.toDateString() === now.toDateString();
+  if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  return d.getFullYear() === now.getFullYear();
+}
 
 function StatCard({
   icon: Icon,
@@ -33,6 +49,7 @@ export default function Dashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [period, setPeriod] = useState<Period>('day');
 
   useEffect(() => {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -40,14 +57,32 @@ export default function Dashboard() {
     api.get<Expense[]>('/expenses').then(setExpenses);
   }, []);
 
-  const todayCount = useMemo(() => {
-    const today = new Date().toDateString();
-    return appointments.filter((a) => new Date(a.scheduled_at).toDateString() === today).length;
-  }, [appointments]);
+  const appointmentsInPeriod = useMemo(
+    () => appointments.filter((a) => inPeriod(a.scheduled_at, period)),
+    [appointments, period],
+  );
+
+  const completedInPeriod = useMemo(
+    () => appointmentsInPeriod.filter((a) => a.status === 'completed').length,
+    [appointmentsInPeriod],
+  );
 
   const activeContracts = contracts.filter((c) => c.status === 'active').length;
-  const monthlyExpenses = expenses.reduce((s, e) => s + e.amount, 0);
-  const monthlyRevenue = appointments.reduce((s, a) => s + a.total_paid, 0);
+
+  const expensesInPeriod = useMemo(
+    () => expenses.filter((e) => inPeriod(e.date, period)).reduce((s, e) => s + e.amount, 0),
+    [expenses, period],
+  );
+
+  const revenueInPeriod = useMemo(() => {
+    let total = 0;
+    for (const a of appointments) {
+      for (const p of a.payments) {
+        if (inPeriod(p.recorded_at, period)) total += p.amount;
+      }
+    }
+    return total;
+  }, [appointments, period]);
 
   const chartData = useMemo(() => {
     const byMonth = new Map<string, number>();
@@ -60,16 +95,50 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">مرحباً، {user?.full_name} 👋</h1>
-        <p className="text-sm text-slate-400">نظرة سريعة على العمليات اليوم</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">مرحباً، {user?.full_name} 👋</h1>
+          <p className="text-sm text-slate-400">نظرة سريعة على العمليات</p>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
+          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium ${period === p ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={CalendarClock} label="مواعيد اليوم" value={String(todayCount)} tint="bg-blue-100 text-blue-700" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          icon={CalendarClock}
+          label={`مواعيد ${PERIOD_LABELS[period]}`}
+          value={String(appointmentsInPeriod.length)}
+          tint="bg-blue-100 text-blue-700"
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label={`طلبات منجزة (${PERIOD_LABELS[period]})`}
+          value={String(completedInPeriod)}
+          tint="bg-violet-100 text-violet-700"
+        />
         <StatCard icon={FileSignature} label="عقود سارية" value={String(activeContracts)} tint="bg-emerald-100 text-emerald-700" />
-        <StatCard icon={Wallet} label="إجمالي المصروفات" value={formatMoney(monthlyExpenses)} tint="bg-amber-100 text-amber-700" />
-        <StatCard icon={TrendingUp} label="التحصيل المسجل" value={formatMoney(monthlyRevenue)} tint="bg-brand-100 text-brand-700" />
+        <StatCard
+          icon={Wallet}
+          label={`مصروفات ${PERIOD_LABELS[period]}`}
+          value={formatMoney(expensesInPeriod)}
+          tint="bg-amber-100 text-amber-700"
+        />
+        <StatCard
+          icon={TrendingUp}
+          label={`تحصيل ${PERIOD_LABELS[period]}`}
+          value={formatMoney(revenueInPeriod)}
+          tint="bg-brand-100 text-brand-700"
+        />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5">

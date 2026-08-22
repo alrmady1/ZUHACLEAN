@@ -23,11 +23,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  { to: '/customers', label: 'العملاء', icon: Users, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
   { to: '/contracts', label: 'العقود', icon: FileSignature, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
-  { to: '/customers', label: 'العملاء', icon: Users, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
   { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin'] },
 ];
