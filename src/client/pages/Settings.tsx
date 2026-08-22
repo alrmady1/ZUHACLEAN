@@ -200,17 +200,112 @@ function UsersTab() {
         />
       </div>
 
-      <div className={view === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : 'divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white'}>
+      {view === 'list' && (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <div className="min-w-[960px] divide-y divide-slate-100">
+            {filtered.map((p) => {
+              const isSelf = p.id === currentUser?.id;
+              const isLastManager = p.role === 'general_manager' && profiles.filter((x) => x.role === 'general_manager').length <= 1;
+              const team = profiles.filter((t) => t.role === 'technician' && t.supervisor_id === p.id);
+              const supervisor = profiles.find((s) => s.id === p.supervisor_id);
+              const initial = p.full_name.trim().charAt(0);
+              return (
+                <div key={p.id} className={`flex items-center gap-4 whitespace-nowrap p-3 ${isSelf ? 'bg-brand-50/40' : ''}`}>
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${ROLE_BADGE_STYLES[p.role]}`}
+                  >
+                    {initial}
+                  </div>
+                  <div className="flex w-40 shrink-0 items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-slate-800">{p.full_name}</span>
+                    {isSelf && (
+                      <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold text-brand-700">أنت</span>
+                    )}
+                  </div>
+                  <span className={`w-28 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-semibold ${ROLE_BADGE_STYLES[p.role]}`}>
+                    {ROLE_LABELS_AR[p.role]}
+                  </span>
+                  <div className="flex w-44 shrink-0 items-center gap-1 text-xs text-slate-500">
+                    {p.email && (
+                      <>
+                        <Mail className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{p.email}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex w-32 shrink-0 items-center gap-1 text-xs text-slate-500">
+                    {p.phone && (
+                      <>
+                        <Phone className="h-3.5 w-3.5 shrink-0" /> {p.phone}
+                      </>
+                    )}
+                  </div>
+                  <div className="w-44 shrink-0 text-xs text-slate-500">
+                    {(p.role === 'supervisor' || p.role === 'admin_supervisor') && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{team.length} فني تابع له</span>
+                    )}
+                    {p.role === 'technician' &&
+                      (supervisor ? (
+                        <span className="truncate rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                          مشرفه: {supervisor.full_name}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-300">بدون مشرف</span>
+                      ))}
+                  </div>
+                  <span
+                    className={`w-16 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-semibold ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {p.is_active ? 'نشط' : 'موقوف'}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => handleDeleteUser(p)}
+                      disabled={isSelf || isLastManager}
+                      title={isSelf ? 'لا يمكن حذف حسابك الحالي' : isLastManager ? 'لا يمكن حذف آخر مدير عام' : 'حذف'}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditing(p);
+                        setShowForm(true);
+                      }}
+                      title="تعديل"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="shrink-0">
+                    {isSelf ? (
+                      <span className="text-xs font-medium text-slate-300">الحساب الفعلي</span>
+                    ) : (
+                      <button
+                        onClick={() => switchToAccount(p)}
+                        className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                      >
+                        دخول <LogIn className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && <div className="p-10 text-center text-slate-400">لا يوجد أعضاء مطابقون</div>}
+          </div>
+        </div>
+      )}
+
+      {view === 'grid' && (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {filtered.map((p) => {
           const isSelf = p.id === currentUser?.id;
           const isLastManager = p.role === 'general_manager' && profiles.filter((x) => x.role === 'general_manager').length <= 1;
           const team = profiles.filter((t) => t.role === 'technician' && t.supervisor_id === p.id);
           const supervisor = profiles.find((s) => s.id === p.supervisor_id);
           const initial = p.full_name.trim().charAt(0);
-          const wrapperClass =
-            view === 'grid'
-              ? `rounded-2xl border bg-white p-4 ${isSelf ? 'border-brand-400 ring-1 ring-brand-200' : 'border-slate-200'}`
-              : `p-4 ${isSelf ? 'bg-brand-50/40' : ''}`;
+          const wrapperClass = `rounded-2xl border bg-white p-4 ${isSelf ? 'border-brand-400 ring-1 ring-brand-200' : 'border-slate-200'}`;
 
           return (
             <div key={p.id} className={wrapperClass}>
@@ -320,11 +415,12 @@ function UsersTab() {
           );
         })}
         {filtered.length === 0 && (
-          <div className={view === 'grid' ? 'col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400' : 'p-10 text-center text-slate-400'}>
+          <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
             لا يوجد أعضاء مطابقون
           </div>
         )}
       </div>
+      )}
 
       {showForm && (
         <Modal
