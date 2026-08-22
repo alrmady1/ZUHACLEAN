@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Table2, MapPin, ChevronRight, ChevronLeft } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { CalendarDays, Table2, MapPin, ChevronRight, ChevronLeft, Plus, X, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, AppointmentStatus } from '../../shared/types.js';
+import type { Appointment, AppointmentStatus, PaymentStatus, Customer, Service } from '../../shared/types.js';
+import { ROLE_LABELS_AR } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
 import {
   formatDateAr,
@@ -16,7 +17,10 @@ import {
 import { useAuth } from '../lib/auth.js';
 
 type ScopeFilter = 'mine' | 'all' | string; // string = a specific supervisor id
-type CalendarMode = 'month' | 'week';
+type CalendarMode = 'month' | 'week' | 'day';
+type StatusFilter = 'all' | AppointmentStatus;
+type PaymentFilter = 'all' | PaymentStatus;
+type PeriodFilter = 'all' | 'today' | 'week' | 'month';
 
 const WEEKDAY_FULL_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const WEEKDAY_SHORT_AR = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
@@ -29,32 +33,104 @@ const STATUS_DOT: Record<AppointmentStatus, string> = {
   cancelled: 'bg-red-500',
 };
 
+const STATUS_LABELS: Record<AppointmentStatus, string> = {
+  scheduled: 'مجدولة',
+  on_the_way: 'في الطريق',
+  in_progress: 'جارية',
+  completed: 'مكتملة',
+  cancelled: 'ملغاة',
+};
+
+const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  paid: 'مسدد بالكامل',
+  partial: 'مسدد جزئياً',
+  unpaid: 'غير مسدد',
+};
+
+const PERIOD_LABELS: Record<PeriodFilter, string> = {
+  all: 'كل الفترات الزمنية',
+  today: 'اليوم',
+  week: 'هذا الأسبوع',
+  month: 'هذا الشهر',
+};
+
+function matchesPeriod(iso: string, period: PeriodFilter, now: Date): boolean {
+  if (period === 'all') return true;
+  const d = new Date(iso);
+  if (period === 'today') return d.toDateString() === now.toDateString();
+  if (period === 'week') {
+    const start = startOfWeekSunday(now);
+    const end = addDays(start, 7);
+    return d >= start && d < end;
+  }
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
 export default function Appointments() {
   const { user, allProfiles } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [scope, setScope] = useState<ScopeFilter>('mine');
   const [view, setView] = useState<'table' | 'calendar'>('table');
   const [calMode, setCalMode] = useState<CalendarMode>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
+  const [search, setSearch] = useState('');
+
+  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [bookingServiceId, setBookingServiceId] = useState('');
+  const [bookingSupervisorId, setBookingSupervisorId] = useState(user?.role === 'supervisor' ? user.id : '');
+
+  function refresh() {
+    api.get<Appointment[]>('/appointments').then(setAppointments);
+  }
 
   useEffect(() => {
-    api.get<Appointment[]>('/appointments').then(setAppointments);
+    refresh();
+    api.get<Customer[]>('/customers').then(setCustomers);
+    api.get<Service[]>('/services').then(setServices);
   }, []);
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const technicians = allProfiles.filter(
+    (p) => p.role === 'technician' && (!bookingSupervisorId || p.supervisor_id === bookingSupervisorId),
+  );
+  const customerPhoneById = useMemo(() => new Map(customers.map((c) => [c.id, c.phone])), [customers]);
 
   // جداول المشرفين الآخرين والجدول العام مقصورة على الإدارة (مدير عام / مدير نظام /
   // مشرف إداري) — المشرف الميداني والفني الميداني ما يشوفون إلا جدولهم الخاص.
   const canSeeOtherSchedules =
     user?.role === 'general_manager' || user?.role === 'admin' || user?.role === 'admin_supervisor';
 
-  const filtered = useMemo(() => {
+  const scoped = useMemo(() => {
     const effectiveScope = canSeeOtherSchedules ? scope : 'mine';
     if (effectiveScope === 'all') return appointments;
     if (effectiveScope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
     return appointments.filter((a) => a.supervisor_id === effectiveScope);
   }, [appointments, scope, user, canSeeOtherSchedules]);
+
+  const filtered = useMemo(() => {
+    const now = new Date();
+    const q = search.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, '');
+    return scoped.filter((a) => {
+      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+      if (paymentFilter !== 'all' && a.payment_status !== paymentFilter) return false;
+      if (!matchesPeriod(a.scheduled_at, periodFilter, now)) return false;
+      if (q) {
+        const haystack = `${a.customer_name_snapshot ?? ''} ${a.service_name_snapshot} ${a.address_snapshot}`.toLowerCase();
+        const phone = customerPhoneById.get(a.customer_id) ?? '';
+        const phoneMatch = qDigits.length > 0 && phone.replace(/\D/g, '').includes(qDigits);
+        if (!haystack.includes(q) && !phoneMatch) return false;
+      }
+      return true;
+    });
+  }, [scoped, statusFilter, paymentFilter, periodFilter, search, customerPhoneById]);
 
   const grouped = useMemo(() => {
     const byDate = new Map<string, Appointment[]>();
@@ -92,10 +168,18 @@ export default function Appointments() {
   }, [cursor]);
 
   function goPrev() {
-    setCursor((c) => (calMode === 'month' ? new Date(c.getFullYear(), c.getMonth() - 1, 1) : addDays(c, -7)));
+    setCursor((c) => {
+      if (calMode === 'month') return new Date(c.getFullYear(), c.getMonth() - 1, 1);
+      if (calMode === 'week') return addDays(c, -7);
+      return addDays(c, -1);
+    });
   }
   function goNext() {
-    setCursor((c) => (calMode === 'month' ? new Date(c.getFullYear(), c.getMonth() + 1, 1) : addDays(c, 7)));
+    setCursor((c) => {
+      if (calMode === 'month') return new Date(c.getFullYear(), c.getMonth() + 1, 1);
+      if (calMode === 'week') return addDays(c, 7);
+      return addDays(c, 1);
+    });
   }
   function goToday() {
     const today = new Date();
@@ -103,62 +187,160 @@ export default function Appointments() {
     setSelectedDate(today);
   }
 
+  function closeBookingForm() {
+    setShowBookingForm(false);
+    setBookingServiceId('');
+    setBookingSupervisorId(user?.role === 'supervisor' ? user.id : '');
+  }
+
+  async function handleBookingSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const date = form.get('date') as string;
+    const time = form.get('time') as string;
+    const technicianIds = form.getAll('technician_ids') as string[];
+    try {
+      await api.post('/appointments', {
+        customer_id: form.get('customer_id'),
+        service_id: form.get('service_id'),
+        scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+        expected_duration_minutes: form.get('duration') ? Number(form.get('duration')) : undefined,
+        amount: form.get('amount') ? Number(form.get('amount')) : undefined,
+        supervisor_id: form.get('supervisor_id') || undefined,
+        notes: form.get('notes') || undefined,
+        assignments: technicianIds.map((id) => ({
+          id: crypto.randomUUID(),
+          technician_id: id,
+          technician_name: allProfiles.find((p) => p.id === id)?.full_name,
+        })),
+      });
+      closeBookingForm();
+      refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const selectedDayAppts = apptsByDay.get(selectedDate.toDateString()) ?? [];
+  const dayModeAppts = apptsByDay.get(cursor.toDateString()) ?? [];
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">جدول المواعيد</h1>
-          <p className="text-sm text-slate-400">{filtered.length} موعد</p>
+          <p className="text-sm text-slate-400">
+            إدارة ومتابعة المواعيد مع فصل جداول المشرفين وإمكانية الاطلاع المتبادل — {filtered.length} موعد
+          </p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setView('table')}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            onClick={() => setShowBookingForm(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
-            <Table2 className="h-4 w-4" /> جدول
+            <Plus className="h-4 w-4" /> حجز موعد جديد
           </button>
-          <button
-            onClick={() => setView('calendar')}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'calendar' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-          >
-            <CalendarDays className="h-4 w-4" /> تقويم
-          </button>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              onClick={() => setView('table')}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <Table2 className="h-4 w-4" /> الجدول
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'calendar' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <CalendarDays className="h-4 w-4" /> التقويم
+            </button>
+          </div>
         </div>
       </div>
 
       {canSeeOtherSchedules ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setScope('mine')}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'mine' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-          >
-            جدولي
-          </button>
-          <button
-            onClick={() => setScope('all')}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === 'all' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-          >
-            الجدول العام
-          </button>
-          {supervisors
-            .filter((s) => s.id !== user?.id)
-            .map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setScope(s.id)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium ${scope === s.id ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-              >
-                جدول {s.full_name}
-              </button>
-            ))}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">عرض جدولي الخاص</span>
+            <select
+              className="input"
+              value={scope === 'mine' || scope === 'all' ? scope : 'all'}
+              onChange={(e) => setScope(e.target.value as ScopeFilter)}
+            >
+              <option value="mine">جدولي الخاص</option>
+              <option value="all">كافة المشرفين والفرق ({supervisors.length})</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">الاطلاع على مشرف آخر</span>
+            <select
+              className="input"
+              value={scope !== 'mine' && scope !== 'all' ? scope : ''}
+              onChange={(e) => setScope(e.target.value || 'all')}
+            >
+              <option value="">— بدون تحديد —</option>
+              {supervisors
+                .filter((s) => s.id !== user?.id)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    جدول: {s.full_name} ({ROLE_LABELS_AR[s.role]})
+                  </option>
+                ))}
+            </select>
+          </label>
         </div>
       ) : (
         <div>
           <span className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white">جدولي</span>
         </div>
       )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <select
+          className="input"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+        >
+          <option value="all">كل حالات المواعيد</option>
+          {(Object.keys(STATUS_LABELS) as AppointmentStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <div className="relative">
+          <Search className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث بالاسم، الجوال، الخدمة، العنوان..."
+            className="input pe-9"
+          />
+        </div>
+        <select
+          className="input"
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+        >
+          {(Object.keys(PERIOD_LABELS) as PeriodFilter[]).map((p) => (
+            <option key={p} value={p}>
+              {PERIOD_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="input"
+          value={paymentFilter}
+          onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)}
+        >
+          <option value="all">كل حالات الدفع</option>
+          {(Object.keys(PAYMENT_LABELS) as PaymentStatus[]).map((p) => (
+            <option key={p} value={p}>
+              {PAYMENT_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {view === 'table' ? (
         <div className="space-y-5">
@@ -183,47 +365,57 @@ export default function Appointments() {
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={goPrev}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
-                  aria-label="السابق"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <span className="min-w-[9rem] text-center text-sm font-bold text-slate-800">
-                  {calMode === 'month'
-                    ? monthLabelAr(cursor)
-                    : `${formatDateAr(weekCells[0].toISOString())} – ${formatDateAr(weekCells[6].toISOString())}`}
-                </span>
-                <button
-                  onClick={goNext}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
-                  aria-label="التالي"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={goToday}
-                  className="ms-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  اليوم
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={goPrev}
+                    className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+                    aria-label="السابق"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[9rem] text-center text-sm font-bold text-slate-800">
+                    {calMode === 'month'
+                      ? monthLabelAr(cursor)
+                      : calMode === 'week'
+                        ? `${formatDateAr(weekCells[0].toISOString())} – ${formatDateAr(weekCells[6].toISOString())}`
+                        : formatDateAr(cursor.toISOString())}
+                  </span>
+                  <button
+                    onClick={goNext}
+                    className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+                    aria-label="التالي"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-1">
+                  <button
+                    onClick={() => setCalMode('month')}
+                    className={`rounded-md px-3 py-1 text-xs font-medium ${calMode === 'month' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                  >
+                    شهر
+                  </button>
+                  <button
+                    onClick={() => setCalMode('week')}
+                    className={`rounded-md px-3 py-1 text-xs font-medium ${calMode === 'week' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                  >
+                    أسبوع
+                  </button>
+                  <button
+                    onClick={() => setCalMode('day')}
+                    className={`rounded-md px-3 py-1 text-xs font-medium ${calMode === 'day' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                  >
+                    يوم
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-1">
-                <button
-                  onClick={() => setCalMode('month')}
-                  className={`rounded-md px-3 py-1 text-xs font-medium ${calMode === 'month' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-                >
-                  شهري
-                </button>
-                <button
-                  onClick={() => setCalMode('week')}
-                  className={`rounded-md px-3 py-1 text-xs font-medium ${calMode === 'week' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-                >
-                  أسبوعي
-                </button>
-              </div>
+              <button
+                onClick={goToday}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                اليوم
+              </button>
             </div>
 
             {calMode === 'month' ? (
@@ -246,7 +438,7 @@ export default function Appointments() {
                       <button
                         key={key}
                         onClick={() => setSelectedDate(d)}
-                        className={`flex min-h-[5.5rem] flex-col items-start gap-1 rounded-xl border p-1.5 text-start transition ${
+                        className={`relative flex min-h-[5.5rem] flex-col items-start gap-1 rounded-xl border p-1.5 text-start transition ${
                           isSelected
                             ? 'border-brand-400 bg-brand-50'
                             : isToday
@@ -254,6 +446,11 @@ export default function Appointments() {
                               : 'border-slate-100 bg-white hover:bg-slate-50'
                         } ${inMonth ? '' : 'opacity-40'}`}
                       >
+                        {dayAppts.length > 0 && (
+                          <span className="absolute end-1 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">
+                            {dayAppts.length}
+                          </span>
+                        )}
                         <span
                           className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
                             isToday ? 'bg-brand-600 text-white' : 'text-slate-600'
@@ -279,7 +476,7 @@ export default function Appointments() {
                   })}
                 </div>
               </>
-            ) : (
+            ) : calMode === 'week' ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-7">
                 {weekCells.map((d) => {
                   const key = d.toDateString();
@@ -324,28 +521,184 @@ export default function Appointments() {
                   );
                 })}
               </div>
+            ) : (
+              <div className="rounded-xl border border-slate-100 p-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {WEEKDAY_FULL_AR[cursor.getDay()]}
+                  </span>
+                  <span className="text-sm font-medium text-slate-700">{formatDateAr(cursor.toISOString())}</span>
+                  <span className="text-xs text-slate-400">({dayModeAppts.length} موعد)</span>
+                </div>
+                {dayModeAppts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                    لا توجد مواعيد في هذا اليوم
+                  </div>
+                ) : (
+                  <ApptTable items={dayModeAppts} />
+                )}
+              </div>
             )}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {WEEKDAY_FULL_AR[selectedDate.getDay()]}
-              </span>
-              <span className="text-sm font-medium text-slate-700">{formatDateAr(selectedDate.toISOString())}</span>
-              <span className="text-xs text-slate-400">({selectedDayAppts.length} موعد)</span>
-            </div>
-            {selectedDayAppts.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
-                لا توجد مواعيد في هذا اليوم
+          {calMode !== 'day' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {WEEKDAY_FULL_AR[selectedDate.getDay()]}
+                </span>
+                <span className="text-sm font-medium text-slate-700">{formatDateAr(selectedDate.toISOString())}</span>
+                <span className="text-xs text-slate-400">({selectedDayAppts.length} موعد)</span>
               </div>
-            ) : (
-              <ApptTable items={selectedDayAppts} />
-            )}
-          </div>
+              {selectedDayAppts.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                  لا توجد مواعيد في هذا اليوم
+                </div>
+              ) : (
+                <ApptTable items={selectedDayAppts} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showBookingForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <form
+            onSubmit={handleBookingSubmit}
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">حجز موعد جديد</h2>
+              <button type="button" onClick={closeBookingForm} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <Field label="العميل">
+                <select name="customer_id" required defaultValue="" className="input">
+                  <option value="" disabled>
+                    اختر عميلاً…
+                  </option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.phone}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="الخدمة">
+                <select
+                  name="service_id"
+                  required
+                  className="input"
+                  value={bookingServiceId}
+                  onChange={(e) => setBookingServiceId(e.target.value)}
+                >
+                  <option value="" disabled>
+                    اختر خدمة…
+                  </option>
+                  {services
+                    .filter((s) => s.is_active)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="التاريخ">
+                  <input
+                    type="date"
+                    name="date"
+                    required
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    className="input"
+                  />
+                </Field>
+                <Field label="الوقت">
+                  <input type="time" name="time" required defaultValue="09:00" className="input" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="المدة المتوقعة (دقيقة)">
+                  <input
+                    key={`dur-${bookingServiceId}`}
+                    type="number"
+                    name="duration"
+                    min={15}
+                    step={15}
+                    defaultValue={services.find((s) => s.id === bookingServiceId)?.default_duration_minutes ?? 120}
+                    className="input"
+                  />
+                </Field>
+                <Field label="المبلغ (ر.س)">
+                  <input
+                    key={`amt-${bookingServiceId}`}
+                    type="number"
+                    name="amount"
+                    min={0}
+                    step="0.01"
+                    defaultValue={services.find((s) => s.id === bookingServiceId)?.default_price ?? ''}
+                    className="input"
+                  />
+                </Field>
+              </div>
+
+              <Field label="المشرف المسؤول">
+                <select
+                  name="supervisor_id"
+                  className="input"
+                  value={bookingSupervisorId}
+                  onChange={(e) => setBookingSupervisorId(e.target.value)}
+                >
+                  <option value="">بدون تحديد</option>
+                  {supervisors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="الفنيون المكلّفون (Ctrl/Cmd للاختيار المتعدد)">
+                <select name="technician_ids" multiple className="input h-24">
+                  {technicians.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="ملاحظات">
+                <textarea name="notes" rows={2} className="input" />
+              </Field>
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {submitting ? 'جارِ الحجز…' : 'حجز الموعد'}
+            </button>
+          </form>
         </div>
       )}
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-slate-600">{label}</span>
+      {children}
+    </label>
   );
 }
 

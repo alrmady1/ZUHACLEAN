@@ -157,22 +157,25 @@ api.get('/appointments', (req, res) => {
 
 api.post('/appointments', (req, res) => {
   const body = req.body ?? {};
+  const customer = store.customers.get(body.customer_id);
+  const service = store.services.get(body.service_id);
+  const amount = Number(body.amount ?? service?.default_price ?? 0);
   const appointment: Appointment = {
     id: store.id(),
     customer_id: body.customer_id,
-    customer_name_snapshot: store.customers.get(body.customer_id)?.name,
+    customer_name_snapshot: customer?.name,
     service_id: body.service_id,
-    service_name_snapshot: store.services.get(body.service_id)?.name ?? body.service_name_snapshot ?? '',
+    service_name_snapshot: service?.name ?? body.service_name_snapshot ?? '',
     scheduled_at: body.scheduled_at,
-    expected_duration_minutes: body.expected_duration_minutes ?? 120,
-    amount: body.amount ?? 0,
+    expected_duration_minutes: body.expected_duration_minutes ?? service?.default_duration_minutes ?? 120,
+    amount,
     status: 'scheduled',
     supervisor_id: body.supervisor_id,
-    address_snapshot: body.address_snapshot ?? '',
-    location_url: body.location_url,
+    address_snapshot: body.address_snapshot || customer?.address || '',
+    location_url: body.location_url || customer?.location_url,
     notes: body.notes,
     total_paid: 0,
-    remaining_amount: body.amount ?? 0,
+    remaining_amount: amount,
     payment_status: 'unpaid',
     assignments: body.assignments ?? [],
     photos: [],
