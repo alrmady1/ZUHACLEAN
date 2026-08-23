@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Plus, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Contract, Customer, Service } from '../../shared/types.js';
-import { CAN_SEE_CONTRACT_VALUE_ROLES } from '../../shared/types.js';
+import { CAN_SEE_CONTRACT_VALUE_ROLES, CAN_SEE_CONTRACTS_ROLES } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -27,6 +28,10 @@ export default function Contracts() {
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
   }, []);
+
+  // مخفية عن المشرف الميداني — حتى لو دخل الرابط مباشرة (بعد كل الـ hooks
+  // أعلاه، حسب قواعد React — لا يجوز إرجاع مبكر قبلها).
+  if (user && !CAN_SEE_CONTRACTS_ROLES.includes(user.role)) return <Navigate to="/" replace />;
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

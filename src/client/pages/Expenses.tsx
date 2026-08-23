@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, CAN_SEE_EXPENSES_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { CustodyTab } from './Custody.js';
@@ -11,6 +12,10 @@ export default function Expenses() {
   const { user } = useAuth();
   const canSeeCustody = user ? CAN_SEE_CUSTODY_ROLES.includes(user.role) : false;
   const [tab, setTab] = useState<'overview' | 'custody' | 'general'>(canSeeCustody ? 'overview' : 'general');
+
+  // مخفية عن المشرف الميداني — حتى لو دخل الرابط مباشرة بدون المرور بالقائمة
+  // الجانبية (التي أصلاً لا تعرض هذا الرابط له).
+  if (user && !CAN_SEE_EXPENSES_ROLES.includes(user.role)) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-5">

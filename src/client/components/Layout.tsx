@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
-import { ROLE_LABELS_AR, type UserRole } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, type UserRole } from '../../shared/types.js';
 import TopBar from './TopBar.js';
 
 interface NavItem {
@@ -29,8 +29,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/customers', label: 'العملاء', icon: Users, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
-  { to: '/contracts', label: 'العقود', icon: FileSignature, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  { to: '/contracts', label: 'العقود', icon: FileSignature, roles: CAN_SEE_CONTRACTS_ROLES },
+  { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: CAN_SEE_EXPENSES_ROLES },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
   { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin'] },
 ];

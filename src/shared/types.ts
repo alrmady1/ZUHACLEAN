@@ -34,6 +34,11 @@ export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin
 export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
+// المصروفات (والعُهد) مخفية عن المشرف الميداني — يبقى متاحاً للمدير العام،
+// مدير النظام، والمشرف الإداري فقط.
+export const CAN_SEE_EXPENSES_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
+// العقود الدورية مخفية عن المشرف الميداني لنفس السبب.
+export const CAN_SEE_CONTRACTS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
 export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
 
 export type AppointmentStatus =
