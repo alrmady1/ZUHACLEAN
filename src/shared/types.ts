@@ -33,6 +33,8 @@ export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];
+// تعيين/تغيير المشرف والفني المسؤولين عن الموعد — للمدير العام ومدير النظام فقط.
+export const CAN_ASSIGN_TEAM_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
 // المصروفات (والعُهد) مخفية عن المشرف الميداني — يبقى متاحاً للمدير العام،
 // مدير النظام، والمشرف الإداري فقط.

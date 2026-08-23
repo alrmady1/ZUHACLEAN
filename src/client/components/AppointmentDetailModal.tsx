@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2 } from 'lucide-react';
+import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
-import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
+import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES, CAN_ASSIGN_TEAM_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
@@ -44,12 +44,16 @@ export default function AppointmentDetailModal({
   const { user } = useAuth();
   const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
   const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(false);
+  const [teamSupervisorId, setTeamSupervisorId] = useState(appointment.supervisor_id ?? '');
+  const [teamTechnicianId, setTeamTechnicianId] = useState(appointment.assignments[0]?.technician_id ?? '');
   const beforeInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
 
@@ -63,6 +67,25 @@ export default function AppointmentDetailModal({
 
   const supervisor = allProfiles.find((p) => p.id === appointment.supervisor_id);
   const endTime = new Date(new Date(appointment.scheduled_at).getTime() + appointment.expected_duration_minutes * 60000);
+  const supervisorOptions = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const technicianOptions = allProfiles.filter((p) => p.role === 'technician');
+
+  async function saveTeam() {
+    setBusy(true);
+    try {
+      const technicianName = technicianOptions.find((t) => t.id === teamTechnicianId)?.full_name;
+      await api.patch(`/appointments/${appointment.id}`, {
+        supervisor_id: teamSupervisorId || undefined,
+        assignments: teamTechnicianId
+          ? [{ id: appointment.assignments[0]?.id ?? crypto.randomUUID(), technician_id: teamTechnicianId, technician_name: technicianName }]
+          : [],
+      });
+      onChanged();
+      setEditingTeam(false);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function setStatus(status: AppointmentStatus) {
     if (status === appointment.status) return;
@@ -204,25 +227,86 @@ export default function AppointmentDetailModal({
 
           {/* Team */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 text-sm font-medium text-slate-600">فريق العمل المسند</div>
-            <div className="flex flex-wrap gap-2">
-              {supervisor && (
-                <span className="flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                  {supervisor.full_name} ({ROLE_LABELS_AR[supervisor.role]})
-                </span>
-              )}
-              {appointment.assignments.map((asg) => (
-                <span
-                  key={asg.id}
-                  className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
+                <TeamIcon className="h-4 w-4" /> فريق العمل المسند
+              </div>
+              {canAssignTeam && !editingTeam && (
+                <button
+                  onClick={() => {
+                    setTeamSupervisorId(appointment.supervisor_id ?? '');
+                    setTeamTechnicianId(appointment.assignments[0]?.technician_id ?? '');
+                    setEditingTeam(true);
+                  }}
+                  className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                 >
-                  {asg.technician_name ?? 'فني'} (فني)
-                </span>
-              ))}
-              {!supervisor && appointment.assignments.length === 0 && (
-                <span className="text-xs text-slate-400">لا يوجد فريق مسند بعد</span>
+                  <Pencil className="h-3.5 w-3.5" /> تعديل
+                </button>
               )}
             </div>
+
+            {editingTeam ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
+                    <select value={teamSupervisorId} onChange={(e) => setTeamSupervisorId(e.target.value)} className="input">
+                      <option value="">-- بدون تحديد --</option>
+                      {supervisorOptions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.full_name} ({ROLE_LABELS_AR[s.role]})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">الفني المسند</span>
+                    <select value={teamTechnicianId} onChange={(e) => setTeamTechnicianId(e.target.value)} className="input">
+                      <option value="">-- بدون تحديد --</option>
+                      {technicianOptions.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={saveTeam}
+                    className="rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {busy ? 'جارِ الحفظ…' : 'حفظ'}
+                  </button>
+                  <button
+                    onClick={() => setEditingTeam(false)}
+                    className="text-xs font-medium text-slate-400 hover:text-slate-600"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {supervisor && (
+                  <span className="flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                    {supervisor.full_name} ({ROLE_LABELS_AR[supervisor.role]})
+                  </span>
+                )}
+                {appointment.assignments.map((asg) => (
+                  <span
+                    key={asg.id}
+                    className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                  >
+                    {asg.technician_name ?? 'فني'} (فني)
+                  </span>
+                ))}
+                {!supervisor && appointment.assignments.length === 0 && (
+                  <span className="text-xs text-slate-400">لا يوجد فريق مسند بعد</span>
+                )}
+              </div>
+            )}
             {appointment.notes && (
               <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
                 <div className="mb-1 font-medium">تعليمات وملاحظات:</div>
