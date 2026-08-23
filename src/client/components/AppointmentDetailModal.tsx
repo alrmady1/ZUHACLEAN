@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
 import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES, CAN_ASSIGN_TEAM_ROLES } from '../../shared/types.js';
@@ -148,17 +148,7 @@ export default function AppointmentDetailModal({
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span>{appointment.address_snapshot}</span>
               </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              {appointment.location_url && (
-                <a
-                  href={appointment.location_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" /> فتح الخريطة
-                </a>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
               {customer?.phone && (
                 <a
                   href={`tel:${customer.phone}`}
@@ -175,6 +165,17 @@ export default function AppointmentDetailModal({
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600"
                 >
                   <MessageCircle className="h-3.5 w-3.5" /> واتساب
+                </a>
+              )}
+              {appointment.location_url && (
+                <a
+                  href={appointment.location_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="فتح موقع العميل في الخريطة"
+                  className="flex items-center justify-center rounded-xl bg-brand-600 p-2.5 text-white hover:bg-brand-700"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
                 </a>
               )}
             </div>
