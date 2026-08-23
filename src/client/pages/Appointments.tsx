@@ -249,7 +249,7 @@ export default function Appointments() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'all')} className="input">
           <option value="all">{t('كل حالات المواعيد')}</option>
           {STATUS_OPTIONS.map((o) => (
@@ -267,7 +267,11 @@ export default function Appointments() {
             className="input ps-9"
           />
         </div>
-        <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)} className="input">
+        <select
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+          className="input lg:col-span-2"
+        >
           <option value="all">{t('كل الفترات الزمنية')}</option>
           <option value="today">{t('اليوم')}</option>
           <option value="week">{t('هذا الأسبوع')}</option>
@@ -405,8 +409,11 @@ export default function Appointments() {
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1">
+            {/* هذه المجموعة (أسهم التنقّل + أزرار شهر/أسبوع/يوم) تبقى دائماً على
+                سطر واحد بلا التفاف — تُمرَّر أفقياً بدلاً من أن تنكسر لسطرين
+                على الشاشات الضيقة. */}
+            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+              <div className="flex shrink-0 items-center gap-1">
                 <button
                   onClick={() => shiftCalendar(-1)}
                   aria-label={t('السابق')}
@@ -422,14 +429,14 @@ export default function Appointments() {
                   <ChevronLeft className="h-4 w-4" />
                 </button>
               </div>
-              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+              <div className="flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
                 {([t('شهر'), t('أسبوع'), t('يوم')] as const).map((label, i) => {
                   const v = (['month', 'week', 'day'] as const)[i];
                   return (
                     <button
                       key={v}
                       onClick={() => setCalSubView(v)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${calSubView === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium ${calSubView === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
                     >
                       {label}
                     </button>
