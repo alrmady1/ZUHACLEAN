@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer } from 'lucide-react';
+import { X, MapPin, ExternalLink, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
 import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
@@ -81,6 +81,17 @@ export default function AppointmentDetailModal({
     try {
       const data_url = await fileToDataUrl(file);
       await api.post(`/appointments/${appointment.id}/photos`, { stage, data_url });
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePhoto(photoId: string) {
+    if (!window.confirm('حذف هذه الصورة؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    setBusy(true);
+    try {
+      await api.del(`/appointments/${appointment.id}/photos/${photoId}`);
       onChanged();
     } finally {
       setBusy(false);
@@ -276,7 +287,18 @@ export default function AppointmentDetailModal({
             {visiblePhotos.length > 0 ? (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {visiblePhotos.map((p) => (
-                  <img key={p.id} src={p.data_url} alt={p.stage} className="aspect-square w-full rounded-xl object-cover" />
+                  <div key={p.id} className="relative aspect-square">
+                    <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deletePhoto(p.id)}
+                      title="حذف الصورة"
+                      className="absolute end-1 top-1 rounded-lg bg-slate-900/60 p-1 text-white transition hover:bg-red-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (

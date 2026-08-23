@@ -284,6 +284,18 @@ api.post('/appointments/:id/photos', async (req, res) => {
   }
 });
 
+// Remove a wrongly-attached or test photo from an appointment. Only the
+// database reference is removed — the object stays in Supabase Storage
+// (private bucket, harmless to leave orphaned) to keep this simple.
+api.delete('/appointments/:id/photos/:photoId', (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  const nextPhotos = appt.photos.filter((p) => p.id !== req.params.photoId);
+  if (nextPhotos.length === appt.photos.length) return res.status(404).json({ error: 'photo not found' });
+  const updated = store.appointments.update(appt.id, { photos: nextPhotos });
+  res.json(updated);
+});
+
 // Technician: record a field payment
 api.post('/appointments/:id/payments', (req, res) => {
   const appt = store.appointments.get(req.params.id);
