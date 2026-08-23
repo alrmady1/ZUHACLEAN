@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -10,6 +10,8 @@ import {
   Receipt,
   TrendingUp,
   TrendingDown,
+  Bell,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, Invoice } from '../../shared/types.js';
@@ -17,6 +19,12 @@ import { AppointmentStatusBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { playBellSound } from '../lib/sound.js';
+
+// كل هذه المدة (بالمللي ثانية) نفحص وجود مواعيد جديدة لم يرها أحد بعد —
+// أبسط طريقة لتنبيه الجميع بموعد جديد بدون بنية اتصال لحظي (WebSocket) لا
+// يحتاجها حجم الاستخدام الحالي.
+const NEW_APPOINTMENT_POLL_MS = 20000;
 
 function isSameDay(iso: string, ref: Date): boolean {
   return new Date(iso).toDateString() === ref.toDateString();
@@ -67,9 +75,23 @@ export default function Dashboard() {
   const [services, setServices] = useState<Service[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showNewAppt, setShowNewAppt] = useState(false);
+  const [newApptAlert, setNewApptAlert] = useState<Appointment | null>(null);
+  // null = لم نحمّل القائمة بعد؛ أول تحميل يسجّل المعرّفات الحالية بصمت
+  // (بدون تنبيه)، وأي معرّف يظهر بعدها يُعتبر موعداً جديداً فعلاً.
+  const knownApptIds = useRef<Set<string> | null>(null);
 
   function refreshAppointments() {
-    api.get<Appointment[]>('/appointments').then(setAppointments);
+    api.get<Appointment[]>('/appointments').then((list) => {
+      if (knownApptIds.current) {
+        const fresh = list.filter((a) => !knownApptIds.current!.has(a.id));
+        if (fresh.length > 0) {
+          setNewApptAlert(fresh[fresh.length - 1]);
+          playBellSound();
+        }
+      }
+      knownApptIds.current = new Set(list.map((a) => a.id));
+      setAppointments(list);
+    });
   }
 
   useEffect(() => {
@@ -77,7 +99,15 @@ export default function Dashboard() {
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
     api.get<Invoice[]>('/invoices').then(setInvoices);
+    const interval = setInterval(refreshAppointments, NEW_APPOINTMENT_POLL_MS);
+    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!newApptAlert) return;
+    const timer = setTimeout(() => setNewApptAlert(null), 8000);
+    return () => clearTimeout(timer);
+  }, [newApptAlert]);
 
   const now = new Date();
   const yesterday = new Date(now);
@@ -131,6 +161,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {newApptAlert && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[100] flex justify-center px-4">
+          <div className="toast-slide-in pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-white shadow-2xl">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600">
+              <Bell className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">موعد جديد!</div>
+              <div className="truncate text-xs text-slate-300">
+                {newApptAlert.customer_name_snapshot} — {newApptAlert.service_name_snapshot}
+              </div>
+            </div>
+            <button
+              onClick={() => setNewApptAlert(null)}
+              className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           icon={Clock}

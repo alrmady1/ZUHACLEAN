@@ -37,6 +37,21 @@ body {
   .input {
     @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100;
   }
+  /* New-appointment toast on the dashboard (see Dashboard.tsx) */
+  .toast-slide-in {
+    animation: toast-slide-in 0.25s ease-out;
+  }
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Printing an invoice (see InvoiceDocument.tsx): hide the whole app and
