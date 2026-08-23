@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { X, MapPin, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
-import { ROLE_LABELS_AR, CAN_EDIT_PAYMENTS_ROLES, CAN_BOOK_APPOINTMENT_ROLES, CAN_ASSIGN_TEAM_ROLES } from '../../shared/types.js';
+import {
+  ROLE_LABELS_AR,
+  CAN_EDIT_PAYMENTS_ROLES,
+  CAN_BOOK_APPOINTMENT_ROLES,
+  CAN_ASSIGN_TEAM_ROLES,
+  CAN_EDIT_LOCATION_ROLES,
+} from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
@@ -45,6 +51,7 @@ export default function AppointmentDetailModal({
   const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
   const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
+  const canEditLocation = user ? CAN_EDIT_LOCATION_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
@@ -54,6 +61,8 @@ export default function AppointmentDetailModal({
   const [editingTeam, setEditingTeam] = useState(false);
   const [teamSupervisorId, setTeamSupervisorId] = useState(appointment.supervisor_id ?? '');
   const [teamTechnicianId, setTeamTechnicianId] = useState(appointment.assignments[0]?.technician_id ?? '');
+  const [editingLocation, setEditingLocation] = useState(false);
+  const [locationUrlInput, setLocationUrlInput] = useState(appointment.location_url ?? customer?.location_url ?? '');
   const beforeInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
 
@@ -82,6 +91,21 @@ export default function AppointmentDetailModal({
       });
       onChanged();
       setEditingTeam(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // يُحفظ على العميل نفسه (يفيد كل مواعيده القادمة) وعلى هذا الموعد مباشرة
+  // (حتى تظهر أيقونة الموقع فوراً بدون انتظار موعد جديد).
+  async function saveLocation() {
+    setBusy(true);
+    try {
+      const url = locationUrlInput.trim() || undefined;
+      if (customer) await api.patch(`/customers/${customer.id}`, { location_url: url });
+      await api.patch(`/appointments/${appointment.id}`, { location_url: url });
+      onChanged();
+      setEditingLocation(false);
     } finally {
       setBusy(false);
     }
@@ -167,7 +191,7 @@ export default function AppointmentDetailModal({
                   <MessageCircle className="h-3.5 w-3.5" /> واتساب
                 </a>
               )}
-              {appointment.location_url && (
+              {appointment.location_url && !editingLocation && (
                 <a
                   href={appointment.location_url}
                   target="_blank"
@@ -178,7 +202,55 @@ export default function AppointmentDetailModal({
                   <MapPin className="h-3.5 w-3.5" />
                 </a>
               )}
+              {canEditLocation && !editingLocation && (
+                <button
+                  onClick={() => {
+                    setLocationUrlInput(appointment.location_url ?? customer?.location_url ?? '');
+                    setEditingLocation(true);
+                  }}
+                  title={appointment.location_url ? 'تعديل رابط الموقع' : 'إضافة رابط الموقع'}
+                  className="flex items-center justify-center rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/20"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
+
+            {editingLocation && (
+              <div className="mt-3 space-y-2 rounded-xl bg-white/5 p-3">
+                <span className="block text-xs font-medium text-slate-300">رابط موقع العميل (خرائط جوجل)</span>
+                <div className="flex gap-2">
+                  <input
+                    dir="ltr"
+                    value={locationUrlInput}
+                    onChange={(e) => setLocationUrlInput(e.target.value)}
+                    placeholder="https://maps.google.com/..."
+                    className="input flex-1"
+                  />
+                  <a
+                    href="https://www.google.com/maps"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                    className="flex shrink-0 items-center justify-center rounded-lg bg-white/10 px-2.5 text-white hover:bg-white/20"
+                  >
+                    <MapIcon className="h-4 w-4" />
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={saveLocation}
+                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    <Check className="h-3.5 w-3.5" /> {busy ? 'جارِ الحفظ…' : 'حفظ'}
+                  </button>
+                  <button onClick={() => setEditingLocation(false)} className="text-xs font-medium text-slate-300 hover:text-white">
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Status picker — the only place status can change now */}
