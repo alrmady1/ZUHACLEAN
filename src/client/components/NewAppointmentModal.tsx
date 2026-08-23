@@ -3,6 +3,7 @@ import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, Chev
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile, Appointment } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
+import { useI18n } from '../lib/i18n.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -36,6 +37,7 @@ export default function NewAppointmentModal({
   onCreated: () => void;
   onCustomerCreated?: (customer: Customer) => void;
 }) {
+  const { t } = useI18n();
   const today = new Date().toISOString().slice(0, 10);
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
@@ -107,7 +109,7 @@ export default function NewAppointmentModal({
       .map((a) => {
         const start = new Date(a.scheduled_at);
         const end = new Date(start.getTime() + a.expected_duration_minutes * 60000);
-        return { id: a.id, start, end, customerName: a.customer_name_snapshot ?? 'عميل' };
+        return { id: a.id, start, end, customerName: a.customer_name_snapshot ?? t('عميل') };
       })
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [existingAppointments, supervisorId, date]);
@@ -140,7 +142,7 @@ export default function NewAppointmentModal({
         location_url: locationUrl || undefined,
         notes: form.get('notes') || undefined,
         assignments: technicianId
-          ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((t) => t.id === technicianId)?.full_name }]
+          ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((tech) => tech.id === technicianId)?.full_name }]
           : [],
       });
       onCreated();
@@ -155,8 +157,8 @@ export default function NewAppointmentModal({
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">إضافة حجز موعد جديد</h2>
-            <p className="mt-0.5 text-xs text-slate-400">تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ</p>
+            <h2 className="text-lg font-bold text-slate-800">{t('إضافة حجز موعد جديد')}</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{t('تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ')}</p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -166,14 +168,14 @@ export default function NewAppointmentModal({
         <div className="space-y-4">
           <Section
             icon={<User className="h-3.5 w-3.5 text-brand-500" />}
-            title="العميل *"
+            title={t('العميل *')}
             extra={
               <button
                 type="button"
                 onClick={() => setShowAddCustomer((v) => !v)}
                 className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
               >
-                <Plus className="h-3.5 w-3.5" /> إنشاء عميل جديد
+                <Plus className="h-3.5 w-3.5" /> {t('إنشاء عميل جديد')}
               </button>
             }
           >
@@ -189,7 +191,7 @@ export default function NewAppointmentModal({
                     applyCustomer(allCustomers.find((c) => c.id === e.target.value));
                   }}
                 >
-                  <option value="">-- اختر العميل من القائمة --</option>
+                  <option value="">{t('-- اختر العميل من القائمة --')}</option>
                   {allCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -198,16 +200,16 @@ export default function NewAppointmentModal({
                 </select>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">عنوان موقع التنفيذ</span>
+                    <span className="mb-1 block font-medium text-slate-600">{t('عنوان موقع التنفيذ')}</span>
                     <input
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="مثال: الرياض، حي الملقا، شارع..."
+                      placeholder={t('مثال: الرياض، حي الملقا، شارع...')}
                       className="input"
                     />
                   </label>
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">رابط الخريطة (Google Maps)</span>
+                    <span className="mb-1 block font-medium text-slate-600">{t('رابط الخريطة (Google Maps)')}</span>
                     <div className="flex gap-2">
                       <input
                         value={locationUrl}
@@ -219,7 +221,7 @@ export default function NewAppointmentModal({
                         href="https://www.google.com/maps"
                         target="_blank"
                         rel="noreferrer"
-                        title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                        title={t('فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا')}
                         className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
                       >
                         <MapIcon className="h-4 w-4" />
@@ -233,25 +235,25 @@ export default function NewAppointmentModal({
             {showAddCustomer && (
               <div className="space-y-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 p-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="new_customer_name" placeholder="الاسم" required={showAddCustomer} className="input" />
-                  <input name="new_customer_phone" placeholder="الجوال" required={showAddCustomer} className="input" />
+                  <input name="new_customer_name" placeholder={t('الاسم')} required={showAddCustomer} className="input" />
+                  <input name="new_customer_phone" placeholder={t('الجوال')} required={showAddCustomer} className="input" />
                 </div>
-                <input name="new_customer_address" placeholder="العنوان" required={showAddCustomer} className="input" />
+                <input name="new_customer_address" placeholder={t('العنوان')} required={showAddCustomer} className="input" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="new_customer_district" placeholder="الحي (اختياري)" className="input" />
-                  <input name="new_customer_city" placeholder="المدينة (اختياري)" className="input" />
+                  <input name="new_customer_district" placeholder={t('الحي (اختياري)')} className="input" />
+                  <input name="new_customer_city" placeholder={t('المدينة (اختياري)')} className="input" />
                 </div>
                 <div className="flex gap-2">
                   <input
                     name="new_customer_location_url"
-                    placeholder="رابط الموقع (خرائط جوجل) — اختياري"
+                    placeholder={t('رابط الموقع (خرائط جوجل) — اختياري')}
                     className="input"
                   />
                   <a
                     href="https://www.google.com/maps"
                     target="_blank"
                     rel="noreferrer"
-                    title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                    title={t('فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا')}
                     className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
                   >
                     <MapIcon className="h-4 w-4" />
@@ -289,7 +291,7 @@ export default function NewAppointmentModal({
                     }}
                     className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
                   >
-                    {addingCustomer ? 'جارِ الحفظ…' : 'حفظ العميل'}
+                    {addingCustomer ? t('جارِ الحفظ…') : t('حفظ العميل')}
                   </button>
                   {allCustomers.length > 0 && (
                     <button
@@ -297,7 +299,7 @@ export default function NewAppointmentModal({
                       onClick={() => setShowAddCustomer(false)}
                       className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500"
                     >
-                      إلغاء
+                      {t('إلغاء')}
                     </button>
                   )}
                 </div>
@@ -305,7 +307,7 @@ export default function NewAppointmentModal({
             )}
           </Section>
 
-          <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title="نوع الخدمة المطلوبة *">
+          <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title={t('نوع الخدمة المطلوبة *')}>
             <div ref={serviceBoxRef} className="relative">
               <button
                 type="button"
@@ -315,7 +317,7 @@ export default function NewAppointmentModal({
                 <span className={`truncate ${selectedServices.length ? 'text-slate-700' : 'text-slate-400'}`}>
                   {selectedServices.length > 0
                     ? selectedServices.map((s) => s.name).join('، ')
-                    : '-- اختر نوعاً أو أكثر من الخدمة --'}
+                    : t('-- اختر نوعاً أو أكثر من الخدمة --')}
                 </span>
                 <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
               </button>
@@ -339,13 +341,13 @@ export default function NewAppointmentModal({
                       </label>
                     );
                   })}
-                  {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">لا توجد خدمات بعد</div>}
+                  {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">{t('لا توجد خدمات بعد')}</div>}
                 </div>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *')}</span>
                 <input
                   type="number"
                   min={0}
@@ -357,7 +359,7 @@ export default function NewAppointmentModal({
                 />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">المدة المتوقعة (بالدقائق) *</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('المدة المتوقعة (بالدقائق) *')}</span>
                 <input
                   type="number"
                   min={1}
@@ -370,35 +372,35 @@ export default function NewAppointmentModal({
             </div>
           </Section>
 
-          <Section icon={<Clock className="h-3.5 w-3.5 text-brand-500" />} title="موعد وتوقيت الزيارة *">
+          <Section icon={<Clock className="h-3.5 w-3.5 text-brand-500" />} title={t('موعد وتوقيت الزيارة *')}>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">تاريخ الزيارة</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('تاريخ الزيارة')}</span>
                 <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="input" />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">وقت البدء</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('وقت البدء')}</span>
                 <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="input" />
               </label>
             </div>
             {previewEnd && (
               <div className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
-                الوقت المتوقع لإنهاء العمل: {previewEnd.time} ({previewEnd.duration})
+                {t('الوقت المتوقع لإنهاء العمل:')} {previewEnd.time} ({previewEnd.duration})
               </div>
             )}
           </Section>
 
-          <Section icon={<TeamIcon className="h-3.5 w-3.5 text-brand-500" />} title="إسناد المهمة (المشرف والفريق الفني)">
+          <Section icon={<TeamIcon className="h-3.5 w-3.5 text-brand-500" />} title={t('إسناد المهمة (المشرف والفريق الفني)')}>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('المشرف المسؤول')}</span>
                 <select
                   name="supervisor_id"
                   value={supervisorId}
                   onChange={(e) => setSupervisorId(e.target.value)}
                   className="input"
                 >
-                  <option value="">-- اختياري: حدد المشرف --</option>
+                  <option value="">{t('-- اختياري: حدد المشرف --')}</option>
                   {supervisors.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.full_name}
@@ -407,12 +409,12 @@ export default function NewAppointmentModal({
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">الفني الرئيسي / الفريق</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('الفني الرئيسي / الفريق')}</span>
                 <select name="technician_id" defaultValue="" className="input">
-                  <option value="">-- اختياري: حدد الفني --</option>
-                  {technicians.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.full_name}
+                  <option value="">{t('-- اختياري: حدد الفني --')}</option>
+                  {technicians.map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.full_name}
                     </option>
                   ))}
                 </select>
@@ -423,8 +425,10 @@ export default function NewAppointmentModal({
               <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
-                  هناك مهمة مجدولة لهذا المشرف في هذا الوقت (عميل {conflict.customerName}، من {formatTimeAr(conflict.start.toISOString())}{' '}
-                  إلى {formatTimeAr(conflict.end.toISOString())})، فيرجى اختيار وقت آخر.
+                  {t('هناك مهمة مجدولة لهذا المشرف في هذا الوقت (عميل')} {conflict.customerName}{t('، من')}{' '}
+                  {formatTimeAr(conflict.start.toISOString())}{' '}
+                  {t('إلى')} {formatTimeAr(conflict.end.toISOString())}
+                  {t(')، فيرجى اختيار وقت آخر.')}
                 </span>
               </div>
             )}
@@ -432,7 +436,7 @@ export default function NewAppointmentModal({
             {supervisorId && supervisorDayBookings.length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-2 text-xs font-semibold text-slate-500">
-                  جدول {supervisors.find((s) => s.id === supervisorId)?.full_name} المصغّر لهذا اليوم:
+                  {t('جدول')} {supervisors.find((s) => s.id === supervisorId)?.full_name} {t('المصغّر لهذا اليوم:')}
                 </div>
                 <div className="space-y-1">
                   {supervisorDayBookings.map((b) => (
@@ -452,11 +456,11 @@ export default function NewAppointmentModal({
           </Section>
 
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">ملاحظات وتعليمات خاصة بالموعد</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات وتعليمات خاصة بالموعد')}</span>
             <textarea
               name="notes"
               rows={3}
-              placeholder="مثال: يرجى التركيز على تعقيم المطبخ والحمام الرئيسي وتجهيز مواد خاصة..."
+              placeholder={t('مثال: يرجى التركيز على تعقيم المطبخ والحمام الرئيسي وتجهيز مواد خاصة...')}
               className="input resize-none"
             />
           </label>
@@ -468,10 +472,10 @@ export default function NewAppointmentModal({
             disabled={submitting || !customerId || selectedServiceIds.length === 0 || !!conflict}
             className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            {submitting ? 'جارِ الحفظ…' : 'تأكيد وحجز الموعد'}
+            {submitting ? t('جارِ الحفظ…') : t('تأكيد وحجز الموعد')}
           </button>
           <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-slate-600">
-            إلغاء
+            {t('إلغاء')}
           </button>
         </div>
       </form>

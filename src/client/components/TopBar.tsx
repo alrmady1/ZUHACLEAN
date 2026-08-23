@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, Plus } from 'lucide-react';
+import { Menu, Search, Plus, Languages } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
-import { ROLE_LABELS_AR, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
+import { CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
+import { useI18n } from '../lib/i18n.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 
 // The global top bar: lives in Layout's <header>, which sits outside the
@@ -12,6 +13,7 @@ import NewAppointmentModal from './NewAppointmentModal.js';
 // page without needing extra sticky/fixed CSS.
 export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { user, allProfiles } = useAuth();
+  const { t, roleLabel, lang, toggleLang } = useI18n();
   const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
@@ -55,7 +57,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
     <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
       <button
         onClick={onOpenMenu}
-        aria-label="فتح القائمة"
+        aria-label={t('فتح القائمة')}
         className="shrink-0 rounded-lg p-2 text-slate-600 hover:bg-slate-100"
       >
         <Menu className="h-5 w-5" />
@@ -74,7 +76,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && query.trim()) goToCustomer(query.trim());
             }}
-            placeholder="بحث عن عميل، أو موعد، أو رقم جوال..."
+            placeholder={t('بحث عن عميل، أو موعد، أو رقم جوال...')}
             className="input ps-9"
           />
         </div>
@@ -97,13 +99,23 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         )}
       </div>
 
+      <button
+        type="button"
+        onClick={toggleLang}
+        title={lang === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
+        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+      >
+        <Languages className="h-4 w-4" />
+        {lang === 'ar' ? 'EN' : 'عربي'}
+      </button>
+
       {canBook && (
         <button
           type="button"
           onClick={() => setShowQuickAdd(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> حجز موعد جديد
+          <Plus className="h-4 w-4" /> {t('حجز موعد جديد')}
         </button>
       )}
 
@@ -114,7 +126,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </div>
           <div className="min-w-0">
             <div className="truncate text-xs font-semibold text-slate-700">{user.full_name}</div>
-            <div className="truncate text-[11px] text-slate-400">({ROLE_LABELS_AR[user.role]})</div>
+            <div className="truncate text-[11px] text-slate-400">({roleLabel(user.role)})</div>
           </div>
         </div>
       )}

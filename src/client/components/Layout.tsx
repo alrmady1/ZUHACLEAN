@@ -14,7 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
-import { ROLE_LABELS_AR, CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, type UserRole } from '../../shared/types.js';
+import { CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, type UserRole } from '../../shared/types.js';
+import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
 
 interface NavItem {
@@ -37,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function Layout() {
   const { user, loading, logout } = useAuth();
+  const { t, roleLabel } = useI18n();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -48,7 +50,7 @@ export default function Layout() {
   }, [location.pathname]);
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center text-slate-500">جارِ التحميل…</div>;
+    return <div className="flex h-screen items-center justify-center text-slate-500">{t('جارِ التحميل…')}</div>;
   }
   if (!user) return <Navigate to="/login" replace />;
 
@@ -79,13 +81,13 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-brand-400" />
             <div>
-              <div className="text-lg font-bold text-white">زهى الأعمال</div>
-              <div className="text-xs text-slate-400">نظام التشغيل والصيانة</div>
+              <div className="text-lg font-bold text-white">{t('زهى الأعمال')}</div>
+              <div className="text-xs text-slate-400">{t('نظام التشغيل والصيانة')}</div>
             </div>
           </div>
           <button
             onClick={() => setMenuOpen(false)}
-            aria-label="إغلاق القائمة"
+            aria-label={t('إغلاق القائمة')}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
           >
             <X className="h-4 w-4" />
@@ -106,7 +108,7 @@ export default function Layout() {
               }
             >
               <Icon className="h-5 w-5" />
-              {label}
+              {t(label)}
             </NavLink>
           ))}
         </nav>
@@ -117,7 +119,7 @@ export default function Layout() {
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-white">{user.full_name}</div>
-              <div className="text-xs text-slate-400">{ROLE_LABELS_AR[user.role]}</div>
+              <div className="text-xs text-slate-400">{roleLabel(user.role)}</div>
             </div>
           </div>
           <button
@@ -125,7 +127,7 @@ export default function Layout() {
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10"
           >
             <LogOut className="h-4 w-4" />
-            تسجيل الخروج
+            {t('تسجيل الخروج')}
           </button>
         </div>
       </aside>

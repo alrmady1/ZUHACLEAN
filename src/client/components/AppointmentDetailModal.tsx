@@ -3,7 +3,6 @@ import { X, MapPin, Phone, Camera, Wallet, Clock, Pencil, MessageCircle, Printer
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
 import {
-  ROLE_LABELS_AR,
   CAN_EDIT_PAYMENTS_ROLES,
   CAN_BOOK_APPOINTMENT_ROLES,
   CAN_ASSIGN_TEAM_ROLES,
@@ -14,6 +13,7 @@ import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
 import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 import { waLink } from '../lib/whatsapp.js';
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -48,6 +48,7 @@ export default function AppointmentDetailModal({
   onChanged: () => void;
 }) {
   const { user } = useAuth();
+  const { t, tt, roleLabel } = useI18n();
   const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
   const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
@@ -82,7 +83,7 @@ export default function AppointmentDetailModal({
   async function saveTeam() {
     setBusy(true);
     try {
-      const technicianName = technicianOptions.find((t) => t.id === teamTechnicianId)?.full_name;
+      const technicianName = technicianOptions.find((tech) => tech.id === teamTechnicianId)?.full_name;
       await api.patch(`/appointments/${appointment.id}`, {
         supervisor_id: teamSupervisorId || undefined,
         assignments: teamTechnicianId
@@ -135,7 +136,7 @@ export default function AppointmentDetailModal({
   }
 
   async function deletePhoto(photoId: string) {
-    if (!window.confirm('حذف هذه الصورة؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    if (!window.confirm(t('حذف هذه الصورة؟ لا يمكن التراجع عن هذا الإجراء.'))) return;
     setBusy(true);
     try {
       await api.del(`/appointments/${appointment.id}/photos/${photoId}`);
@@ -154,8 +155,8 @@ export default function AppointmentDetailModal({
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-slate-50 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">تفاصيل المهمة والموعد</h2>
-            <p className="text-xs text-slate-400">رقم المرجع: #{appointment.id.slice(0, 8)}</p>
+            <h2 className="text-lg font-bold text-slate-800">{t('تفاصيل المهمة والموعد')}</h2>
+            <p className="text-xs text-slate-400">{t('رقم المرجع:')} #{appointment.id.slice(0, 8)}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
             <X className="h-5 w-5" />
@@ -165,7 +166,7 @@ export default function AppointmentDetailModal({
         <div className="space-y-4 p-5">
           {/* Customer + location */}
           <div className="rounded-2xl bg-slate-900 p-4 text-white">
-            <div className="mb-2 text-xs text-slate-400">بيانات العميل والموقع</div>
+            <div className="mb-2 text-xs text-slate-400">{t('بيانات العميل والموقع')}</div>
             <div className="mb-1 text-sm font-semibold">{appointment.customer_name_snapshot}</div>
             {appointment.address_snapshot && (
               <div className="mb-3 flex items-start gap-1.5 text-xs text-slate-300">
@@ -178,7 +179,7 @@ export default function AppointmentDetailModal({
                   href={`tel:${customer.phone}`}
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
                 >
-                  <Phone className="h-3.5 w-3.5" /> اتصال
+                  <Phone className="h-3.5 w-3.5" /> {t('اتصال')}
                 </a>
               )}
               {customer?.phone && (
@@ -188,7 +189,7 @@ export default function AppointmentDetailModal({
                   rel="noreferrer"
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600"
                 >
-                  <MessageCircle className="h-3.5 w-3.5" /> واتساب
+                  <MessageCircle className="h-3.5 w-3.5" /> {t('واتساب')}
                 </a>
               )}
               {appointment.location_url && !editingLocation && (
@@ -196,7 +197,7 @@ export default function AppointmentDetailModal({
                   href={appointment.location_url}
                   target="_blank"
                   rel="noreferrer"
-                  title="فتح موقع العميل في الخريطة"
+                  title={t('فتح موقع العميل في الخريطة')}
                   className="flex items-center justify-center rounded-xl bg-brand-600 p-2.5 text-white hover:bg-brand-700"
                 >
                   <MapPin className="h-3.5 w-3.5" />
@@ -208,7 +209,7 @@ export default function AppointmentDetailModal({
                     setLocationUrlInput(appointment.location_url ?? customer?.location_url ?? '');
                     setEditingLocation(true);
                   }}
-                  title={appointment.location_url ? 'تعديل رابط الموقع' : 'إضافة رابط الموقع'}
+                  title={appointment.location_url ? t('تعديل رابط الموقع') : t('إضافة رابط الموقع')}
                   className="flex items-center justify-center rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/20"
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -218,7 +219,7 @@ export default function AppointmentDetailModal({
 
             {editingLocation && (
               <div className="mt-3 space-y-2 rounded-xl bg-white/5 p-3">
-                <span className="block text-xs font-medium text-slate-300">رابط موقع العميل (خرائط جوجل)</span>
+                <span className="block text-xs font-medium text-slate-300">{t('رابط موقع العميل (خرائط جوجل)')}</span>
                 <div className="flex gap-2">
                   <input
                     dir="ltr"
@@ -231,7 +232,7 @@ export default function AppointmentDetailModal({
                     href="https://www.google.com/maps"
                     target="_blank"
                     rel="noreferrer"
-                    title="فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا"
+                    title={t('فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا')}
                     className="flex shrink-0 items-center justify-center rounded-lg bg-white/10 px-2.5 text-white hover:bg-white/20"
                   >
                     <MapIcon className="h-4 w-4" />
@@ -243,10 +244,10 @@ export default function AppointmentDetailModal({
                     onClick={saveLocation}
                     className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
                   >
-                    <Check className="h-3.5 w-3.5" /> {busy ? 'جارِ الحفظ…' : 'حفظ'}
+                    <Check className="h-3.5 w-3.5" /> {busy ? t('جارِ الحفظ…') : t('حفظ')}
                   </button>
                   <button onClick={() => setEditingLocation(false)} className="text-xs font-medium text-slate-300 hover:text-white">
-                    إلغاء
+                    {t('إلغاء')}
                   </button>
                 </div>
               </div>
@@ -255,7 +256,7 @@ export default function AppointmentDetailModal({
 
           {/* Status picker — the only place status can change now */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mb-3 text-sm font-medium text-slate-600">تحديث حالة المهمة الحالية:</div>
+            <div className="mb-3 text-sm font-medium text-slate-600">{t('تحديث حالة المهمة الحالية:')}</div>
             <div className="flex flex-wrap gap-2">
               {STATUS_ORDER.map((s) => (
                 <button
@@ -268,7 +269,7 @@ export default function AppointmentDetailModal({
                       : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  {APPT_STATUS_STYLE[s].label}
+                  {t(APPT_STATUS_STYLE[s].label)}
                 </button>
               ))}
             </div>
@@ -277,21 +278,21 @@ export default function AppointmentDetailModal({
           {/* Service / schedule info */}
           <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4">
             <div>
-              <div className="text-xs text-slate-400">نوع الخدمة</div>
+              <div className="text-xs text-slate-400">{t('نوع الخدمة')}</div>
               <div className="text-sm font-semibold text-slate-700">{appointment.service_name_snapshot}</div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">موعد الزيارة</div>
+              <div className="text-xs text-slate-400">{t('موعد الزيارة')}</div>
               <div className="text-sm font-semibold text-slate-700">
                 {formatDateAr(appointment.scheduled_at)} - {formatTimeAr(appointment.scheduled_at)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">المدة المقدرة</div>
+              <div className="text-xs text-slate-400">{t('المدة المقدرة')}</div>
               <div className="text-sm font-semibold text-slate-700">{formatDuration(appointment.expected_duration_minutes)}</div>
             </div>
             <div>
-              <div className="text-xs text-slate-400">نهاية العمل المتوقعة</div>
+              <div className="text-xs text-slate-400">{t('نهاية العمل المتوقعة')}</div>
               <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
                 <Clock className="h-3.5 w-3.5 text-slate-400" /> {formatTimeAr(endTime.toISOString())}
               </div>
@@ -302,7 +303,7 @@ export default function AppointmentDetailModal({
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
-                <TeamIcon className="h-4 w-4" /> فريق العمل المسند
+                <TeamIcon className="h-4 w-4" /> {t('فريق العمل المسند')}
               </div>
               {canAssignTeam && !editingTeam && (
                 <button
@@ -313,7 +314,7 @@ export default function AppointmentDetailModal({
                   }}
                   className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                 >
-                  <Pencil className="h-3.5 w-3.5" /> تعديل
+                  <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
                 </button>
               )}
             </div>
@@ -322,23 +323,23 @@ export default function AppointmentDetailModal({
               <div className="space-y-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">المشرف المسؤول</span>
+                    <span className="mb-1 block font-medium text-slate-600">{t('المشرف المسؤول')}</span>
                     <select value={teamSupervisorId} onChange={(e) => setTeamSupervisorId(e.target.value)} className="input">
-                      <option value="">-- بدون تحديد --</option>
+                      <option value="">{t('-- بدون تحديد --')}</option>
                       {supervisorOptions.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.full_name} ({ROLE_LABELS_AR[s.role]})
+                          {s.full_name} ({roleLabel(s.role)})
                         </option>
                       ))}
                     </select>
                   </label>
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">الفني المسند</span>
+                    <span className="mb-1 block font-medium text-slate-600">{t('الفني المسند')}</span>
                     <select value={teamTechnicianId} onChange={(e) => setTeamTechnicianId(e.target.value)} className="input">
-                      <option value="">-- بدون تحديد --</option>
-                      {technicianOptions.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.full_name}
+                      <option value="">{t('-- بدون تحديد --')}</option>
+                      {technicianOptions.map((tech) => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name}
                         </option>
                       ))}
                     </select>
@@ -350,13 +351,13 @@ export default function AppointmentDetailModal({
                     onClick={saveTeam}
                     className="rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
                   >
-                    {busy ? 'جارِ الحفظ…' : 'حفظ'}
+                    {busy ? t('جارِ الحفظ…') : t('حفظ')}
                   </button>
                   <button
                     onClick={() => setEditingTeam(false)}
                     className="text-xs font-medium text-slate-400 hover:text-slate-600"
                   >
-                    إلغاء
+                    {t('إلغاء')}
                   </button>
                 </div>
               </div>
@@ -364,7 +365,7 @@ export default function AppointmentDetailModal({
               <div className="flex flex-wrap gap-2">
                 {supervisor && (
                   <span className="flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                    {supervisor.full_name} ({ROLE_LABELS_AR[supervisor.role]})
+                    {supervisor.full_name} ({roleLabel(supervisor.role)})
                   </span>
                 )}
                 {appointment.assignments.map((asg) => (
@@ -372,17 +373,17 @@ export default function AppointmentDetailModal({
                     key={asg.id}
                     className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
                   >
-                    {asg.technician_name ?? 'فني'} (فني)
+                    {asg.technician_name ?? t('فني')} ({t('فني')})
                   </span>
                 ))}
                 {!supervisor && appointment.assignments.length === 0 && (
-                  <span className="text-xs text-slate-400">لا يوجد فريق مسند بعد</span>
+                  <span className="text-xs text-slate-400">{t('لا يوجد فريق مسند بعد')}</span>
                 )}
               </div>
             )}
             {appointment.notes && (
               <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
-                <div className="mb-1 font-medium">تعليمات وملاحظات:</div>
+                <div className="mb-1 font-medium">{t('تعليمات وملاحظات:')}</div>
                 {appointment.notes}
               </div>
             )}
@@ -392,7 +393,7 @@ export default function AppointmentDetailModal({
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
-                <Camera className="h-4 w-4" /> صور توثيق العمل (قبل وبعد)
+                <Camera className="h-4 w-4" /> {t('صور توثيق العمل (قبل وبعد)')}
               </div>
             </div>
             <div className="mb-3 flex flex-wrap gap-2">
@@ -401,14 +402,14 @@ export default function AppointmentDetailModal({
                 onClick={() => beforeInput.current?.click()}
                 className="flex items-center gap-1.5 rounded-xl bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 disabled:opacity-50"
               >
-                + صور قبل العمل
+                {t('+ صور قبل العمل')}
               </button>
               <button
                 disabled={busy}
                 onClick={() => afterInput.current?.click()}
                 className="flex items-center gap-1.5 rounded-xl bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-50"
               >
-                + صور بعد العمل
+                {t('+ صور بعد العمل')}
               </button>
               <input
                 ref={beforeInput}
@@ -429,14 +430,14 @@ export default function AppointmentDetailModal({
             </div>
 
             <div className="mb-3 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
-              {PHOTO_TABS.map((t) => (
+              {PHOTO_TABS.map((tab) => (
                 <button
-                  key={t.value}
-                  onClick={() => setPhotoTab(t.value)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${photoTab === t.value ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+                  key={tab.value}
+                  onClick={() => setPhotoTab(tab.value)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${photoTab === tab.value ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
                 >
-                  {t.label} (
-                  {t.value === 'all' ? appointment.photos.length : t.value === 'before' ? beforeCount : afterCount})
+                  {t(tab.label)} (
+                  {tab.value === 'all' ? appointment.photos.length : tab.value === 'before' ? beforeCount : afterCount})
                 </button>
               ))}
             </div>
@@ -450,7 +451,7 @@ export default function AppointmentDetailModal({
                       type="button"
                       disabled={busy}
                       onClick={() => deletePhoto(p.id)}
-                      title="حذف الصورة"
+                      title={t('حذف الصورة')}
                       className="absolute end-1 top-1 rounded-lg bg-slate-900/60 p-1 text-white transition hover:bg-red-600 disabled:opacity-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -461,9 +462,12 @@ export default function AppointmentDetailModal({
             ) : (
               <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-400">
                 <Camera className="mx-auto mb-2 h-6 w-6 text-slate-300" />
-                لم يتم رفع صور لهذا الموعد بعد
+                {t('لم يتم رفع صور لهذا الموعد بعد')}
                 <br />
-                انقر على "+ صور قبل العمل" أو "+ صور بعد العمل" لتوثيق الخدمة
+                {tt(
+                  'انقر على "+ صور قبل العمل" أو "+ صور بعد العمل" لتوثيق الخدمة',
+                  'Tap "+ Before Work Photos" or "+ After Work Photos" to document the service',
+                )}
               </div>
             )}
           </div>
@@ -473,9 +477,9 @@ export default function AppointmentDetailModal({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
-                  <Wallet className="h-4 w-4" /> المدفوعات والمستحقات المالية
+                  <Wallet className="h-4 w-4" /> {t('المدفوعات والمستحقات المالية')}
                 </div>
-                <p className="text-xs text-slate-400">تسجيل الدفعات النقدية والشبكة ومتابعة المتبقي</p>
+                <p className="text-xs text-slate-400">{t('تسجيل الدفعات النقدية والشبكة ومتابعة المتبقي')}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {appointment.remaining_amount > 0 && appointment.status === 'completed' && (
@@ -483,7 +487,7 @@ export default function AppointmentDetailModal({
                     onClick={() => setShowPay(true)}
                     className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
                   >
-                    + تسجيل دفعة
+                    {t('+ تسجيل دفعة')}
                   </button>
                 )}
                 {invoice && appointment.status === 'completed' && canReprintInvoice && (
@@ -491,27 +495,30 @@ export default function AppointmentDetailModal({
                     onClick={() => setShowInvoice(true)}
                     className="flex items-center gap-1 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100"
                   >
-                    <Printer className="h-3.5 w-3.5" /> إعادة طباعة الفاتورة
+                    <Printer className="h-3.5 w-3.5" /> {t('إعادة طباعة الفاتورة')}
                   </button>
                 )}
               </div>
             </div>
             {appointment.remaining_amount > 0 && appointment.status !== 'completed' && (
               <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                لا يمكن تحصيل الدفعة وإصدار الفاتورة إلا بعد اختيار حالة المهمة "مكتملة" أعلاه.
+                {tt(
+                  'لا يمكن تحصيل الدفعة وإصدار الفاتورة إلا بعد اختيار حالة المهمة "مكتملة" أعلاه.',
+                  'The payment cannot be collected and the invoice cannot be issued until the task status above is set to "Completed".',
+                )}
               </div>
             )}
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-red-50 p-3 text-center">
-                <div className="text-xs text-red-600">المتبقي المطلوب</div>
+                <div className="text-xs text-red-600">{t('المتبقي المطلوب')}</div>
                 <div className="text-sm font-bold text-red-700">{formatMoney(appointment.remaining_amount)}</div>
               </div>
               <div className="rounded-xl bg-emerald-50 p-3 text-center">
-                <div className="text-xs text-emerald-600">المدفوع المستلم</div>
+                <div className="text-xs text-emerald-600">{t('المدفوع المستلم')}</div>
                 <div className="text-sm font-bold text-emerald-700">{formatMoney(appointment.total_paid)}</div>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 text-center">
-                <div className="text-xs text-slate-500">قيمة الخدمة</div>
+                <div className="text-xs text-slate-500">{t('قيمة الخدمة')}</div>
                 <div className="text-sm font-bold text-slate-700">{formatMoney(appointment.amount)}</div>
               </div>
             </div>
@@ -529,7 +536,7 @@ export default function AppointmentDetailModal({
                     {canEditPayments && (
                       <button
                         onClick={() => setEditingPayment(p)}
-                        title="تعديل المبلغ"
+                        title={t('تعديل المبلغ')}
                         className="flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -594,6 +601,7 @@ function EditPaymentModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -615,18 +623,18 @@ function EditPaymentModal({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">تعديل الدفعة</h2>
+          <h2 className="text-lg font-bold text-slate-800">{t('تعديل الدفعة')}</h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="space-y-3">
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
             <input type="number" name="amount" min={0} step="0.01" defaultValue={payment.amount} required className="input" />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
             <select name="method" defaultValue={payment.method} required className="input">
               {paymentMethods.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -641,7 +649,7 @@ function EditPaymentModal({
           disabled={submitting}
           className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
         >
-          {submitting ? 'جارِ الحفظ…' : 'حفظ التعديل'}
+          {submitting ? t('جارِ الحفظ…') : t('حفظ التعديل')}
         </button>
       </form>
     </div>

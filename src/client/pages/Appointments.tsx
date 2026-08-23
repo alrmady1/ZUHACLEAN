@@ -16,13 +16,14 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
-import { ROLE_LABELS_AR, CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
+import { CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 
 type ScopeFilter = 'mine' | 'all' | string; // string = a specific supervisor id
 type PeriodFilter = 'all' | 'today' | 'week' | 'month';
@@ -86,6 +87,7 @@ function getWeekDays(ref: Date): Date[] {
 
 export default function Appointments() {
   const { user, allProfiles } = useAuth();
+  const { t, roleLabel, lang } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -176,8 +178,8 @@ export default function Appointments() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">جدول المواعيد والمهام</h1>
-          <p className="text-sm text-slate-400">إدارة ومتابعة المواعيد، مع فصل جداول المشرفين وإمكانية الاطلاع المتبادل</p>
+          <h1 className="text-xl font-bold text-slate-800">{t('جدول المواعيد والمهام')}</h1>
+          <p className="text-sm text-slate-400">{t('إدارة ومتابعة المواعيد، مع فصل جداول المشرفين وإمكانية الاطلاع المتبادل')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canBook && (
@@ -185,7 +187,7 @@ export default function Appointments() {
               onClick={() => setShowNewAppt(true)}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
-              <Plus className="h-4 w-4" /> حجز موعد جديد
+              <Plus className="h-4 w-4" /> {t('حجز موعد جديد')}
             </button>
           )}
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
@@ -193,13 +195,13 @@ export default function Appointments() {
               onClick={() => setView('calendar')}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'calendar' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
             >
-              <CalendarDays className="h-4 w-4" /> التقويم
+              <CalendarDays className="h-4 w-4" /> {t('التقويم')}
             </button>
             <button
               onClick={() => setView('table')}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
             >
-              <Table2 className="h-4 w-4" /> الجدول
+              <Table2 className="h-4 w-4" /> {t('الجدول')}
             </button>
           </div>
         </div>
@@ -208,7 +210,7 @@ export default function Appointments() {
       {canSeeAllSchedules && user && (
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-medium text-slate-600">عرض جدول المشرف:</span>
+            <span className="text-sm font-medium text-slate-600">{t('عرض جدول المشرف:')}</span>
             <button
               onClick={() => setScope('mine')}
               className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium ${
@@ -216,7 +218,7 @@ export default function Appointments() {
               }`}
             >
               <UserRound className="h-4 w-4" />
-              جدولي الخاص ({user.full_name} — {ROLE_LABELS_AR[user.role]})
+              {t('جدولي الخاص')} ({user.full_name} — {roleLabel(user.role)})
             </button>
           </div>
           <button
@@ -225,16 +227,16 @@ export default function Appointments() {
               scope === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            <UsersIcon className="h-4 w-4" /> كافة المشرفين والفرق ({supervisors.length})
+            <UsersIcon className="h-4 w-4" /> {t('كافة المشرفين والفرق')} ({supervisors.length})
           </button>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="shrink-0 text-sm font-medium text-slate-600">الاطلاع على مشرف آخر:</span>
+            <span className="shrink-0 text-sm font-medium text-slate-600">{t('الاطلاع على مشرف آخر:')}</span>
             <select
               value={supervisors.some((s) => s.id === scope) ? scope : ''}
               onChange={(e) => e.target.value && setScope(e.target.value)}
               className="input"
             >
-              <option value="">-- اختر المشرف للاطلاع --</option>
+              <option value="">{t('-- اختر المشرف للاطلاع --')}</option>
               {supervisors
                 .filter((s) => s.id !== user.id)
                 .map((s) => (
@@ -249,10 +251,10 @@ export default function Appointments() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'all')} className="input">
-          <option value="all">كل حالات المواعيد</option>
+          <option value="all">{t('كل حالات المواعيد')}</option>
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {t(o.label)}
             </option>
           ))}
         </select>
@@ -261,21 +263,21 @@ export default function Appointments() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث بالاسم، الجوال، الخدمة، العقد، العنوان..."
+            placeholder={t('ابحث بالاسم، الجوال، الخدمة، العقد، العنوان...')}
             className="input ps-9"
           />
         </div>
         <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)} className="input">
-          <option value="all">كل الفترات الزمنية</option>
-          <option value="today">اليوم</option>
-          <option value="week">هذا الأسبوع</option>
-          <option value="month">هذا الشهر</option>
+          <option value="all">{t('كل الفترات الزمنية')}</option>
+          <option value="today">{t('اليوم')}</option>
+          <option value="week">{t('هذا الأسبوع')}</option>
+          <option value="month">{t('هذا الشهر')}</option>
         </select>
         <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentStatus | 'all')} className="input">
-          <option value="all">كل حالات الدفع</option>
+          <option value="all">{t('كل حالات الدفع')}</option>
           {PAYMENT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {t(o.label)}
             </option>
           ))}
         </select>
@@ -286,13 +288,13 @@ export default function Appointments() {
           <table className="w-full text-start text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs text-slate-400">
-                <th className="p-3 text-start font-medium">اليوم والتاريخ والموعد</th>
-                <th className="p-3 text-start font-medium">العميل والجوال</th>
-                <th className="p-3 text-start font-medium">نوع الخدمة / العقد</th>
-                <th className="p-3 text-start font-medium">المشرف / الفريق</th>
-                <th className="p-3 text-start font-medium">السعر والدفع</th>
-                <th className="p-3 text-start font-medium">حالة المهمة</th>
-                <th className="p-3 text-start font-medium">إجراء</th>
+                <th className="p-3 text-start font-medium">{t('اليوم والتاريخ والموعد')}</th>
+                <th className="p-3 text-start font-medium">{t('العميل والجوال')}</th>
+                <th className="p-3 text-start font-medium">{t('نوع الخدمة / العقد')}</th>
+                <th className="p-3 text-start font-medium">{t('المشرف / الفريق')}</th>
+                <th className="p-3 text-start font-medium">{t('السعر والدفع')}</th>
+                <th className="p-3 text-start font-medium">{t('حالة المهمة')}</th>
+                <th className="p-3 text-start font-medium">{t('إجراء')}</th>
               </tr>
             </thead>
             <tbody>
@@ -323,7 +325,11 @@ export default function Appointments() {
                     </td>
                     <td className="p-3">
                       <div className="text-slate-700">{a.service_name_snapshot}</div>
-                      {a.contract_number && <div className="mt-1 text-xs text-slate-400">عقد {a.contract_number}</div>}
+                      {a.contract_number && (
+                        <div className="mt-1 text-xs text-slate-400">
+                          {t('عقد')} {a.contract_number}
+                        </div>
+                      )}
                       {a.address_snapshot && (
                         <div className="mt-1 flex max-w-[220px] items-start gap-1 text-xs text-slate-400">
                           <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
@@ -333,7 +339,7 @@ export default function Appointments() {
                     </td>
                     <td className="p-3">
                       <div className="text-slate-700">
-                        {supervisor ? `${supervisor.full_name} (${ROLE_LABELS_AR[supervisor.role]})` : '—'}
+                        {supervisor ? `${supervisor.full_name} (${roleLabel(supervisor.role)})` : '—'}
                       </div>
                       {a.assignments.length > 0 && (
                         <div className="mt-1 text-xs text-brand-600">
@@ -355,14 +361,14 @@ export default function Appointments() {
                               e.stopPropagation();
                               setPayingAppt(a);
                             }}
-                            title="تحصيل الدفعة وإصدار الفاتورة"
+                            title={t('تحصيل الدفعة وإصدار الفاتورة')}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                           >
                             <Wallet className="h-4 w-4" />
                           </button>
                         )}
                         {a.remaining_amount > 0 && a.status !== 'completed' && (
-                          <span title="أكمل المهمة أولاً لتحصيل الدفعة" className="rounded-lg p-1.5 text-slate-200">
+                          <span title={t('أكمل المهمة أولاً لتحصيل الدفعة')} className="rounded-lg p-1.5 text-slate-200">
                             <Wallet className="h-4 w-4" />
                           </span>
                         )}
@@ -377,7 +383,7 @@ export default function Appointments() {
                           e.stopPropagation();
                           setViewingAppt(a);
                         }}
-                        title="عرض التفاصيل"
+                        title={t('عرض التفاصيل')}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
                       >
                         <Eye className="h-4 w-4" />
@@ -389,7 +395,7 @@ export default function Appointments() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="p-10 text-center text-slate-400">
-                    لا توجد مواعيد ضمن هذا العرض
+                    {t('لا توجد مواعيد ضمن هذا العرض')}
                   </td>
                 </tr>
               )}
@@ -403,21 +409,21 @@ export default function Appointments() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => shiftCalendar(-1)}
-                  aria-label="السابق"
+                  aria-label={t('السابق')}
                   className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => shiftCalendar(1)}
-                  aria-label="التالي"
+                  aria-label={t('التالي')}
                   className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
               </div>
               <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-                {(['شهر', 'أسبوع', 'يوم'] as const).map((label, i) => {
+                {([t('شهر'), t('أسبوع'), t('يوم')] as const).map((label, i) => {
                   const v = (['month', 'week', 'day'] as const)[i];
                   return (
                     <button
@@ -437,7 +443,7 @@ export default function Appointments() {
                 onClick={() => setCalendarDate(new Date())}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
-                اليوم
+                {t('اليوم')}
               </button>
             </div>
           </div>
@@ -446,7 +452,7 @@ export default function Appointments() {
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
               {WEEKDAYS_HEADER.map((d) => (
                 <div key={d} className="pb-1 text-center text-xs font-medium text-slate-400">
-                  {d}
+                  {t(d)}
                 </div>
               ))}
               {getMonthGridDays(calendarDate).map((day) => {
@@ -463,8 +469,8 @@ export default function Appointments() {
                   >
                     <div className="mb-1 flex items-center justify-between gap-1">
                       {dayAppts.length > 0 && (
-                        <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                          {dayAppts.length} مهام
+                        <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white" dir={lang === 'en' ? 'ltr' : undefined}>
+                          {dayAppts.length} {t('مهام')}
                         </span>
                       )}
                       <span className={`ms-auto font-medium ${isToday ? 'text-brand-700' : 'text-slate-500'}`}>{day.getDate()}</span>
@@ -475,7 +481,11 @@ export default function Appointments() {
                           {formatTimeAr(a.scheduled_at)} {a.customer_name_snapshot}
                         </div>
                       ))}
-                      {dayAppts.length > 2 && <div className="text-[10px] text-slate-400">+{dayAppts.length - 2} أخرى</div>}
+                      {dayAppts.length > 2 && (
+                        <div className="text-[10px] text-slate-400" dir={lang === 'en' ? 'ltr' : undefined}>
+                          +{dayAppts.length - 2} {t('أخرى')}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -497,7 +507,7 @@ export default function Appointments() {
                     }`}
                   >
                     <div className={`mb-1 text-center font-medium ${isToday ? 'text-brand-700' : 'text-slate-500'}`}>
-                      {WEEKDAYS_HEADER[day.getDay()]}
+                      {t(WEEKDAYS_HEADER[day.getDay()])}
                       <div className="text-sm">{day.getDate()}</div>
                     </div>
                     <div className="space-y-1">
@@ -532,7 +542,7 @@ export default function Appointments() {
                 ))}
               {(apptsByDate.get(calendarDate.toDateString()) ?? []).length === 0 && (
                 <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
-                  لا توجد مواعيد في هذا اليوم
+                  {t('لا توجد مواعيد في هذا اليوم')}
                 </div>
               )}
             </div>

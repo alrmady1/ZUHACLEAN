@@ -19,6 +19,7 @@ import { AppointmentStatusBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 import { playBellSound } from '../lib/sound.js';
 
 // كل هذه المدة (بالمللي ثانية) نفحص وجود مواعيد جديدة لم يرها أحد بعد —
@@ -70,6 +71,7 @@ function StatCard({
 export default function Dashboard() {
   const navigate = useNavigate();
   const { allProfiles } = useAuth();
+  const { t, tt } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -168,7 +170,7 @@ export default function Dashboard() {
               <Bell className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold">موعد جديد!</div>
+              <div className="text-sm font-semibold">{t('موعد جديد!')}</div>
               <div className="truncate text-xs text-slate-300">
                 {newApptAlert.customer_name_snapshot} — {newApptAlert.service_name_snapshot}
               </div>
@@ -187,28 +189,28 @@ export default function Dashboard() {
         <StatCard
           icon={Clock}
           iconTint="bg-amber-100 text-amber-600"
-          label="قيد التنفيذ"
+          label={t('قيد التنفيذ')}
           value={String(inProgressToday.length)}
           valueTint="text-amber-500"
-          sub={`${activeTeams} فرق تعمل حالياً`}
+          sub={tt(`${activeTeams} فرق تعمل حالياً`, `${activeTeams} Teams currently working`)}
           subTint="text-amber-500"
         />
         <StatCard
           icon={CheckCircle2}
           iconTint="bg-emerald-100 text-emerald-600"
-          label="مكتملة اليوم"
+          label={t('مكتملة اليوم')}
           value={String(completedToday.length)}
           valueTint="text-emerald-600"
-          sub={`${completionRate}% نسبة الإنجاز`}
+          sub={tt(`${completionRate}% نسبة الإنجاز`, `${completionRate}% Completion rate`)}
           subTint="text-emerald-600"
         />
         <StatCard
           icon={CalendarClock}
           iconTint="bg-slate-100 text-slate-600"
-          label="مواعيد اليوم"
+          label={t('مواعيد اليوم')}
           value={String(todayAppts.length)}
           valueTint="text-slate-800"
-          sub={`${apptDelta >= 0 ? '+' : ''}${apptDelta} عن أمس`}
+          sub={tt(`${apptDelta >= 0 ? '+' : ''}${apptDelta} عن أمس`, `${apptDelta >= 0 ? '+' : ''}${apptDelta} vs. yesterday`)}
           subTint="text-slate-400"
         />
       </div>
@@ -217,25 +219,28 @@ export default function Dashboard() {
         <StatCard
           icon={Banknote}
           iconTint="bg-emerald-100 text-emerald-600"
-          label="المحصّل الفعلي"
+          label={t('المحصّل الفعلي')}
           value={formatMoney(collectedToday)}
           valueTint="text-emerald-600"
           sub={
             invoicedTodayTotal === 0
-              ? 'لا توجد فواتير اليوم'
+              ? t('لا توجد فواتير اليوم')
               : collectedToday >= invoicedTodayTotal
-                ? 'تم تحصيل كافة الفواتير'
-                : `متبقٍ ${formatMoney(invoicedTodayTotal - collectedToday)}`
+                ? t('تم تحصيل كافة الفواتير')
+                : tt(
+                    `متبقٍ ${formatMoney(invoicedTodayTotal - collectedToday)}`,
+                    `Remaining ${formatMoney(invoicedTodayTotal - collectedToday)}`,
+                  )
           }
           subTint={invoicedTodayTotal > 0 && collectedToday >= invoicedTodayTotal ? 'text-emerald-600' : 'text-amber-500'}
         />
         <StatCard
           icon={Receipt}
           iconTint="bg-slate-100 text-slate-600"
-          label="مبيعات اليوم"
+          label={t('مبيعات اليوم')}
           value={formatMoney(salesTodayTotal)}
           valueTint="text-slate-800"
-          sub="إجمالي الفواتير"
+          sub={t('إجمالي الفواتير')}
           subTint="text-slate-400"
         />
       </div>
@@ -245,29 +250,29 @@ export default function Dashboard() {
           onClick={() => setShowNewAppt(true)}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> موعد جديد
+          <Plus className="h-4 w-4" /> {t('موعد جديد')}
         </button>
         <button
           onClick={() => navigate('/appointments')}
           className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
-          <ListFilter className="h-4 w-4" /> تصفية وعرض الكل
+          <ListFilter className="h-4 w-4" /> {t('تصفية وعرض الكل')}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">جدول مواعيد اليوم</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('جدول مواعيد اليوم')}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-start text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-xs text-slate-400">
-                  <th className="py-2 text-start font-medium">العميل</th>
-                  <th className="py-2 text-start font-medium">الخدمة</th>
-                  <th className="py-2 text-start font-medium">الوقت</th>
-                  <th className="py-2 text-start font-medium">الفني/المشرف</th>
-                  <th className="py-2 text-start font-medium">السعر</th>
-                  <th className="py-2 text-start font-medium">الحالة</th>
+                  <th className="py-2 text-start font-medium">{t('العميل')}</th>
+                  <th className="py-2 text-start font-medium">{t('الخدمة')}</th>
+                  <th className="py-2 text-start font-medium">{t('الوقت')}</th>
+                  <th className="py-2 text-start font-medium">{t('الفني/المشرف')}</th>
+                  <th className="py-2 text-start font-medium">{t('السعر')}</th>
+                  <th className="py-2 text-start font-medium">{t('الحالة')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -299,7 +304,7 @@ export default function Dashboard() {
                 {todayAppts.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-slate-400">
-                      لا توجد مواعيد اليوم
+                      {t('لا توجد مواعيد اليوم')}
                     </td>
                   </tr>
                 )}
@@ -309,7 +314,7 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">توزيع الخدمات</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('توزيع الخدمات')}</h2>
           <div className="space-y-4">
             {serviceDistribution.map((s, i) => (
               <div key={s.name}>
@@ -322,7 +327,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {serviceDistribution.length === 0 && <div className="text-center text-sm text-slate-400">لا توجد بيانات بعد</div>}
+            {serviceDistribution.length === 0 && <div className="text-center text-sm text-slate-400">{t('لا توجد بيانات بعد')}</div>}
           </div>
         </div>
       </div>
@@ -330,7 +335,7 @@ export default function Dashboard() {
       <div className="rounded-2xl bg-slate-900 p-6 text-white">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-sm text-slate-300">إجمالي مبيعات الشهر</div>
+            <div className="text-sm text-slate-300">{t('إجمالي مبيعات الشهر')}</div>
             <div className="mt-1 text-3xl font-bold">{formatMoney(salesThisMonth)}</div>
           </div>
           <div
@@ -339,7 +344,7 @@ export default function Dashboard() {
             }`}
           >
             {growthAmount >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-            <span>النمو مقارنة بالشهر السابق:</span>
+            <span>{t('النمو مقارنة بالشهر السابق:')}</span>
             <span>
               {growthAmount >= 0 ? '+' : ''}
               {formatMoney(growthAmount)} ({growthPercent >= 0 ? '+' : ''}

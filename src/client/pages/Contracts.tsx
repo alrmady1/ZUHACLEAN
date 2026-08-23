@@ -7,9 +7,11 @@ import { CAN_SEE_CONTRACT_VALUE_ROLES, CAN_SEE_CONTRACTS_ROLES } from '../../sha
 import { ContractStatusBadge, PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 
 export default function Contracts() {
   const { user, allProfiles } = useAuth();
+  const { t } = useI18n();
   const canSeeValue = user ? CAN_SEE_CONTRACT_VALUE_ROLES.includes(user.role) : false;
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -60,14 +62,14 @@ export default function Contracts() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">العقود الدورية</h1>
-          <p className="text-sm text-slate-400">تُولَّد الزيارات تلقائياً في جدول المواعيد عند إنشاء العقد</p>
+          <h1 className="text-xl font-bold text-slate-800">{t('العقود الدورية')}</h1>
+          <p className="text-sm text-slate-400">{t('تُولَّد الزيارات تلقائياً في جدول المواعيد عند إنشاء العقد')}</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> عقد جديد
+          <Plus className="h-4 w-4" /> {t('عقد جديد')}
         </button>
       </div>
 
@@ -75,14 +77,14 @@ export default function Contracts() {
         <table className="w-full text-start text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">رقم العقد</th>
-              <th className="p-3 text-start font-medium">العميل</th>
-              <th className="p-3 text-start font-medium">الخدمة</th>
-              <th className="p-3 text-start font-medium">التكرار</th>
-              <th className="p-3 text-start font-medium">الزيارات</th>
-              {canSeeValue && <th className="p-3 text-start font-medium">القيمة</th>}
-              <th className="p-3 text-start font-medium">السداد</th>
-              <th className="p-3 text-start font-medium">الحالة</th>
+              <th className="p-3 text-start font-medium">{t('رقم العقد')}</th>
+              <th className="p-3 text-start font-medium">{t('العميل')}</th>
+              <th className="p-3 text-start font-medium">{t('الخدمة')}</th>
+              <th className="p-3 text-start font-medium">{t('التكرار')}</th>
+              <th className="p-3 text-start font-medium">{t('الزيارات')}</th>
+              {canSeeValue && <th className="p-3 text-start font-medium">{t('القيمة')}</th>}
+              <th className="p-3 text-start font-medium">{t('السداد')}</th>
+              <th className="p-3 text-start font-medium">{t('الحالة')}</th>
             </tr>
           </thead>
           <tbody>
@@ -92,9 +94,9 @@ export default function Contracts() {
                 <td className="p-3 text-slate-600">{customers.find((x) => x.id === c.customer_id)?.name ?? '—'}</td>
                 <td className="p-3 text-slate-600">{c.service_name_snapshot}</td>
                 <td className="p-3 text-slate-600">
-                  {c.visit_frequency === 'weekly' ? 'أسبوعي' : c.visit_frequency === 'bi_weekly' ? 'نصف شهري' : 'شهري'}
+                  {c.visit_frequency === 'weekly' ? t('أسبوعي') : c.visit_frequency === 'bi_weekly' ? t('نصف شهري') : t('شهري')}
                 </td>
-                <td className="p-3 text-slate-600">
+                <td className="p-3 text-slate-600" dir="ltr">
                   {c.completed_visits} / {c.total_visits}
                 </td>
                 {canSeeValue && <td className="p-3 text-slate-600">{formatMoney(c.total_amount)}</td>}
@@ -109,7 +111,7 @@ export default function Contracts() {
             {contracts.length === 0 && (
               <tr>
                 <td colSpan={canSeeValue ? 8 : 7} className="p-8 text-center text-slate-400">
-                  لا توجد عقود بعد
+                  {t('لا توجد عقود بعد')}
                 </td>
               </tr>
             )}
@@ -124,14 +126,14 @@ export default function Contracts() {
             className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">عقد جديد</h2>
+              <h2 className="text-lg font-bold text-slate-800">{t('عقد جديد')}</h2>
               <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <Field label="العميل">
+              <Field label={t('العميل')}>
                 <select name="customer_id" required className="input">
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -141,7 +143,7 @@ export default function Contracts() {
                 </select>
               </Field>
 
-              <Field label="الخدمة">
+              <Field label={t('الخدمة')}>
                 <select name="service_id" required className="input">
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -152,44 +154,44 @@ export default function Contracts() {
               </Field>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="نوع العقد">
+                <Field label={t('نوع العقد')}>
                   <select name="contract_type" required className="input">
-                    <option value="monthly">شهري</option>
-                    <option value="quarterly">ربع سنوي</option>
-                    <option value="semi_annual">نصف سنوي</option>
-                    <option value="annual">سنوي</option>
+                    <option value="monthly">{t('شهري')}</option>
+                    <option value="quarterly">{t('ربع سنوي')}</option>
+                    <option value="semi_annual">{t('نصف سنوي')}</option>
+                    <option value="annual">{t('سنوي')}</option>
                   </select>
                 </Field>
-                <Field label="تكرار الزيارات">
+                <Field label={t('تكرار الزيارات')}>
                   <select name="visit_frequency" required className="input">
-                    <option value="weekly">أسبوعي</option>
-                    <option value="bi_weekly">نصف شهري</option>
-                    <option value="monthly">شهري</option>
+                    <option value="weekly">{t('أسبوعي')}</option>
+                    <option value="bi_weekly">{t('نصف شهري')}</option>
+                    <option value="monthly">{t('شهري')}</option>
                   </select>
                 </Field>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="تاريخ البدء">
+                <Field label={t('تاريخ البدء')}>
                   <input type="date" name="start_date" required className="input" />
                 </Field>
-                <Field label="تاريخ الانتهاء">
+                <Field label={t('تاريخ الانتهاء')}>
                   <input type="date" name="end_date" required className="input" />
                 </Field>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field label="وقت الزيارة">
+                <Field label={t('وقت الزيارة')}>
                   <input type="time" name="visit_time" defaultValue="09:00" className="input" />
                 </Field>
-                <Field label="القيمة الإجمالية (ر.س)">
+                <Field label={t('القيمة الإجمالية (ر.س)')}>
                   <input type="number" name="total_amount" min={0} step="0.01" required className="input" />
                 </Field>
               </div>
 
-              <Field label="المشرف المسؤول">
+              <Field label={t('المشرف المسؤول')}>
                 <select name="supervisor_id" defaultValue={user?.role === 'supervisor' ? user.id : ''} className="input">
-                  <option value="">بدون تحديد</option>
+                  <option value="">{t('بدون تحديد')}</option>
                   {supervisors.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.full_name}
@@ -204,7 +206,7 @@ export default function Contracts() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'جارِ الحفظ وتوليد الزيارات…' : 'حفظ وتوليد الزيارات تلقائياً'}
+              {submitting ? t('جارِ الحفظ وتوليد الزيارات…') : t('حفظ وتوليد الزيارات تلقائياً')}
             </button>
           </form>
         </div>

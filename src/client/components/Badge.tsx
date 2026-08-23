@@ -3,7 +3,12 @@ import type {
   PaymentStatus,
   ContractStatus,
 } from '../../shared/types.js';
+import { useI18n } from '../lib/i18n.js';
 
+// القيم هنا عربية ثابتة على مستوى الوحدة عمداً — لا يمكن استدعاء useI18n()
+// خارج مكوّن React، فالترجمة تحصل عند العرض داخل Pill بدل عند تعريف هذه
+// الخرائط (نفس الأسلوب المتّبع في APPT_STATUS_STYLE أدناه وأي خريطة حالة
+// مشابهة في الملفات الأخرى).
 export const APPT_STATUS_STYLE: Record<AppointmentStatus, { label: string; className: string }> = {
   scheduled: { label: 'مجدولة', className: 'bg-slate-100 text-slate-700' },
   on_the_way: { label: 'في الطريق', className: 'bg-blue-100 text-blue-700' },
@@ -27,9 +32,10 @@ const CONTRACT_STYLE: Record<ContractStatus, { label: string; className: string 
 };
 
 function Pill({ label, className }: { label: string; className: string }) {
+  const { t } = useI18n();
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}>
-      {label}
+      {t(label)}
     </span>
   );
 }

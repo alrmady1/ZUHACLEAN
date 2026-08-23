@@ -6,10 +6,12 @@ import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice 
 import { CUSTODY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, CAN_SEE_EXPENSES_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 import { CustodyTab } from './Custody.js';
 
 export default function Expenses() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const canSeeCustody = user ? CAN_SEE_CUSTODY_ROLES.includes(user.role) : false;
   const [tab, setTab] = useState<'overview' | 'custody' | 'general'>(canSeeCustody ? 'overview' : 'general');
 
@@ -20,9 +22,9 @@ export default function Expenses() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">{canSeeCustody ? 'المصروفات والعُهد' : 'المصروفات'}</h1>
+        <h1 className="text-xl font-bold text-slate-800">{canSeeCustody ? t('المصروفات والعُهد') : t('المصروفات')}</h1>
         <p className="text-sm text-slate-400">
-          {canSeeCustody ? 'قسم العهد الخاصة بكل موظف، وقسم المصروفات العامة للتشغيل' : 'تتبع المصروفات التشغيلية اليومية والشهرية'}
+          {canSeeCustody ? t('قسم العهد الخاصة بكل موظف، وقسم المصروفات العامة للتشغيل') : t('تتبع المصروفات التشغيلية اليومية والشهرية')}
         </p>
       </div>
 
@@ -32,19 +34,19 @@ export default function Expenses() {
             onClick={() => setTab('overview')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'overview' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <OverviewIcon className="h-4 w-4" /> نظرة عامة
+            <OverviewIcon className="h-4 w-4" /> {t('نظرة عامة')}
           </button>
           <button
             onClick={() => setTab('custody')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'custody' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <CustodyIcon className="h-4 w-4" /> العهد (عرض موسّع)
+            <CustodyIcon className="h-4 w-4" /> {t('العهد (عرض موسّع)')}
           </button>
           <button
             onClick={() => setTab('general')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'general' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <GeneralIcon className="h-4 w-4" /> المصروفات (عرض موسّع)
+            <GeneralIcon className="h-4 w-4" /> {t('المصروفات (عرض موسّع)')}
           </button>
         </div>
       )}
@@ -61,6 +63,7 @@ export default function Expenses() {
 }
 
 function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () => void; onOpenGeneral: () => void }) {
+  const { t } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
 
@@ -107,18 +110,18 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
       >
         <div className="mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <CustodyIcon className="h-4 w-4 text-brand-600" /> ملخص العهد
+            <CustodyIcon className="h-4 w-4 text-brand-600" /> {t('ملخص العهد')}
           </span>
           <span className="flex items-center gap-1 text-xs font-medium text-brand-600">
-            عرض موسّع <ChevronLeft className="h-3.5 w-3.5" />
+            {t('عرض موسّع')} <ChevronLeft className="h-3.5 w-3.5" />
           </span>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <OverviewStat label="عدد الموظفين" value={String(custody.holders)} />
-          <OverviewStat label="مدين" value={formatMoney(custody.given)} />
-          <OverviewStat label="دائن" value={formatMoney(custody.spent)} />
+          <OverviewStat label={t('عدد الموظفين')} value={String(custody.holders)} />
+          <OverviewStat label={t('مدين')} value={formatMoney(custody.given)} />
+          <OverviewStat label={t('دائن')} value={formatMoney(custody.spent)} />
           <OverviewStat
-            label="الرصيد المتبقي"
+            label={t('الرصيد المتبقي')}
             value={formatMoney(custody.remaining)}
             tone={custody.remaining >= 0 ? 'positive' : 'negative'}
           />
@@ -131,16 +134,16 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
       >
         <div className="mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <GeneralIcon className="h-4 w-4 text-brand-600" /> ملخص المصروفات العامة
+            <GeneralIcon className="h-4 w-4 text-brand-600" /> {t('ملخص المصروفات العامة')}
           </span>
           <span className="flex items-center gap-1 text-xs font-medium text-brand-600">
-            عرض موسّع <ChevronLeft className="h-3.5 w-3.5" />
+            {t('عرض موسّع')} <ChevronLeft className="h-3.5 w-3.5" />
           </span>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <OverviewStat label="اليوم" value={formatMoney(generalTotals.daily)} />
-          <OverviewStat label="هذا الشهر" value={formatMoney(generalTotals.monthly)} />
-          <OverviewStat label="هذه السنة" value={formatMoney(generalTotals.annual)} />
+          <OverviewStat label={t('اليوم')} value={formatMoney(generalTotals.daily)} />
+          <OverviewStat label={t('هذا الشهر')} value={formatMoney(generalTotals.monthly)} />
+          <OverviewStat label={t('هذه السنة')} value={formatMoney(generalTotals.annual)} />
         </div>
       </button>
     </div>
@@ -159,6 +162,7 @@ function OverviewStat({ label, value, tone }: { label: string; value: string; to
 
 function GeneralExpensesTab() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
@@ -234,35 +238,35 @@ function GeneralExpensesTab() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">المصروفات العامة</h2>
+          <h2 className="text-lg font-bold text-slate-800">{t('المصروفات العامة')}</h2>
           <p className="text-sm text-slate-400">
-            رواتب، مصاريف سيارات، مواد تشغيل ونظافة، إقامات، إيجار، كهرباء وغاز، ومشتريات متفرقة
+            {t('رواتب، مصاريف سيارات، مواد تشغيل ونظافة، إقامات، إيجار، كهرباء وغاز، ومشتريات متفرقة')}
           </p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> مصروف جديد
+          <Plus className="h-4 w-4" /> {t('مصروف جديد')}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <MiniStat label="اليوم" value={formatMoney(totals.daily)} />
-        <MiniStat label="هذا الشهر" value={formatMoney(totals.monthly)} />
-        <MiniStat label="هذه السنة" value={formatMoney(totals.annual)} />
+        <MiniStat label={t('اليوم')} value={formatMoney(totals.daily)} />
+        <MiniStat label={t('هذا الشهر')} value={formatMoney(totals.monthly)} />
+        <MiniStat label={t('هذه السنة')} value={formatMoney(totals.annual)} />
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-start text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">التاريخ</th>
-              <th className="p-3 text-start font-medium">البند</th>
-              <th className="p-3 text-start font-medium">التصنيف</th>
-              <th className="p-3 text-start font-medium">المبلغ</th>
-              <th className="p-3 text-start font-medium">طريقة الدفع</th>
-              <th className="p-3 text-start font-medium">سجّله</th>
+              <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
+              <th className="p-3 text-start font-medium">{t('البند')}</th>
+              <th className="p-3 text-start font-medium">{t('التصنيف')}</th>
+              <th className="p-3 text-start font-medium">{t('المبلغ')}</th>
+              <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
+              <th className="p-3 text-start font-medium">{t('سجّله')}</th>
             </tr>
           </thead>
           <tbody>
@@ -287,7 +291,7 @@ function GeneralExpensesTab() {
             {generalExpenses.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-8 text-center text-slate-400">
-                  لا توجد مصروفات مسجلة
+                  {t('لا توجد مصروفات مسجلة')}
                 </td>
               </tr>
             )}
@@ -302,18 +306,18 @@ function GeneralExpensesTab() {
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">مصروف جديد</h2>
+              <h2 className="text-lg font-bold text-slate-800">{t('مصروف جديد')}</h2>
               <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">البند</span>
-                <input name="title" required className="input" placeholder="مثال: تعبئة وقود سيارة رقم 3" />
+                <span className="mb-1 block font-medium text-slate-600">{t('البند')}</span>
+                <input name="title" required className="input" placeholder={t('مثال: تعبئة وقود سيارة رقم 3')} />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">التصنيف</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('التصنيف')}</span>
                 <select
                   name="category"
                   required
@@ -324,7 +328,7 @@ function GeneralExpensesTab() {
                     setSubCategory('');
                   }}
                 >
-                  {mainCategories.length === 0 && <option value="">لا توجد تصنيفات بعد</option>}
+                  {mainCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
                   {mainCategories.map((c) => (
                     <option key={c.id} value={c.name}>
                       {c.name}
@@ -334,9 +338,9 @@ function GeneralExpensesTab() {
               </label>
               {subCategories.length > 0 && (
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">البند الفرعي (اختياري)</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('البند الفرعي (اختياري)')}</span>
                   <select name="sub_category" className="input" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
-                    <option value="">بدون تحديد</option>
+                    <option value="">{t('بدون تحديد')}</option>
                     {subCategories.map((c) => (
                       <option key={c.id} value={c.name}>
                         {c.name}
@@ -347,16 +351,16 @@ function GeneralExpensesTab() {
               )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
                   <input type="number" name="amount" min={0} step="0.01" required className="input" />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">التاريخ</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
                   <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
                 </label>
               </div>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
                 <select name="payment_method" required className="input">
                   {paymentMethods
                     .filter((m) => m.is_active)
@@ -368,11 +372,11 @@ function GeneralExpensesTab() {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">رقم الفاتورة (اختياري)</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('رقم الفاتورة (اختياري)')}</span>
                 <input name="invoice_number" className="input" />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">ملاحظات</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات')}</span>
                 <textarea name="notes" rows={2} className="input" />
               </label>
             </div>
@@ -381,7 +385,7 @@ function GeneralExpensesTab() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'جارِ الحفظ…' : 'حفظ المصروف'}
+              {submitting ? t('جارِ الحفظ…') : t('حفظ المصروف')}
             </button>
           </form>
         </div>

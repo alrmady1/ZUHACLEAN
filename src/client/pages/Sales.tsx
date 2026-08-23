@@ -7,6 +7,7 @@ import { VAT_RATE } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
+import { useI18n } from '../lib/i18n.js';
 
 type ReportPeriod = 'week' | 'month' | 'year';
 
@@ -57,6 +58,7 @@ function ReportStat({
 }
 
 export default function Sales() {
+  const { t, tt } = useI18n();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -148,8 +150,8 @@ export default function Sales() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">المبيعات والتقارير المالية</h1>
-          <p className="text-sm text-slate-400">تحليل الإيرادات، التحصيلات النقدية والشبكة، وحجم المبيعات حسب نوع الخدمة</p>
+          <h1 className="text-xl font-bold text-slate-800">{t('المبيعات والتقارير المالية')}</h1>
+          <p className="text-sm text-slate-400">{t('تحليل الإيرادات، التحصيلات النقدية والشبكة، وحجم المبيعات حسب نوع الخدمة')}</p>
         </div>
         <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
           {(Object.keys(PERIOD_LABELS) as ReportPeriod[]).map((p) => (
@@ -158,7 +160,7 @@ export default function Sales() {
               onClick={() => setPeriod(p)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === p ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
             >
-              {PERIOD_LABELS[p]}
+              {t(PERIOD_LABELS[p])}
             </button>
           ))}
         </div>
@@ -168,36 +170,36 @@ export default function Sales() {
         <ReportStat
           icon={CheckCircle2}
           iconTint="bg-emerald-100 text-emerald-600"
-          label="المحصّل الفعلي (SAR)"
+          label={t('المحصّل الفعلي (SAR)')}
           value={formatMoney(collectedActual)}
-          sub={`نسبة التحصيل: ${collectionRate}%`}
+          sub={tt(`نسبة التحصيل: ${collectionRate}%`, `Collection Rate: ${collectionRate}%`)}
         />
         <ReportStat
           icon={TrendingUp}
           iconTint="bg-blue-100 text-blue-600"
-          label="إجمالي المبيعات (SAR)"
+          label={t('إجمالي المبيعات (SAR)')}
           value={formatMoney(totalSales)}
-          sub="مجموع قيمة الخدمات المكتملة"
+          sub={t('مجموع قيمة الخدمات المكتملة')}
         />
         <ReportStat
           icon={Sparkles}
           iconTint="bg-violet-100 text-violet-600"
-          label="الخدمات المنجزة"
+          label={t('الخدمات المنجزة')}
           value={String(servicesCompletedCount)}
-          sub="عملية صيانة وتنظيف ناجحة"
+          sub={t('عملية صيانة وتنظيف ناجحة')}
         />
         <ReportStat
           icon={AlertCircle}
           iconTint="bg-red-100 text-red-600"
-          label="المتبقي تحت التحصيل"
+          label={t('المتبقي تحت التحصيل')}
           value={formatMoney(remainingUnderCollection)}
-          sub="مستحقات معلقة على العملاء"
+          sub={t('مستحقات معلقة على العملاء')}
         />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-700">حركة المبيعات اليومية</h2>
-        <p className="mb-4 text-xs text-slate-400">تطور حجم المبيعات بالريال السعودي على مدار الفترة</p>
+        <h2 className="text-sm font-semibold text-slate-700">{t('حركة المبيعات اليومية')}</h2>
+        <p className="mb-4 text-xs text-slate-400">{t('تطور حجم المبيعات بالريال السعودي على مدار الفترة')}</p>
         {dailyMovement.length > 0 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -212,14 +214,14 @@ export default function Sales() {
           </div>
         ) : (
           <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-            لا توجد بيانات حركة مبيعات للفترة المحددة
+            {t('لا توجد بيانات حركة مبيعات للفترة المحددة')}
           </div>
         )}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-700">طرق الدفع والتحصيل</h2>
-        <p className="mb-4 text-xs text-slate-400">توزيع المبالغ المحصّلة حسب قناة الدفع</p>
+        <h2 className="text-sm font-semibold text-slate-700">{t('طرق الدفع والتحصيل')}</h2>
+        <p className="mb-4 text-xs text-slate-400">{t('توزيع المبالغ المحصّلة حسب قناة الدفع')}</p>
         {paymentBreakdown.length > 0 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -235,20 +237,20 @@ export default function Sales() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-400">لا توجد دفعات مسجلة</div>
+          <div className="flex h-40 items-center justify-center text-sm text-slate-400">{t('لا توجد دفعات مسجلة')}</div>
         )}
       </div>
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">سجل الفواتير الضريبية</h2>
-          <p className="text-sm text-slate-400">تحتسب ضريبة القيمة المضافة (15٪) تلقائياً</p>
+          <h2 className="text-lg font-bold text-slate-800">{t('سجل الفواتير الضريبية')}</h2>
+          <p className="text-sm text-slate-400">{t('تحتسب ضريبة القيمة المضافة (15٪) تلقائياً')}</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> فاتورة جديدة
+          <Plus className="h-4 w-4" /> {t('فاتورة جديدة')}
         </button>
       </div>
 
@@ -256,14 +258,14 @@ export default function Sales() {
         <table className="w-full text-start text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">رقم الفاتورة</th>
-              <th className="p-3 text-start font-medium">العميل</th>
-              <th className="p-3 text-start font-medium">قبل الضريبة</th>
-              <th className="p-3 text-start font-medium">الضريبة (15٪)</th>
-              <th className="p-3 text-start font-medium">الإجمالي</th>
-              <th className="p-3 text-start font-medium">طريقة الدفع</th>
-              <th className="p-3 text-start font-medium">الحالة</th>
-              <th className="p-3 text-start font-medium">التاريخ</th>
+              <th className="p-3 text-start font-medium">{t('رقم الفاتورة')}</th>
+              <th className="p-3 text-start font-medium">{t('العميل')}</th>
+              <th className="p-3 text-start font-medium">{t('قبل الضريبة')}</th>
+              <th className="p-3 text-start font-medium">{t('الضريبة (15٪)')}</th>
+              <th className="p-3 text-start font-medium">{t('الإجمالي')}</th>
+              <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
+              <th className="p-3 text-start font-medium">{t('الحالة')}</th>
+              <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
               <th className="p-3 text-start font-medium"></th>
             </tr>
           </thead>
@@ -288,7 +290,7 @@ export default function Sales() {
                       onClick={() => setViewingInvoice(i)}
                       className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                     >
-                      <Printer className="h-3.5 w-3.5" /> عرض / طباعة
+                      <Printer className="h-3.5 w-3.5" /> {t('عرض / طباعة')}
                     </button>
                   </td>
                 </tr>
@@ -296,7 +298,7 @@ export default function Sales() {
             {invoices.length === 0 && (
               <tr>
                 <td colSpan={9} className="p-8 text-center text-slate-400">
-                  لا توجد فواتير بعد
+                  {t('لا توجد فواتير بعد')}
                 </td>
               </tr>
             )}
@@ -311,14 +313,14 @@ export default function Sales() {
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">فاتورة جديدة</h2>
+              <h2 className="text-lg font-bold text-slate-800">{t('فاتورة جديدة')}</h2>
               <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">العميل</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('العميل')}</span>
                 <select name="customer_id" required className="input">
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -328,7 +330,7 @@ export default function Sales() {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">المبلغ شامل الضريبة (ر.س)</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('المبلغ شامل الضريبة (ر.س)')}</span>
                 <input
                   type="number"
                   name="total_amount"
@@ -341,17 +343,17 @@ export default function Sales() {
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">حالة السداد</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('حالة السداد')}</span>
                   <select name="payment_status" required className="input">
-                    <option value="unpaid">غير مسدد</option>
-                    <option value="partial">مسدد جزئياً</option>
-                    <option value="paid">مسدد بالكامل</option>
+                    <option value="unpaid">{t('غير مسدد')}</option>
+                    <option value="partial">{t('مسدد جزئياً')}</option>
+                    <option value="paid">{t('مسدد بالكامل')}</option>
                   </select>
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
                   <select name="payment_method" className="input">
-                    <option value="">بدون تحديد</option>
+                    <option value="">{t('بدون تحديد')}</option>
                     {paymentMethods
                       .filter((m) => m.is_active)
                       .map((m) => (
@@ -365,15 +367,15 @@ export default function Sales() {
 
               <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                 <div className="flex justify-between text-slate-500">
-                  <span>المبلغ قبل الضريبة</span>
+                  <span>{t('المبلغ قبل الضريبة')}</span>
                   <span>{formatMoney(subtotalPreview)}</span>
                 </div>
                 <div className="flex justify-between text-slate-500">
-                  <span>الضريبة (15٪)</span>
+                  <span>{t('الضريبة (15٪)')}</span>
                   <span>{formatMoney(vatPreview)}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-800">
-                  <span>الإجمالي شامل الضريبة</span>
+                  <span>{t('الإجمالي شامل الضريبة')}</span>
                   <span>{formatMoney(previewTotal)}</span>
                 </div>
               </div>
@@ -383,7 +385,7 @@ export default function Sales() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'جارِ الحفظ…' : 'إصدار الفاتورة'}
+              {submitting ? t('جارِ الحفظ…') : t('إصدار الفاتورة')}
             </button>
           </form>
         </div>

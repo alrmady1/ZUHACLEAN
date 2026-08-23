@@ -5,6 +5,7 @@ import type { Appointment, Customer, Invoice, PaymentMethodOption } from '../../
 import { VAT_RATE } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from './InvoiceDocument.js';
+import { useI18n } from '../lib/i18n.js';
 
 export default function PayAppointmentModal({
   appointment,
@@ -19,6 +20,7 @@ export default function PayAppointmentModal({
   onClose: () => void;
   onPaid: () => void;
 }) {
+  const { t } = useI18n();
   const activeMethods = paymentMethods.filter((m) => m.is_active);
   const [amount, setAmount] = useState(appointment.remaining_amount);
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
@@ -74,7 +76,7 @@ export default function PayAppointmentModal({
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
-            <Wallet className="h-5 w-5 text-brand-600" /> تحصيل الدفعة وإصدار الفاتورة
+            <Wallet className="h-5 w-5 text-brand-600" /> {t('تحصيل الدفعة وإصدار الفاتورة')}
           </h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -83,24 +85,24 @@ export default function PayAppointmentModal({
 
         <div className="mb-4 space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
           <div className="flex justify-between text-slate-500">
-            <span>إجمالي مبلغ الموعد (شامل الضريبة)</span>
+            <span>{t('إجمالي مبلغ الموعد (شامل الضريبة)')}</span>
             <span className="font-semibold text-slate-800">{formatMoney(appointment.amount)}</span>
           </div>
           {appointment.total_paid > 0 && (
             <div className="flex justify-between text-slate-500">
-              <span>مدفوع سابقًا</span>
+              <span>{t('مدفوع سابقًا')}</span>
               <span>{formatMoney(appointment.total_paid)}</span>
             </div>
           )}
           <div className="flex justify-between font-semibold text-slate-800">
-            <span>المتبقي</span>
+            <span>{t('المتبقي')}</span>
             <span>{formatMoney(appointment.remaining_amount)}</span>
           </div>
         </div>
 
         <div className="space-y-3">
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">المبلغ المراد تحصيله (ر.س)</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('المبلغ المراد تحصيله (ر.س)')}</span>
             <input
               type="number"
               min={0.01}
@@ -113,9 +115,9 @@ export default function PayAppointmentModal({
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
             <select value={method} onChange={(e) => setMethod(e.target.value)} required className="input">
-              <option value="">اختر طريقة الدفع</option>
+              <option value="">{t('اختر طريقة الدفع')}</option>
               {activeMethods.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -130,7 +132,7 @@ export default function PayAppointmentModal({
           disabled={submitting || !method || amount <= 0}
           className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
         >
-          {submitting ? 'جارِ التحصيل…' : 'تأكيد الدفع وإصدار الفاتورة'}
+          {submitting ? t('جارِ التحصيل…') : t('تأكيد الدفع وإصدار الفاتورة')}
         </button>
       </form>
     </div>

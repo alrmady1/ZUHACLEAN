@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Sparkles, User, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 
 export default function Login() {
   const { user, loading, login } = useAuth();
+  const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
@@ -20,7 +22,7 @@ export default function Login() {
     try {
       await login(username.trim(), password, remember);
     } catch (err) {
-      let message = 'تعذر تسجيل الدخول';
+      let message = t('تعذر تسجيل الدخول');
       try {
         const parsed = JSON.parse((err as Error).message);
         if (parsed?.error) message = parsed.error;
@@ -40,13 +42,13 @@ export default function Login() {
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600">
             <Sparkles className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">مرحباً بك في زهى الأعمال</h1>
-          <p className="mt-1 text-sm text-slate-400">لأعمال الصيانة والتنظيف</p>
+          <h1 className="text-xl font-bold text-slate-800">{t('مرحباً بك في زهى الأعمال')}</h1>
+          <p className="mt-1 text-sm text-slate-400">{t('لأعمال الصيانة والتنظيف')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">اسم المستخدم</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('اسم المستخدم')}</span>
             <div className="relative">
               <User className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -56,13 +58,13 @@ export default function Login() {
                 required
                 autoFocus
                 className="input ps-9"
-                placeholder="اسم المستخدم"
+                placeholder={t('اسم المستخدم')}
               />
             </div>
           </label>
 
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">كلمة المرور</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('كلمة المرور')}</span>
             <div className="relative">
               <Lock className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -89,7 +91,7 @@ export default function Login() {
               onChange={(e) => setRemember(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
-            تذكرني
+            {t('تذكرني')}
           </label>
 
           <button
@@ -97,7 +99,7 @@ export default function Login() {
             disabled={submitting}
             className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
           >
-            {submitting ? 'جارِ تسجيل الدخول…' : 'تسجيل الدخول'}
+            {submitting ? t('جارِ تسجيل الدخول…') : t('تسجيل الدخول')}
           </button>
         </form>
       </div>

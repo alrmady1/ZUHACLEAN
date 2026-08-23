@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { X, Plus, Wallet, Receipt, FileText, TrendingUp, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, CustodyInvoice, Profile, PaymentMethodOption } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ROLE_LABELS_AR, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
 
 interface HolderSummary {
   holderId: string;
@@ -28,6 +29,7 @@ interface HolderSummary {
 // CUSTODY_CATEGORY_NAME), so all the existing totals/reports keep working.
 export function CustodyTab() {
   const { user, allProfiles } = useAuth();
+  const { t, tt, roleLabel } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
@@ -51,7 +53,7 @@ export function CustodyTab() {
       const id = e.custody_holder_id;
       const existing = map.get(id) ?? {
         holderId: id,
-        name: e.custody_holder_name ?? 'موظف',
+        name: e.custody_holder_name ?? t('موظف'),
         profile: allProfiles.find((p) => p.id === id),
         given: 0,
         spent: 0,
@@ -79,16 +81,16 @@ export function CustodyTab() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">العهد</h2>
+          <h2 className="text-lg font-bold text-slate-800">{t('العهد')}</h2>
           <p className="text-sm text-slate-400">
-            عهدة كل موظف على أساس مدين ودائن: العهدة المستلمة مدين، والفواتير المدخلة دائن، والفرق بينهما هو الرصيد المتبقي
+            {t('عهدة كل موظف على أساس مدين ودائن: العهدة المستلمة مدين، والفواتير المدخلة دائن، والفرق بينهما هو الرصيد المتبقي')}
           </p>
         </div>
         <button
           onClick={() => setShowNewGrant(true)}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
         >
-          <Plus className="h-4 w-4" /> عهدة جديدة
+          <Plus className="h-4 w-4" /> {t('عهدة جديدة')}
         </button>
       </div>
 
@@ -105,20 +107,20 @@ export function CustodyTab() {
               </div>
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-slate-800">{h.name}</div>
-                {h.profile && <div className="text-xs text-slate-400">{ROLE_LABELS_AR[h.profile.role]}</div>}
+                {h.profile && <div className="text-xs text-slate-400">{roleLabel(h.profile.role)}</div>}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-xl bg-slate-50 px-2 py-2">
-                <div className="text-[11px] text-slate-400">مدين</div>
+                <div className="text-[11px] text-slate-400">{t('مدين')}</div>
                 <div className="text-sm font-semibold text-slate-700">{formatMoney(h.given)}</div>
               </div>
               <div className="rounded-xl bg-slate-50 px-2 py-2">
-                <div className="text-[11px] text-slate-400">دائن</div>
+                <div className="text-[11px] text-slate-400">{t('دائن')}</div>
                 <div className="text-sm font-semibold text-slate-700">{formatMoney(h.spent)}</div>
               </div>
               <div className={`rounded-xl px-2 py-2 ${h.remaining >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                <div className="text-[11px] text-slate-400">المتبقي</div>
+                <div className="text-[11px] text-slate-400">{t('المتبقي')}</div>
                 <div className={`text-sm font-semibold ${h.remaining >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                   {formatMoney(h.remaining)}
                 </div>
@@ -128,7 +130,10 @@ export function CustodyTab() {
         ))}
         {holders.length === 0 && (
           <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
-            لا توجد عهد مسجّلة بعد — اضغط "عهدة جديدة" أعلاه لبدء عهدة موظف
+            {tt(
+              'لا توجد عهد مسجّلة بعد — اضغط "عهدة جديدة" أعلاه لبدء عهدة موظف',
+              'No custody records yet — click "New Custody" above to start an employee custody',
+            )}
           </div>
         )}
       </div>
@@ -180,6 +185,7 @@ function HolderDetail({
   onChanged: () => void;
 }) {
   const { user } = useAuth();
+  const { t, tt, roleLabel } = useI18n();
   const canDelete = user ? CAN_DELETE_CUSTODY_ROLES.includes(user.role) : false;
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -210,8 +216,8 @@ function HolderDetail({
   async function handleDeleteEntry(kind: 'grant' | 'invoice', id: string) {
     const message =
       kind === 'grant'
-        ? 'حذف قيد العهدة (مدين) هذا؟ سيقل رصيد الموظف المستحق بهذا المبلغ. لا يمكن التراجع عن هذا الإجراء.'
-        : 'حذف هذه الفاتورة (دائن)؟ سيعود المبلغ لرصيد العهدة المتبقي. لا يمكن التراجع عن هذا الإجراء.';
+        ? t('حذف قيد العهدة (مدين) هذا؟ سيقل رصيد الموظف المستحق بهذا المبلغ. لا يمكن التراجع عن هذا الإجراء.')
+        : t('حذف هذه الفاتورة (دائن)؟ سيعود المبلغ لرصيد العهدة المتبقي. لا يمكن التراجع عن هذا الإجراء.');
     if (!window.confirm(message)) return;
     await api.del(kind === 'grant' ? `/expenses/${id}` : `/custody-invoices/${id}`);
     onChanged();
@@ -232,7 +238,7 @@ function HolderDetail({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">{holder.name}</h2>
-              {holder.profile && <p className="text-xs text-slate-400">{ROLE_LABELS_AR[holder.profile.role]}</p>}
+              {holder.profile && <p className="text-xs text-slate-400">{roleLabel(holder.profile.role)}</p>}
             </div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
@@ -243,18 +249,18 @@ function HolderDetail({
         <div className="mb-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-slate-50 p-3 text-center">
             <div className="mb-1 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-              <Wallet className="h-3 w-3" /> مدين (عهدة مستلمة)
+              <Wallet className="h-3 w-3" /> {t('مدين (عهدة مستلمة)')}
             </div>
             <div className="text-base font-bold text-slate-800">{formatMoney(holder.given)}</div>
           </div>
           <div className="rounded-xl bg-slate-50 p-3 text-center">
             <div className="mb-1 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-              <Receipt className="h-3 w-3" /> دائن (فواتير مخصومة)
+              <Receipt className="h-3 w-3" /> {t('دائن (فواتير مخصومة)')}
             </div>
             <div className="text-base font-bold text-slate-800">{formatMoney(holder.spent)}</div>
           </div>
           <div className={`rounded-xl p-3 text-center ${holder.remaining >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-            <div className="mb-1 text-[11px] text-slate-400">الرصيد المتبقي</div>
+            <div className="mb-1 text-[11px] text-slate-400">{t('الرصيد المتبقي')}</div>
             <div className={`text-base font-bold ${holder.remaining >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
               {formatMoney(holder.remaining)}
             </div>
@@ -262,19 +268,19 @@ function HolderDetail({
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-700">سجل الحركات</h3>
+          <h3 className="text-sm font-semibold text-slate-700">{t('سجل الحركات')}</h3>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowTopUp(true)}
               className="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100"
             >
-              <TrendingUp className="h-3.5 w-3.5" /> زيادة العهدة
+              <TrendingUp className="h-3.5 w-3.5" /> {t('زيادة العهدة')}
             </button>
             <button
               onClick={() => setShowInvoiceForm(true)}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
             >
-              <Plus className="h-3.5 w-3.5" /> إضافة فاتورة لخصمها من العهدة
+              <Plus className="h-3.5 w-3.5" /> {t('إضافة فاتورة لخصمها من العهدة')}
             </button>
           </div>
         </div>
@@ -283,36 +289,36 @@ function HolderDetail({
           <table className="w-full text-start text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-400">
-                <th className="p-3 text-start font-medium">التاريخ</th>
-                <th className="p-3 text-start font-medium">البيان</th>
-                <th className="p-3 text-start font-medium">رقم الفاتورة</th>
-                <th className="p-3 text-start font-medium">النوع</th>
-                <th className="p-3 text-start font-medium">المبلغ</th>
+                <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
+                <th className="p-3 text-start font-medium">{t('البيان')}</th>
+                <th className="p-3 text-start font-medium">{t('رقم الفاتورة')}</th>
+                <th className="p-3 text-start font-medium">{t('النوع')}</th>
+                <th className="p-3 text-start font-medium">{t('المبلغ')}</th>
                 {canDelete && <th className="p-3 text-start font-medium"></th>}
               </tr>
             </thead>
             <tbody>
-              {timeline.map((t) => (
-                <tr key={t.id} className="border-b border-slate-50 last:border-0">
-                  <td className="p-3 text-slate-600">{formatDateAr(t.date)}</td>
-                  <td className="p-3 font-medium text-slate-700">{t.title}</td>
-                  <td className="p-3 text-slate-500">{t.ref ?? '—'}</td>
+              {timeline.map((row) => (
+                <tr key={row.id} className="border-b border-slate-50 last:border-0">
+                  <td className="p-3 text-slate-600">{formatDateAr(row.date)}</td>
+                  <td className="p-3 font-medium text-slate-700">{row.title}</td>
+                  <td className="p-3 text-slate-500">{row.ref ?? '—'}</td>
                   <td className="p-3">
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === 'grant' ? 'bg-brand-50 text-brand-700' : 'bg-amber-50 text-amber-700'}`}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.kind === 'grant' ? 'bg-brand-50 text-brand-700' : 'bg-amber-50 text-amber-700'}`}
                     >
-                      {t.kind === 'grant' ? 'مدين' : 'دائن'}
+                      {row.kind === 'grant' ? t('مدين') : t('دائن')}
                     </span>
                   </td>
-                  <td className={`p-3 font-semibold ${t.kind === 'grant' ? 'text-emerald-700' : 'text-red-600'}`}>
-                    {t.kind === 'grant' ? '+' : '-'}
-                    {formatMoney(t.amount)}
+                  <td className={`p-3 font-semibold ${row.kind === 'grant' ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {row.kind === 'grant' ? '+' : '-'}
+                    {formatMoney(row.amount)}
                   </td>
                   {canDelete && (
                     <td className="p-3">
                       <button
-                        onClick={() => handleDeleteEntry(t.kind, t.id)}
-                        title="حذف"
+                        onClick={() => handleDeleteEntry(row.kind, row.id)}
+                        title={t('حذف')}
                         className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -324,7 +330,7 @@ function HolderDetail({
               {timeline.length === 0 && (
                 <tr>
                   <td colSpan={canDelete ? 6 : 5} className="p-8 text-center text-slate-400">
-                    لا توجد حركات بعد
+                    {t('لا توجد حركات بعد')}
                   </td>
                 </tr>
               )}
@@ -340,7 +346,9 @@ function HolderDetail({
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">فاتورة جديدة — خصم من عهدة {holder.name}</h2>
+              <h2 className="text-lg font-bold text-slate-800">
+                {tt(`فاتورة جديدة — خصم من عهدة ${holder.name}`, `New Invoice — Deduct from ${holder.name}'s Custody`)}
+              </h2>
               <button type="button" onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
@@ -348,26 +356,26 @@ function HolderDetail({
             <div className="space-y-3">
               <label className="block text-sm">
                 <span className="mb-1 flex items-center gap-1.5 font-medium text-slate-600">
-                  البيان <FileText className="h-3.5 w-3.5 text-brand-500" />
+                  {t('البيان')} <FileText className="h-3.5 w-3.5 text-brand-500" />
                 </span>
-                <input name="title" required className="input" placeholder="مثال: فاتورة قطع غيار سيارة" />
+                <input name="title" required className="input" placeholder={t('مثال: فاتورة قطع غيار سيارة')} />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
                   <input type="number" name="amount" min={0} step="0.01" required className="input" />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">التاريخ</span>
+                  <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
                   <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
                 </label>
               </div>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">رقم الفاتورة (اختياري)</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('رقم الفاتورة (اختياري)')}</span>
                 <input name="invoice_number" className="input" />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">ملاحظات (اختياري)</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
                 <textarea name="notes" rows={2} className="input resize-none" />
               </label>
             </div>
@@ -376,7 +384,7 @@ function HolderDetail({
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? 'جارِ الحفظ…' : 'حفظ الفاتورة وخصمها من العهدة'}
+              {submitting ? t('جارِ الحفظ…') : t('حفظ الفاتورة وخصمها من العهدة')}
             </button>
           </form>
         </div>
@@ -427,6 +435,7 @@ function GrantForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t, tt, roleLabel } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   const isTopUp = Boolean(holderId);
 
@@ -438,7 +447,7 @@ function GrantForm({
     const targetProfile = profiles.find((p) => p.id === targetId);
     try {
       await api.post('/expenses', {
-        title: form.get('title') || (isTopUp ? `زيادة عهدة ${holderName}` : 'عهدة جديدة'),
+        title: form.get('title') || (isTopUp ? tt(`زيادة عهدة ${holderName}`, `Increase ${holderName} Custody`) : t('عهدة جديدة')),
         category: CUSTODY_CATEGORY_NAME,
         amount: Number(form.get('amount')),
         date: form.get('date'),
@@ -459,7 +468,7 @@ function GrantForm({
     <div className={`fixed inset-0 flex items-center justify-center bg-slate-900/40 p-4 ${zIndexTop ? 'z-[60]' : 'z-50'}`}>
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800">{isTopUp ? `زيادة عهدة ${holderName}` : 'عهدة جديدة'}</h2>
+          <h2 className="text-lg font-bold text-slate-800">{isTopUp ? tt(`زيادة عهدة ${holderName}`, `Increase ${holderName} Custody`) : t('عهدة جديدة')}</h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
@@ -467,33 +476,37 @@ function GrantForm({
         <div className="space-y-3">
           {!isTopUp && (
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">الموظف</span>
+              <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
               <select name="custody_holder_id" required className="input">
-                <option value="">اختر موظف</option>
+                <option value="">{t('اختر موظف')}</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name} — {ROLE_LABELS_AR[p.role]}
+                    {p.full_name} — {roleLabel(p.role)}
                   </option>
                 ))}
               </select>
             </label>
           )}
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">البيان (اختياري)</span>
-            <input name="title" className="input" placeholder={isTopUp ? `مثال: زيادة عهدة ${holderName}` : 'مثال: عهدة شهر أغسطس'} />
+            <span className="mb-1 block font-medium text-slate-600">{t('البيان (اختياري)')}</span>
+            <input
+              name="title"
+              className="input"
+              placeholder={isTopUp ? tt(`مثال: زيادة عهدة ${holderName}`, `Example: Increase ${holderName} Custody`) : t('مثال: عهدة شهر أغسطس')}
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">المبلغ (ر.س)</span>
+              <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
               <input type="number" name="amount" min={0} step="0.01" required className="input" />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">التاريخ</span>
+              <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
               <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
             </label>
           </div>
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">طريقة الدفع</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
             <select name="payment_method" required className="input">
               {paymentMethods
                 .filter((m) => m.is_active)
@@ -505,7 +518,7 @@ function GrantForm({
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">ملاحظات (اختياري)</span>
+            <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
             <textarea name="notes" rows={2} className="input resize-none" />
           </label>
         </div>
@@ -514,7 +527,7 @@ function GrantForm({
           disabled={submitting}
           className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
         >
-          {submitting ? 'جارِ الحفظ…' : isTopUp ? 'حفظ الزيادة' : 'حفظ العهدة الجديدة'}
+          {submitting ? t('جارِ الحفظ…') : isTopUp ? t('حفظ الزيادة') : t('حفظ العهدة الجديدة')}
         </button>
       </form>
     </div>
