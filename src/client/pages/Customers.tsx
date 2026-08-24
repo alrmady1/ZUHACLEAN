@@ -11,6 +11,10 @@ import { useI18n } from '../lib/i18n.js';
 export default function Customers() {
   const { t, tt, lang } = useI18n();
   const [searchParams] = useSearchParams();
+  // فتح صفحة العملاء من "تفاصيل الموعد" (النقر على اسم العميل) يمرّر
+  // ?customerId=... بدل نص بحث — يعزل هذا العميل تحديداً بمعرّفه الدقيق
+  // (لا بحث نصي قد يطابق أكثر من عميل بنفس الاسم) ويفتح سجله تلقائياً.
+  const customerIdParam = searchParams.get('customerId');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -37,6 +41,14 @@ export default function Customers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // القادم من تفاصيل موعد بـ ?customerId=... يفتح سجل ذلك العميل تلقائياً
+  // موسَّعاً — بحيث يرى كامل تفاصيله وسجل زياراته فور الوصول، دون نقرة
+  // إضافية على "عرض السجل".
+  useEffect(() => {
+    if (customerIdParam) setExpanded((prev) => new Set(prev).add(customerIdParam));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerIdParam]);
+
   const visitsByCustomer = useMemo(() => {
     const map = new Map<string, Appointment[]>();
     for (const a of appointments) map.set(a.customer_id, [...(map.get(a.customer_id) ?? []), a]);
@@ -44,12 +56,13 @@ export default function Customers() {
   }, [appointments]);
 
   const filtered = useMemo(() => {
+    if (customerIdParam) return customers.filter((c) => c.id === customerIdParam);
     const q = search.trim().toLowerCase();
     if (!q) return customers;
     return customers.filter((c) =>
       [c.name, c.phone, c.district, c.address, c.city].filter(Boolean).join(' ').toLowerCase().includes(q),
     );
-  }, [customers, search]);
+  }, [customers, search, customerIdParam]);
 
   function toggleExpanded(id: string) {
     setExpanded((prev) => {

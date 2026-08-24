@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
@@ -53,6 +54,7 @@ export default function AppointmentDetailModal({
 }) {
   const { user } = useAuth();
   const { t, tt, roleLabel } = useI18n();
+  const navigate = useNavigate();
   const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
   const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
@@ -225,7 +227,21 @@ export default function AppointmentDetailModal({
           {/* Customer + location */}
           <div className="rounded-2xl bg-slate-900 p-4 text-white">
             <div className="mb-2 text-xs text-slate-400">{t('بيانات العميل والموقع')}</div>
-            <div className="mb-1 text-sm font-semibold">{appointment.customer_name_snapshot}</div>
+            {customer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate(`/customers?customerId=${customer.id}`);
+                }}
+                title={t('فتح صفحة العميل للتعديل والاطلاع على كامل التفاصيل')}
+                className="mb-1 text-sm font-semibold text-white underline decoration-white/30 underline-offset-2 hover:decoration-white"
+              >
+                {appointment.customer_name_snapshot}
+              </button>
+            ) : (
+              <div className="mb-1 text-sm font-semibold">{appointment.customer_name_snapshot}</div>
+            )}
             {appointment.address_snapshot && (
               <div className="mb-3 flex items-start gap-1.5 text-xs text-slate-300">
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span>{appointment.address_snapshot}</span>

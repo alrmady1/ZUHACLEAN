@@ -13,6 +13,7 @@ export const AR_TO_EN: Record<string, string> = {
   "إجمالي مهامك اليوم": "Your total tasks today",
   "ربط الفنيين بالمشرفين": "Link Technicians to Supervisors",
   "تعديل وقت الموعد": "Edit Appointment Time",
+  "فتح صفحة العميل للتعديل والاطلاع على كامل التفاصيل": "Open the customer's page to edit and view all details",
   "اختر لكل فني المشرف الذي يتبع له — أي موعد يُسند لهذا المشرف سيظهر تلقائياً في بوابة الفني لكل فني مرتبط به.": "Choose which supervisor each technician reports to — any appointment assigned to that supervisor will automatically appear in the technician portal for every technician linked to them.",
   "لا يوجد فنيون مرتبطون بهذا المشرف بعد": "No technicians linked to this supervisor yet",
   "لا يوجد مشرفون بعد — أضِفهم أولاً من تبويب المستخدمون": "No supervisors yet — add them first from the Users tab",
