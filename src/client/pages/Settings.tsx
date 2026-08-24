@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Plus,
@@ -24,6 +24,7 @@ import {
   Wallet as ExpensesIcon,
   Link2 as TeamLinkIcon,
   ShieldCheck as PermissionsIcon,
+  GripVertical as DragHandleIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
@@ -1447,25 +1448,46 @@ function TeamLinksTab() {
 // (ROLES) — فتشمل تلقائياً أي موظف جديد يُضاف مستقبلاً بأحد هذه المسميات،
 // بلا حاجة لأي إعداد إضافي هنا.
 // ---------------------------------------------------------------------------
+type PermissionRow = [string, { label: string; roles: UserRole[] }];
+
 function PermissionsTab() {
   const { t, roleLabel } = useI18n();
   const { refreshPermissions } = useAuth();
-  const [rows, setRows] = useState<Record<string, { label: string; roles: UserRole[] }> | null>(null);
+  // مصفوفة مرتَّبة (لا كائن) عمداً — السحب والإفلات يعيد ترتيب هذه
+  // المصفوفة مباشرة، والخادم يرجعها مرتَّبة بالفعل حسب permissionsOrder
+  // المحفوظة (انظر orderedPermissionKeys في api.ts).
+  const [rows, setRows] = useState<PermissionRow[] | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const dragKeyRef = useRef<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  // ترتيب المفاتيح الحالي، مُحدَّث بشكل متزامن (لا عبر setState) في كل
+  // dragover — React يجمّع تحديثات useState فلا تنعكس بالضرورة في نفس
+  // اللحظة، فلو اعتمد handleDrop على rows من الإغلاق (closure) مباشرة قد
+  // يرسل ترتيباً قديماً عند سحب سريع (drop يتبع dragover الأخير بلا فاصل
+  // إعادة رسم بينهما). هذا المرجع يبقى صحيحاً دائماً بغض النظر عن التوقيت.
+  const orderRef = useRef<string[]>([]);
 
   function refresh() {
-    api.get<Record<string, { label: string; roles: UserRole[] }>>('/permissions').then(setRows);
+    api.get<Record<string, { label: string; roles: UserRole[] }>>('/permissions').then((data) => {
+      const entries = Object.entries(data);
+      orderRef.current = entries.map(([k]) => k);
+      setRows(entries);
+    });
   }
   useEffect(refresh, []);
 
   async function toggle(key: string, role: UserRole, checked: boolean) {
     if (!rows) return;
-    const current = rows[key].roles;
+    const idx = rows.findIndex(([k]) => k === key);
+    if (idx === -1) return;
+    const current = rows[idx][1].roles;
     const nextRoles = checked ? [...current, role] : current.filter((r) => r !== role);
     setSavingKey(key);
     // تحديث متفائل فوري في الجدول المحلي، ثم حفظ على الخادم — يبقى
     // متجاوباً بصرياً حتى مع بطء الشبكة.
-    setRows({ ...rows, [key]: { ...rows[key], roles: nextRoles } });
+    const next = [...rows];
+    next[idx] = [key, { ...next[idx][1], roles: nextRoles }];
+    setRows(next);
     try {
       await api.patch(`/permissions/${key}`, { roles: nextRoles });
       // يحدّث can() في كل الواجهة فوراً (مثلاً لو عدَّل المدير العام صلاحية
@@ -1476,6 +1498,38 @@ function PermissionsTab() {
     }
   }
 
+  // سحب وإفلات (Drag & Drop) لإعادة ترتيب الصفوف — يعيد ترتيب rows بصرياً
+  // بشكل حي أثناء السحب فوق أي صف آخر، ثم يحفظ الترتيب الكامل الجديد على
+  // الخادم فور الإفلات (PATCH واحد بكل المفاتيح، لا عنصراً عنصراً).
+  function handleDragStart(key: string) {
+    dragKeyRef.current = key;
+  }
+  function handleDragOver(e: DragEvent<HTMLTableRowElement>, overKey: string) {
+    e.preventDefault();
+    setDragOverKey(overKey);
+    const draggedKey = dragKeyRef.current;
+    if (!rows || !draggedKey || draggedKey === overKey) return;
+    const order = orderRef.current;
+    const fromIdx = order.indexOf(draggedKey);
+    const toIdx = order.indexOf(overKey);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const nextOrder = [...order];
+    const [moved] = nextOrder.splice(fromIdx, 1);
+    nextOrder.splice(toIdx, 0, moved);
+    orderRef.current = nextOrder; // synchronous — correct even if drop follows immediately
+    const byKey = new Map(rows.map((r) => [r[0], r]));
+    setRows(nextOrder.map((k) => byKey.get(k)!));
+  }
+  async function handleDrop() {
+    dragKeyRef.current = null;
+    setDragOverKey(null);
+    await api.patch('/permissions/order', { order: orderRef.current });
+  }
+  function handleDragEnd() {
+    dragKeyRef.current = null;
+    setDragOverKey(null);
+  }
+
   if (!rows) {
     return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">{t('جارِ التحميل…')}</div>;
   }
@@ -1483,12 +1537,13 @@ function PermissionsTab() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
-        {t('حدِّد لكل صلاحية المسميات الوظيفية المسموح لها بها — التغيير يُحفظ فوراً وينطبق على كل من يحمل هذا المسمى، بمن فيهم من يُضاف مستقبلاً.')}
+        {t('حدِّد لكل صلاحية المسميات الوظيفية المسموح لها بها — التغيير يُحفظ فوراً وينطبق على كل من يحمل هذا المسمى، بمن فيهم من يُضاف مستقبلاً. اسحب أي صف من مقبض السحب لإعادة ترتيب الصلاحيات.')}
       </div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-start text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="w-8 p-3"></th>
               <th className="p-3 text-start font-medium">{t('الصلاحية')}</th>
               {ROLES.map((role) => (
                 <th key={role} className="p-3 text-center font-medium">
@@ -1498,8 +1553,21 @@ function PermissionsTab() {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(rows).map(([key, { label, roles }]) => (
-              <tr key={key} className={`border-b border-slate-50 last:border-0 ${savingKey === key ? 'opacity-50' : ''}`}>
+            {rows.map(([key, { label, roles }]) => (
+              <tr
+                key={key}
+                draggable
+                onDragStart={() => handleDragStart(key)}
+                onDragOver={(e) => handleDragOver(e, key)}
+                onDrop={handleDrop}
+                onDragEnd={handleDragEnd}
+                className={`border-b border-slate-50 last:border-0 ${savingKey === key ? 'opacity-50' : ''} ${
+                  dragOverKey === key ? 'bg-brand-50/60' : ''
+                }`}
+              >
+                <td className="cursor-grab p-3 text-slate-300 hover:text-slate-500 active:cursor-grabbing" title={t('اسحب لإعادة الترتيب')}>
+                  <DragHandleIcon className="h-4 w-4" />
+                </td>
                 <td className="p-3 font-medium text-slate-700">{t(label)}</td>
                 {ROLES.map((role) => (
                   <td key={role} className="p-3 text-center">

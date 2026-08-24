@@ -27,13 +27,34 @@ export const api = Router();
 // صلاحية لم تُعدَّل يدوياً بعد — أو أُضيفت حديثاً للكود — تُقرأ بقيمتها
 // الافتراضية دون الحاجة لأي migration على البيانات المخزَّنة.
 // ---------------------------------------------------------------------------
+// ترتيب الصفوف الحالي: كل مفتاح محفوظ في permissionsOrder (بترتيبه)، ثم أي
+// صلاحية جديدة أُضيفت للكود ولم تُدرَج في الترتيب المحفوظ بعد — تُذيَّل
+// تلقائياً في النهاية بترتيبها الطبيعي في PERMISSION_LABELS_AR.
+function orderedPermissionKeys(): PermissionKey[] {
+  const allKeys = Object.keys(PERMISSION_LABELS_AR) as PermissionKey[];
+  const known = new Set<string>(allKeys);
+  const savedOrder = store.permissionsOrder.list().filter((k) => known.has(k)) as PermissionKey[];
+  const missing = allKeys.filter((k) => !savedOrder.includes(k));
+  return [...savedOrder, ...missing];
+}
+
 api.get('/permissions', (_req, res) => {
   const stored = store.permissions.list();
+  // كائن JS يحافظ على ترتيب إدخال مفاتيحه النصية — بناء الاستجابة بهذا
+  // الترتيب يكفي لتُعرَض بنفس الترتيب في جدول العميل (Object.entries).
   const merged: Record<string, { label: string; roles: UserRole[] }> = {};
-  for (const key of Object.keys(PERMISSION_LABELS_AR) as PermissionKey[]) {
+  for (const key of orderedPermissionKeys()) {
     merged[key] = { label: PERMISSION_LABELS_AR[key], roles: stored[key] ?? DEFAULT_PERMISSIONS[key] };
   }
   res.json(merged);
+});
+
+// يجب تسجيلها قبل '/permissions/:key' أدناه، وإلا التقطها ذلك المسار
+// الأعم (بمعاملة "order" كأنه مفتاح صلاحية).
+api.patch('/permissions/order', (req, res) => {
+  const order = Array.isArray(req.body?.order) ? (req.body.order as string[]) : [];
+  const updated = store.permissionsOrder.update(order);
+  res.json(updated);
 });
 
 api.patch('/permissions/:key', (req, res) => {

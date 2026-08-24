@@ -49,6 +49,11 @@ interface DbShape {
   // مفتاح غائب من هذا الكائن (سجل قديم لم يُعدَّل بعد، أو صلاحية جديدة
   // أُضيفت للكود لاحقاً) يعني: استخدم DEFAULT_PERMISSIONS لتلك الصلاحية.
   permissions: Partial<Record<PermissionKey, UserRole[]>>;
+  // الترتيب المخصَّص لصفوف جدول الصلاحيات (السحب والإفلات) — قائمة
+  // مفاتيح فقط، بترتيب العرض. مفاتيح غائبة عنها (صلاحية جديدة أُضيفت
+  // للكود بعد آخر تعديل ترتيب) تُذيَّل تلقائياً في نهاية الجدول — انظر
+  // orderedPermissionKeys في api.ts.
+  permissionsOrder: string[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -313,6 +318,7 @@ function seed(): DbShape {
     expenseCategories,
     custodyInvoices: [],
     permissions: {},
+    permissionsOrder: [],
   };
 }
 
@@ -339,6 +345,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.permissions) parsed.permissions = {};
+    if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     return parsed;
   }
   const initial = seed();
@@ -549,6 +556,17 @@ export const store = {
       db.permissions = { ...db.permissions, [key]: roles };
       persist();
       return db.permissions;
+    },
+  },
+  // ترتيب صفوف جدول الصلاحيات (سحب وإفلات) — قائمة مفاتيح كاملة تُستبدَل
+  // دفعة واحدة في كل مرة (وليس عنصراً عنصراً)، لأن كل عملية سحب تنتج
+  // ترتيباً جديداً كاملاً من جهة العميل.
+  permissionsOrder: {
+    list: () => db.permissionsOrder,
+    update: (order: string[]) => {
+      db.permissionsOrder = order;
+      persist();
+      return db.permissionsOrder;
     },
   },
   custodyInvoices: {
