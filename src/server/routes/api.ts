@@ -265,6 +265,15 @@ api.patch('/appointments/:id', (req, res) => {
   res.json(updated);
 });
 
+// حذف الموعد بالكامل — للمدير العام فقط (مقيَّد في الواجهة عبر
+// CAN_DELETE_APPOINTMENT_ROLES؛ لا يوجد تحقق صلاحيات من جهة الخادم في هذا
+// التطبيق أصلاً، مطابقةً لبقية نقاط التحكم بالصلاحيات هنا).
+api.delete('/appointments/:id', (req, res) => {
+  const removed = store.appointments.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
 // Technician: attach a before/after photo. The client sends a base64 data
 // URL; we upload it to Supabase Storage and keep only the resulting URL
 // (never the raw base64) on the appointment record.

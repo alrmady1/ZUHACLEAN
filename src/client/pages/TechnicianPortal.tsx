@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { MapPin, Camera, Image as ImageIcon, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -7,6 +7,7 @@ import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 
 function AppointmentCard({
   appt,
@@ -239,6 +240,8 @@ function AppointmentCard({
   );
 }
 
+type TechView = 'all' | 'day' | 'month';
+
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
   const { t } = useI18n();
@@ -247,6 +250,11 @@ export default function TechnicianPortal() {
     user?.role === 'technician' ? user.id : undefined,
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // خيارات إضافية لعرض المواعيد: "الكل" (السلوك الحالي، قائمة زمنية كاملة)،
+  // أو جدول "يومي"، أو جدول "شهري" — الأخيران يستخدمان نفس بطاقة الموعد
+  // الكاملة (صور، رفع...) لكن مقسّمة على تاريخ محدد بدل قائمة واحدة طويلة.
+  const [view, setView] = useState<TechView>('all');
+  const [calDate, setCalDate] = useState(new Date());
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -259,6 +267,29 @@ export default function TechnicianPortal() {
   const mine = appointments
     .filter((a) => a.assignments.some((x) => x.technician_id === effectiveId))
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+
+  const apptsByDate = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of mine) {
+      const key = new Date(a.scheduled_at).toDateString();
+      map.set(key, [...(map.get(key) ?? []), a]);
+    }
+    return map;
+  }, [mine]);
+
+  function shiftCalDate(dir: 1 | -1) {
+    const d = new Date(calDate);
+    if (view === 'month') d.setMonth(d.getMonth() + dir);
+    else d.setDate(d.getDate() + dir);
+    setCalDate(d);
+  }
+
+  const calLabel =
+    view === 'day'
+      ? calDate.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })
+      : calDate.toLocaleDateString('ar-SA', { month: 'long', year: 'numeric' });
+
+  const dayAppts = apptsByDate.get(calDate.toDateString()) ?? [];
 
   return (
     <div className="mx-auto max-w-md space-y-4">
@@ -284,16 +315,108 @@ export default function TechnicianPortal() {
         </label>
       )}
 
-      <div className="space-y-3">
-        {mine.map((appt) => (
-          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+        {([
+          ['all', 'الكل'],
+          ['day', 'يومي'],
+          ['month', 'شهري'],
+        ] as const).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${view === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            {t(label)}
+          </button>
         ))}
-        {mine.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
-            {t('لا توجد مهام مسندة حالياً')}
-          </div>
-        )}
       </div>
+
+      {view === 'all' && (
+        <div className="space-y-3">
+          {mine.map((appt) => (
+            <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+          ))}
+          {mine.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+              {t('لا توجد مهام مسندة حالياً')}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(view === 'day' || view === 'month') && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => shiftCalDate(-1)}
+                aria-label={t('السابق')}
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => shiftCalDate(1)}
+                aria-label={t('التالي')}
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </div>
+            <span className="text-sm font-semibold text-slate-700">{calLabel}</span>
+            <button
+              onClick={() => setCalDate(new Date())}
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {t('اليوم')}
+            </button>
+          </div>
+
+          {view === 'month' && (
+            <div className="grid grid-cols-7 gap-1 rounded-2xl border border-slate-200 bg-white p-2">
+              {WEEKDAYS_HEADER.map((d) => (
+                <div key={d} className="pb-1 text-center text-[10px] font-medium text-slate-400">
+                  {t(d)}
+                </div>
+              ))}
+              {getMonthGridDays(calDate).map((day) => {
+                const key = day.toDateString();
+                const count = apptsByDate.get(key)?.length ?? 0;
+                const inMonth = day.getMonth() === calDate.getMonth();
+                const isToday = key === new Date().toDateString();
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setCalDate(day);
+                      setView('day');
+                    }}
+                    className={`flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg border text-xs ${
+                      isToday ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-300' : 'border-transparent'
+                    } ${!inMonth ? 'opacity-30' : ''}`}
+                  >
+                    <span className={isToday ? 'font-semibold text-brand-700' : 'text-slate-600'}>{day.getDate()}</span>
+                    {count > 0 && <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {view === 'day' && (
+            <div className="space-y-3">
+              {dayAppts.map((appt) => (
+                <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+              ))}
+              {dayAppts.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+                  {t('لا توجد مواعيد في هذا اليوم')}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {lightboxUrl && (
         <div

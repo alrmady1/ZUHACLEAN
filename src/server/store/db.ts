@@ -547,6 +547,13 @@ export const store = {
       persist();
       return db.appointments[idx];
     },
+    remove: (id: string) => {
+      const idx = db.appointments.findIndex((a) => a.id === id);
+      if (idx === -1) return false;
+      db.appointments.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   invoices: {
     list: () => db.invoices,

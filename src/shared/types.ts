@@ -44,6 +44,12 @@ export const CAN_SEE_EXPENSES_ROLES: UserRole[] = ['general_manager', 'admin', '
 // العقود الدورية مخفية عن المشرف الميداني لنفس السبب.
 export const CAN_SEE_CONTRACTS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
 export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
+// حذف صور توثيق العمل من تفاصيل الموعد — للجميع ما عدا الفني الميداني
+// (نفس منطق CAN_EDIT_LOCATION_ROLES).
+export const CAN_DELETE_PHOTOS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
+// حذف الموعد بالكامل (من تفاصيله أو من قائمة/تقويم المواعيد) — للمدير
+// العام فقط.
+export const CAN_DELETE_APPOINTMENT_ROLES: UserRole[] = ['general_manager'];
 
 export type AppointmentStatus =
   | 'scheduled'

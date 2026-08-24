@@ -13,10 +13,11 @@ import {
   ChevronRight,
   ChevronLeft,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
-import { CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
+import { CAN_BOOK_APPOINTMENT_ROLES, CAN_DELETE_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
@@ -24,6 +25,7 @@ import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 
 type ScopeFilter = 'mine' | 'all' | string; // string = a specific supervisor id
 type PeriodFilter = 'all' | 'today' | 'week' | 'month';
@@ -57,22 +59,6 @@ function inPeriod(iso: string, period: PeriodFilter): boolean {
     return d >= start && d < end;
   }
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-}
-
-// Sunday-first, matching how the week actually flows in the DOM under
-// dir="rtl" (first child renders on the right) so Saturday ends up on the
-// visual left — same order the reference calendar uses.
-const WEEKDAYS_HEADER = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-
-function getMonthGridDays(monthRef: Date): Date[] {
-  const firstOfMonth = new Date(monthRef.getFullYear(), monthRef.getMonth(), 1);
-  const gridStart = new Date(firstOfMonth);
-  gridStart.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
-  return Array.from({ length: 42 }, (_, i) => {
-    const d = new Date(gridStart);
-    d.setDate(gridStart.getDate() + i);
-    return d;
-  });
 }
 
 function getWeekDays(ref: Date): Date[] {
@@ -117,6 +103,13 @@ export default function Appointments() {
 
   const canSeeAllSchedules = user ? CAN_SEE_ALL_SCHEDULES_ROLES.includes(user.role) : false;
   const canBook = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canDeleteAppointment = user ? CAN_DELETE_APPOINTMENT_ROLES.includes(user.role) : false;
+
+  async function deleteAppointment(a: Appointment) {
+    if (!window.confirm(t('حذف هذا الموعد نهائياً؟ سيُحذف مع كل صوره ومدفوعاته المرتبطة به، ولا يمكن التراجع عن هذا الإجراء.'))) return;
+    await api.del(`/appointments/${a.id}`);
+    refresh();
+  }
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicians = allProfiles.filter((p) => p.role === 'technician');
 
@@ -382,16 +375,30 @@ export default function Appointments() {
                       <AppointmentStatusBadge status={a.status} />
                     </td>
                     <td className="p-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewingAppt(a);
-                        }}
-                        title={t('عرض التفاصيل')}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewingAppt(a);
+                          }}
+                          title={t('عرض التفاصيل')}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {canDeleteAppointment && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteAppointment(a);
+                            }}
+                            title={t('حذف الموعد نهائياً')}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -536,7 +543,11 @@ export default function Appointments() {
                 .slice()
                 .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
                 .map((a) => (
-                  <div key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
+                  <div
+                    key={a.id}
+                    onClick={() => setViewingAppt(a)}
+                    className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-slate-50"
+                  >
                     <div>
                       <div className="text-sm font-semibold text-slate-700">{a.customer_name_snapshot}</div>
                       <div className="text-xs text-slate-400">{a.service_name_snapshot}</div>
@@ -544,6 +555,18 @@ export default function Appointments() {
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-slate-500">{formatTimeAr(a.scheduled_at)}</span>
                       <AppointmentStatusBadge status={a.status} />
+                      {canDeleteAppointment && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteAppointment(a);
+                          }}
+                          title={t('حذف الموعد نهائياً')}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

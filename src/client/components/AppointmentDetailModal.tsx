@@ -7,6 +7,8 @@ import {
   CAN_BOOK_APPOINTMENT_ROLES,
   CAN_ASSIGN_TEAM_ROLES,
   CAN_EDIT_LOCATION_ROLES,
+  CAN_DELETE_PHOTOS_ROLES,
+  CAN_DELETE_APPOINTMENT_ROLES,
 } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
@@ -45,6 +47,8 @@ export default function AppointmentDetailModal({
   const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
   const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
   const canEditLocation = user ? CAN_EDIT_LOCATION_ROLES.includes(user.role) : false;
+  const canDeletePhotos = user ? CAN_DELETE_PHOTOS_ROLES.includes(user.role) : false;
+  const canDeleteAppointment = user ? CAN_DELETE_APPOINTMENT_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
@@ -151,6 +155,18 @@ export default function AppointmentDetailModal({
     }
   }
 
+  async function deleteAppointment() {
+    if (!window.confirm(t('حذف هذا الموعد نهائياً؟ سيُحذف مع كل صوره ومدفوعاته المرتبطة به، ولا يمكن التراجع عن هذا الإجراء.'))) return;
+    setBusy(true);
+    try {
+      await api.del(`/appointments/${appointment.id}`);
+      onChanged();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const visiblePhotos = appointment.photos.filter((p) => photoTab === 'all' || p.stage === photoTab);
   const beforeCount = appointment.photos.filter((p) => p.stage === 'before').length;
   const afterCount = appointment.photos.filter((p) => p.stage === 'after').length;
@@ -163,9 +179,21 @@ export default function AppointmentDetailModal({
             <h2 className="text-lg font-bold text-slate-800">{t('تفاصيل المهمة والموعد')}</h2>
             <p className="text-xs text-slate-400">{t('رقم المرجع:')} #{appointment.id.slice(0, 8)}</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {canDeleteAppointment && (
+              <button
+                onClick={deleteAppointment}
+                disabled={busy}
+                title={t('حذف الموعد نهائياً')}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+            )}
+            <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4 p-5">
@@ -532,15 +560,17 @@ export default function AppointmentDetailModal({
                 {visiblePhotos.map((p) => (
                   <div key={p.id} className="relative aspect-square">
                     <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => deletePhoto(p.id)}
-                      title={t('حذف الصورة')}
-                      className="absolute end-1 top-1 rounded-lg bg-slate-900/60 p-1 text-white transition hover:bg-red-600 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canDeletePhotos && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => deletePhoto(p.id)}
+                        title={t('حذف الصورة')}
+                        className="absolute end-1 top-1 rounded-lg bg-slate-900/60 p-1 text-white transition hover:bg-red-600 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
