@@ -22,10 +22,11 @@ import {
   Wrench as ServicesIcon,
   Banknote as PaymentIcon,
   Wallet as ExpensesIcon,
+  Link2 as TeamLinkIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES } from '../../shared/types.js';
+import { SETTINGS_ACCESS_ROLES, CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -1326,15 +1327,129 @@ function ExpenseCategoriesTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Team links tab — ربط الفنيين بالمشرفين: يحدد أي مشرف "يملك" كل فني، بحيث
+// أي موعد يُسند لهذا المشرف يظهر تلقائياً في بوابة الفني لكل فني مرتبط به
+// (انظر الفلترة الإضافية في Appointments.tsx و TechnicianPortal.tsx).
+// يعيد استخدام نفس PATCH /profiles/:id (supervisor_id) الذي يستخدمه نموذج
+// تعديل المستخدم في تبويب "المستخدمون" — فقط بواجهة مخصصة لهذا الغرض.
+// ---------------------------------------------------------------------------
+function TeamLinksTab() {
+  const { t, roleLabel } = useI18n();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  function refresh() {
+    api.get<Profile[]>('/profiles').then(setProfiles);
+  }
+  useEffect(refresh, []);
+
+  const supervisors = profiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const technicians = profiles.filter((p) => p.role === 'technician');
+  const supervisorIds = new Set(supervisors.map((s) => s.id));
+  const unlinked = technicians.filter((tech) => !tech.supervisor_id || !supervisorIds.has(tech.supervisor_id));
+
+  async function setSupervisor(techId: string, supervisorId: string) {
+    setSavingId(techId);
+    try {
+      await api.patch(`/profiles/${techId}`, { supervisor_id: supervisorId || undefined });
+      refresh();
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  function TechRow({ tech }: { tech: Profile }) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
+            {tech.full_name.trim().charAt(0)}
+          </div>
+          <span className="truncate text-sm font-medium text-slate-700">{tech.full_name}</span>
+        </div>
+        <select
+          value={tech.supervisor_id ?? ''}
+          disabled={savingId === tech.id}
+          onChange={(e) => setSupervisor(tech.id, e.target.value)}
+          className="input w-auto shrink-0 text-xs"
+        >
+          <option value="">{t('بدون تحديد')}</option>
+          {supervisors.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.full_name} ({roleLabel(s.role)})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+        {t('اختر لكل فني المشرف الذي يتبع له — أي موعد يُسند لهذا المشرف سيظهر تلقائياً في بوابة الفني لكل فني مرتبط به.')}
+      </div>
+
+      {supervisors.map((s) => {
+        const team = technicians.filter((tech) => tech.supervisor_id === s.id);
+        return (
+          <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-800">{s.full_name}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">{roleLabel(s.role)}</span>
+            </div>
+            <div className="space-y-1.5">
+              {team.map((tech) => (
+                <TechRow key={tech.id} tech={tech} />
+              ))}
+              {team.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 p-3 text-center text-xs text-slate-400">
+                  {t('لا يوجد فنيون مرتبطون بهذا المشرف بعد')}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {supervisors.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+          {t('لا يوجد مشرفون بعد — أضِفهم أولاً من تبويب المستخدمون')}
+        </div>
+      )}
+
+      {unlinked.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 text-sm font-semibold text-slate-800">{t('فنيون بلا مشرف محدد')}</div>
+          <div className="space-y-1.5">
+            {unlinked.map((tech) => (
+              <TechRow key={tech.id} tech={tech} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 export default function Settings() {
   const { user } = useAuth();
   const { t } = useI18n();
-  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods' | 'expense_categories'>('users');
+  const canSeeFullSettings = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
+  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links'>(
+    // المشرف الإداري لا يرى إلا تبويب "ربط الفنيين بالمشرفين" — فليكن هو
+    // التبويب الافتراضي له بدل "المستخدمون" الذي لا يملك صلاحية رؤيته.
+    user && !canSeeFullSettings ? 'team_links' : 'users',
+  );
 
-  // Settings (including adding/editing users) is restricted to the general
-  // manager and system admin — redirect anyone else away, in case they
-  // reach the URL directly instead of via the (already role-filtered) nav.
-  if (user && !SETTINGS_ACCESS_ROLES.includes(user.role)) return <Navigate to="/" replace />;
+  // بقية الإعدادات (المستخدمون، الخدمات، طرق الدفع، العهد والمصروفات)
+  // تبقى مقصورة على المدير العام ومدير النظام. تبويب "ربط الفنيين
+  // بالمشرفين" وحده متاح للمشرف الإداري أيضاً — لذا الحارس هنا أوسع من
+  // SETTINGS_ACCESS_ROLES وحدها؛ التبويبات نفسها تُصفَّى أدناه حسب الدور.
+  if (user && !canSeeFullSettings && !CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="space-y-5">
@@ -1344,40 +1459,54 @@ export default function Settings() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+        {canSeeFullSettings && (
+          <button
+            onClick={() => setTab('users')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'users' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <UsersIcon className="h-4 w-4" /> {t('المستخدمون')}
+          </button>
+        )}
         <button
-          onClick={() => setTab('users')}
-          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'users' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          onClick={() => setTab('team_links')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'team_links' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
         >
-          <UsersIcon className="h-4 w-4" /> {t('المستخدمون')}
+          <TeamLinkIcon className="h-4 w-4" /> {t('ربط الفنيين بالمشرفين')}
         </button>
-        <button
-          onClick={() => setTab('services')}
-          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'services' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <ServicesIcon className="h-4 w-4" /> {t('الخدمات')}
-        </button>
-        <button
-          onClick={() => setTab('payment_methods')}
-          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'payment_methods' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <PaymentIcon className="h-4 w-4" /> {t('طرق الدفع')}
-        </button>
-        <button
-          onClick={() => setTab('expense_categories')}
-          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expense_categories' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <ExpensesIcon className="h-4 w-4" /> {t('العهد والمصروفات')}
-        </button>
+        {canSeeFullSettings && (
+          <>
+            <button
+              onClick={() => setTab('services')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'services' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <ServicesIcon className="h-4 w-4" /> {t('الخدمات')}
+            </button>
+            <button
+              onClick={() => setTab('payment_methods')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'payment_methods' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <PaymentIcon className="h-4 w-4" /> {t('طرق الدفع')}
+            </button>
+            <button
+              onClick={() => setTab('expense_categories')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expense_categories' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <ExpensesIcon className="h-4 w-4" /> {t('العهد والمصروفات')}
+            </button>
+          </>
+        )}
       </div>
 
-      {tab === 'users' ? (
+      {tab === 'users' && canSeeFullSettings ? (
         <UsersTab />
-      ) : tab === 'services' ? (
+      ) : tab === 'services' && canSeeFullSettings ? (
         <ServicesTab />
-      ) : tab === 'payment_methods' ? (
+      ) : tab === 'payment_methods' && canSeeFullSettings ? (
         <PaymentMethodsTab />
-      ) : (
+      ) : tab === 'expense_categories' && canSeeFullSettings ? (
         <ExpenseCategoriesTab />
+      ) : (
+        <TeamLinksTab />
       )}
     </div>
   );

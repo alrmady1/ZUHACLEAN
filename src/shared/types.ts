@@ -30,6 +30,12 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
 // auth (login just returns the matching profile), so these gate the UI
 // only — not a server-enforced security boundary.
 export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
+// ربط الفنيين بالمشرفين (تبويب "الفريق" داخل الإعدادات) — متاح أيضاً
+// للمشرف الإداري، رغم أن بقية تبويبات الإعدادات تبقى مقصورة على
+// SETTINGS_ACCESS_ROLES أعلاه. الموعد المسنَد لمشرف يظهر تلقائياً لكل
+// فني مربوط بذلك المشرف (انظر الفلترة في Appointments.tsx و
+// TechnicianPortal.tsx).
+export const CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
 export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
 export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];

@@ -297,8 +297,16 @@ export default function TechnicianPortal() {
 
   const technicians = allProfiles.filter((p) => p.role === 'technician');
   const effectiveId = asTechnician ?? technicians[0]?.id;
+  // الفني يرى مواعيده المسندة له مباشرة، وأيضاً أي موعد مسنَد للمشرف الذي
+  // يتبع له (يُضبط الربط من الإعدادات ← ربط الفنيين بالمشرفين) — بحيث
+  // يظهر عمل الفريق كاملاً له، لا فقط ما أُسند له شخصياً.
+  const effectiveSupervisorId = allProfiles.find((p) => p.id === effectiveId)?.supervisor_id;
   const mine = appointments
-    .filter((a) => a.assignments.some((x) => x.technician_id === effectiveId))
+    .filter(
+      (a) =>
+        a.assignments.some((x) => x.technician_id === effectiveId) ||
+        (effectiveSupervisorId && a.supervisor_id === effectiveSupervisorId),
+    )
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
   // إحصائيات اليوم الخاصة بهذا الفني فقط — تحل محل الصفحة الرئيسية العامة

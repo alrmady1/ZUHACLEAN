@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
-import { CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, type UserRole } from '../../shared/types.js';
+import { CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES, type UserRole } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
 
@@ -33,7 +33,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/contracts', label: 'العقود', icon: FileSignature, roles: CAN_SEE_CONTRACTS_ROLES },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: CAN_SEE_EXPENSES_ROLES },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
-  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin'] },
+  // المشرف الإداري يرى الإعدادات أيضاً الآن — يفتح له تلقائياً على تبويب
+  // "ربط الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية التبويبات.
+  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES },
 ];
 
 export default function Layout() {

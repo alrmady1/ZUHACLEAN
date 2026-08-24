@@ -116,14 +116,21 @@ export default function Appointments() {
   const scoped = useMemo(() => {
     if (!canSeeAllSchedules) {
       if (user?.role === 'technician') {
-        return appointments.filter((a) => a.assignments.some((x) => x.technician_id === user.id));
+        // يرى الفني مواعيده المسندة له مباشرة، وأيضاً أي موعد مسنَد للمشرف
+        // الذي يتبع له (الربط يُضبط من الإعدادات ← ربط الفنيين بالمشرفين).
+        const mySupervisorId = allProfiles.find((p) => p.id === user.id)?.supervisor_id;
+        return appointments.filter(
+          (a) =>
+            a.assignments.some((x) => x.technician_id === user.id) ||
+            (mySupervisorId && a.supervisor_id === mySupervisorId),
+        );
       }
       return appointments.filter((a) => a.supervisor_id === user?.id);
     }
     if (scope === 'all') return appointments;
     if (scope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
     return appointments.filter((a) => a.supervisor_id === scope);
-  }, [appointments, scope, user, canSeeAllSchedules]);
+  }, [appointments, scope, user, canSeeAllSchedules, allProfiles]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
