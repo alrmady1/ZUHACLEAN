@@ -54,12 +54,14 @@ export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
 // (نفس منطق CAN_EDIT_LOCATION_ROLES).
 export const CAN_DELETE_PHOTOS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 // حذف الموعد بالكامل (من تفاصيله أو من قائمة/تقويم المواعيد) — للمدير
-// العام فقط.
-export const CAN_DELETE_APPOINTMENT_ROLES: UserRole[] = ['general_manager'];
-// حذف عقد دوري بالكامل — للمدير العام فقط (نفس مستوى الثقة المطلوب
-// لحذف موعد). لا يحذف الحذف المواعيد المولَّدة سابقاً من هذا العقد —
-// تبقى في الجدول كسجل تاريخي.
-export const CAN_DELETE_CONTRACT_ROLES: UserRole[] = ['general_manager'];
+// العام ومدير النظام.
+export const CAN_DELETE_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin'];
+// حذف عقد دوري بالكامل — للمدير العام ومدير النظام (نفس مستوى الثقة
+// المطلوب لحذف موعد). لا يحذف الحذف المواعيد المولَّدة سابقاً من هذا
+// العقد — تبقى في الجدول كسجل تاريخي.
+export const CAN_DELETE_CONTRACT_ROLES: UserRole[] = ['general_manager', 'admin'];
+// تعديل وقت/تاريخ الموعد من تفاصيله — للجميع ما عدا الفني الميداني.
+export const CAN_EDIT_APPOINTMENT_TIME_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 
 export type AppointmentStatus =
   | 'scheduled'

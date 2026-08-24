@@ -9,6 +9,7 @@ import {
   CAN_EDIT_LOCATION_ROLES,
   CAN_DELETE_PHOTOS_ROLES,
   CAN_DELETE_APPOINTMENT_ROLES,
+  CAN_EDIT_APPOINTMENT_TIME_ROLES,
 } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
@@ -18,6 +19,15 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+
+// تحويل ISO إلى صيغة <input type="datetime-local"> (بالتوقيت المحلي —
+// datetime-local لا يفهم "Z"/UTC، فيجب بناء السلسلة يدوياً من مكوّنات
+// التاريخ المحلية بدل استخدام toISOString مباشرة).
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const STATUS_ORDER: AppointmentStatus[] = ['scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
@@ -49,6 +59,7 @@ export default function AppointmentDetailModal({
   const canEditLocation = user ? CAN_EDIT_LOCATION_ROLES.includes(user.role) : false;
   const canDeletePhotos = user ? CAN_DELETE_PHOTOS_ROLES.includes(user.role) : false;
   const canDeleteAppointment = user ? CAN_DELETE_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canEditTime = user ? CAN_EDIT_APPOINTMENT_TIME_ROLES.includes(user.role) : false;
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
@@ -60,6 +71,8 @@ export default function AppointmentDetailModal({
   const [teamTechnicianId, setTeamTechnicianId] = useState(appointment.assignments[0]?.technician_id ?? '');
   const [editingLocation, setEditingLocation] = useState(false);
   const [locationUrlInput, setLocationUrlInput] = useState(appointment.location_url ?? customer?.location_url ?? '');
+  const [editingTime, setEditingTime] = useState(false);
+  const [timeInput, setTimeInput] = useState(toDatetimeLocalValue(appointment.scheduled_at));
   const beforeCameraInput = useRef<HTMLInputElement>(null);
   const beforeGalleryInput = useRef<HTMLInputElement>(null);
   const afterCameraInput = useRef<HTMLInputElement>(null);
@@ -110,6 +123,18 @@ export default function AppointmentDetailModal({
       await api.patch(`/appointments/${appointment.id}`, { location_url: url });
       onChanged();
       setEditingLocation(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveTime() {
+    if (!timeInput) return;
+    setBusy(true);
+    try {
+      await api.patch(`/appointments/${appointment.id}`, { scheduled_at: new Date(timeInput).toISOString() });
+      onChanged();
+      setEditingTime(false);
     } finally {
       setBusy(false);
     }
@@ -314,11 +339,50 @@ export default function AppointmentDetailModal({
               <div className="text-xs text-slate-400">{t('نوع الخدمة')}</div>
               <div className="text-sm font-semibold text-slate-700">{appointment.service_name_snapshot}</div>
             </div>
-            <div>
-              <div className="text-xs text-slate-400">{t('موعد الزيارة')}</div>
-              <div className="text-sm font-semibold text-slate-700">
-                {formatDateAr(appointment.scheduled_at)} - {formatTimeAr(appointment.scheduled_at)}
+            <div className={editingTime ? 'col-span-2 sm:col-span-2' : undefined}>
+              <div className="mb-0.5 flex items-center gap-1 text-xs text-slate-400">
+                {t('موعد الزيارة')}
+                {canEditTime && !editingTime && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTimeInput(toDatetimeLocalValue(appointment.scheduled_at));
+                      setEditingTime(true);
+                    }}
+                    title={t('تعديل وقت الموعد')}
+                    className="text-slate-400 hover:text-brand-600"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
               </div>
+              {editingTime ? (
+                <div className="space-y-1.5">
+                  <input
+                    type="datetime-local"
+                    value={timeInput}
+                    onChange={(e) => setTimeInput(e.target.value)}
+                    className="input text-sm"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={saveTime}
+                      className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" /> {busy ? t('جارِ الحفظ…') : t('حفظ')}
+                    </button>
+                    <button type="button" onClick={() => setEditingTime(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                      {t('إلغاء')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-slate-700">
+                  {formatDateAr(appointment.scheduled_at)} - {formatTimeAr(appointment.scheduled_at)}
+                </div>
+              )}
             </div>
             <div>
               <div className="text-xs text-slate-400">{t('المدة المقدرة')}</div>
