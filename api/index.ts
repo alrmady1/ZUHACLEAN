@@ -30,4 +30,14 @@ app.use((_req, res, next) => {
 
 app.use('/api', api);
 
+// Fallback error handler: without this, an uncaught error (e.g. a DB
+// connection failure) falls through to Express's default handler, which
+// renders a plain HTML "Internal Server Error" page — the client's fetch
+// then fails trying to parse that as JSON, masking the real cause. This at
+// least returns JSON and logs the actual error to Vercel's runtime logs.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('❌ خطأ في الخادم:', err);
+  res.status(500).json({ error: 'حدث خطأ في الخادم، حاول مرة أخرى' });
+});
+
 export default app;

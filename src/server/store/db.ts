@@ -50,7 +50,29 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+// Tuned for serverless (Vercel): each function instance gets its own pool,
+// and Vercel can spin up many instances concurrently, so a large per-pool
+// `max` here multiplies into far more Postgres connections than Supabase's
+// pooler allows — the actual cause of the "500 Internal Server Error" /
+// site-down incident on 2026-08-24. A small max keeps each instance's
+// footprint tiny; Supabase's own Transaction Pooler already does the real
+// multiplexing across instances.
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 3,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 10_000,
+});
+
+// node-postgres crashes the whole process if an idle pooled client emits an
+// 'error' with no listener attached — a real risk in serverless, where a
+// frozen/thawed lambda instance can resume with a socket the DB already
+// closed. Without this handler, that one stale connection could take down
+// every in-flight request on that warm instance (matching the intermittent,
+// instance-specific failures seen in the incident above).
+pool.on('error', (err) => {
+  console.error('❌ خطأ غير متوقع في اتصال قاعدة البيانات (idle client):', err);
+});
 
 // The whole app state lives in one JSONB row — same shape as the old JSON
 // file, just durable now. A future step could split this into real
