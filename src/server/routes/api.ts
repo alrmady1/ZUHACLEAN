@@ -515,6 +515,15 @@ api.post('/contracts', (req, res) => {
   res.status(201).json({ contract: store.contracts.get(contract.id), generated_appointments: generated.length });
 });
 
+// تعديل بيانات عقد قائم — مقيَّد في الواجهة عبر صلاحية edit_contracts.
+// لا يعيد توليد المواعيد ولا يمسّها حتى لو تغيّر التكرار/الأيام/التاريخ؛
+// المواعيد المولَّدة سابقاً تبقى كما هي (نفس منطق حذف العقد أدناه).
+api.patch('/contracts/:id', (req, res) => {
+  const updated = store.contracts.update(req.params.id, req.body ?? {});
+  if (!updated) return res.status(404).json({ error: 'العقد غير موجود' });
+  res.json(updated);
+});
+
 // حذف عقد بالكامل — للمدير العام فقط (مقيَّد في الواجهة عبر
 // CAN_DELETE_CONTRACT_ROLES). لا يحذف هذا المواعيد المولَّدة سابقاً من
 // العقد — تبقى في جدول المواعيد كسجل تاريخي (نفس منطق حذف صور الموعد).

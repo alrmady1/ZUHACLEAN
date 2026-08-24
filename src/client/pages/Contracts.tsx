@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, X, Eye, Trash2 } from 'lucide-react';
+import { Plus, X, Eye, Trash2, Pencil, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Contract, Customer, Service } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from '../components/Badge.js';
@@ -27,6 +27,7 @@ export default function Contracts() {
   const canSeeValue = can('view_contract_value');
   const canDeleteContract = can('delete_contracts');
   const canCreateContract = can('create_contracts');
+  const canEditContract = can('edit_contracts');
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -305,12 +306,19 @@ export default function Contracts() {
           contract={viewingContract}
           customerName={customers.find((x) => x.id === viewingContract.customer_id)?.name}
           appointments={appointments.filter((a) => a.contract_id === viewingContract.id)}
+          services={services}
+          supervisors={supervisors}
           canSeeValue={canSeeValue}
           canDelete={canDeleteContract}
+          canEdit={canEditContract}
           onClose={() => setViewingContract(null)}
           onDelete={() => {
             deleteContract(viewingContract);
             setViewingContract(null);
+          }}
+          onSaved={(updated) => {
+            setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+            setViewingContract(updated);
           }}
         />
       )}
@@ -331,22 +339,89 @@ function ContractDetailModal({
   contract,
   customerName,
   appointments,
+  services,
+  supervisors,
   canSeeValue,
   canDelete,
+  canEdit,
   onClose,
   onDelete,
+  onSaved,
 }: {
   contract: Contract;
   customerName: string | undefined;
   appointments: Appointment[];
+  services: Service[];
+  supervisors: { id: string; full_name: string }[];
   canSeeValue: boolean;
   canDelete: boolean;
+  canEdit: boolean;
   onClose: () => void;
   onDelete: () => void;
+  onSaved: (updated: Contract) => void;
 }) {
   const { t } = useI18n();
+  const [editing, setEditing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serviceId, setServiceId] = useState(contract.service_id);
+  const [contractType, setContractType] = useState(contract.contract_type);
+  const [visitFrequency, setVisitFrequency] = useState(contract.visit_frequency);
+  const [visitDays, setVisitDays] = useState<string[]>(contract.visit_days_of_week ?? []);
+  const [visitTime, setVisitTime] = useState(contract.visit_time ?? '09:00');
+  const [startDate, setStartDate] = useState(contract.start_date);
+  const [endDate, setEndDate] = useState(contract.end_date);
+  const [totalAmount, setTotalAmount] = useState(String(contract.total_amount));
+  const [supervisorId, setSupervisorId] = useState(contract.supervisor_id ?? '');
+  const [status, setStatus] = useState(contract.status);
+
   const sortedAppts = [...appointments].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   const selectedDays = contract.visit_days_of_week ?? [];
+
+  function startEditing() {
+    setServiceId(contract.service_id);
+    setContractType(contract.contract_type);
+    setVisitFrequency(contract.visit_frequency);
+    setVisitDays(contract.visit_days_of_week ?? []);
+    setVisitTime(contract.visit_time ?? '09:00');
+    setStartDate(contract.start_date);
+    setEndDate(contract.end_date);
+    setTotalAmount(String(contract.total_amount));
+    setSupervisorId(contract.supervisor_id ?? '');
+    setStatus(contract.status);
+    setEditing(true);
+  }
+
+  function toggleDay(key: string) {
+    setVisitDays((prev) => (prev.includes(key) ? prev.filter((d) => d !== key) : [...prev, key]));
+  }
+
+  async function save() {
+    if (visitFrequency === 'weekly' && visitDays.length === 0) {
+      window.alert(t('اختر يوماً واحداً على الأقل لأيام الزيارة الأسبوعية'));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const service = services.find((s) => s.id === serviceId);
+      const updated = await api.patch<Contract>(`/contracts/${contract.id}`, {
+        service_id: serviceId,
+        service_name_snapshot: service?.name ?? contract.service_name_snapshot,
+        contract_type: contractType,
+        visit_frequency: visitFrequency,
+        visit_days_of_week: visitFrequency === 'weekly' ? visitDays : [],
+        visit_time: visitTime,
+        start_date: startDate,
+        end_date: endDate,
+        total_amount: Number(totalAmount),
+        supervisor_id: supervisorId || null,
+        status,
+      });
+      onSaved(updated);
+      setEditing(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
@@ -357,7 +432,16 @@ function ContractDetailModal({
             <p className="text-xs text-slate-400">{customerName ?? '—'}</p>
           </div>
           <div className="flex items-center gap-1">
-            {canDelete && (
+            {!editing && canEdit && (
+              <button
+                onClick={startEditing}
+                title={t('تعديل بيانات العقد')}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+              >
+                <Pencil className="h-5 w-5" />
+              </button>
+            )}
+            {!editing && canDelete && (
               <button
                 onClick={onDelete}
                 title={t('حذف العقد نهائياً')}
@@ -373,73 +457,196 @@ function ContractDetailModal({
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-slate-400">{t('الخدمة')}</div>
-              <div className="font-medium text-slate-700">{contract.service_name_snapshot}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-400">{t('التكرار')}</div>
-              <div className="font-medium text-slate-700">
-                {contract.visit_frequency === 'weekly' ? t('أسبوعي') : contract.visit_frequency === 'bi_weekly' ? t('نصف شهري') : t('شهري')}
-              </div>
-            </div>
-            {selectedDays.length > 0 && (
-              <div className="col-span-2">
-                <div className="text-xs text-slate-400">{t('أيام الزيارة الأسبوعية')}</div>
-                <div className="font-medium text-slate-700">
-                  {selectedDays.map((d) => t(WEEKDAYS.find((w) => w.key === d)?.label ?? d)).join('، ')}
-                </div>
-              </div>
-            )}
-            <div>
-              <div className="text-xs text-slate-400">{t('تاريخ البدء')}</div>
-              <div className="font-medium text-slate-700" dir="ltr">{contract.start_date}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-400">{t('تاريخ الانتهاء')}</div>
-              <div className="font-medium text-slate-700" dir="ltr">{contract.end_date}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-400">{t('الزيارات')}</div>
-              <div className="font-medium text-slate-700" dir="ltr">{contract.completed_visits} / {contract.total_visits}</div>
-            </div>
-            {canSeeValue && (
+          {!editing ? (
+            <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <div className="text-xs text-slate-400">{t('القيمة')}</div>
-                <div className="font-medium text-slate-700">{formatMoney(contract.total_amount)}</div>
+                <div className="text-xs text-slate-400">{t('الخدمة')}</div>
+                <div className="font-medium text-slate-700">{contract.service_name_snapshot}</div>
               </div>
-            )}
-            <div>
-              <div className="text-xs text-slate-400">{t('السداد')}</div>
-              <PaymentStatusBadge status={contract.payment_status} />
-            </div>
-            <div>
-              <div className="text-xs text-slate-400">{t('الحالة')}</div>
-              <ContractStatusBadge status={contract.status} />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 text-sm font-medium text-slate-600">
-              {t('المواعيد المولَّدة من هذا العقد')} ({sortedAppts.length})
-            </div>
-            <div className="max-h-64 space-y-1.5 overflow-y-auto">
-              {sortedAppts.map((a) => (
-                <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-xs">
-                  <span className="text-slate-600">
-                    {formatDateAr(a.scheduled_at)} · {formatTimeAr(a.scheduled_at)}
-                  </span>
-                  <AppointmentStatusBadge status={a.status} />
+              <div>
+                <div className="text-xs text-slate-400">{t('التكرار')}</div>
+                <div className="font-medium text-slate-700">
+                  {contract.visit_frequency === 'weekly' ? t('أسبوعي') : contract.visit_frequency === 'bi_weekly' ? t('نصف شهري') : t('شهري')}
                 </div>
-              ))}
-              {sortedAppts.length === 0 && (
-                <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
-                  {t('لا توجد مواعيد مولَّدة من هذا العقد')}
+              </div>
+              {selectedDays.length > 0 && (
+                <div className="col-span-2">
+                  <div className="text-xs text-slate-400">{t('أيام الزيارة الأسبوعية')}</div>
+                  <div className="font-medium text-slate-700">
+                    {selectedDays.map((d) => t(WEEKDAYS.find((w) => w.key === d)?.label ?? d)).join('، ')}
+                  </div>
                 </div>
               )}
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ البدء')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{contract.start_date}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ الانتهاء')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{contract.end_date}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('الزيارات')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{contract.completed_visits} / {contract.total_visits}</div>
+              </div>
+              {canSeeValue && (
+                <div>
+                  <div className="text-xs text-slate-400">{t('القيمة')}</div>
+                  <div className="font-medium text-slate-700">{formatMoney(contract.total_amount)}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs text-slate-400">{t('السداد')}</div>
+                <PaymentStatusBadge status={contract.payment_status} />
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('الحالة')}</div>
+                <ContractStatusBadge status={contract.status} />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white">
+              <Field label={t('الخدمة')}>
+                <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} className="input">
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('نوع العقد')}>
+                  <select value={contractType} onChange={(e) => setContractType(e.target.value as Contract['contract_type'])} className="input">
+                    <option value="monthly">{t('شهري')}</option>
+                    <option value="quarterly">{t('ربع سنوي')}</option>
+                    <option value="semi_annual">{t('نصف سنوي')}</option>
+                    <option value="annual">{t('سنوي')}</option>
+                  </select>
+                </Field>
+                <Field label={t('تكرار الزيارات')}>
+                  <select
+                    value={visitFrequency}
+                    onChange={(e) => setVisitFrequency(e.target.value as Contract['visit_frequency'])}
+                    className="input"
+                  >
+                    <option value="weekly">{t('أسبوعي')}</option>
+                    <option value="bi_weekly">{t('نصف شهري')}</option>
+                    <option value="monthly">{t('شهري')}</option>
+                  </select>
+                </Field>
+              </div>
+
+              {visitFrequency === 'weekly' && (
+                <Field label={t('أيام الزيارة الأسبوعية (يمكن اختيار أكثر من يوم)')}>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {WEEKDAYS.map((d) => (
+                      <label
+                        key={d.key}
+                        className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-600 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visitDays.includes(d.key)}
+                          onChange={() => toggleDay(d.key)}
+                          className="h-3.5 w-3.5"
+                        />
+                        {t(d.label)}
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('تاريخ البدء')}>
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
+                </Field>
+                <Field label={t('تاريخ الانتهاء')}>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('وقت الزيارة')}>
+                  <input type="time" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} className="input" />
+                </Field>
+                {canSeeValue && (
+                  <Field label={t('القيمة الإجمالية (ر.س)')}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={totalAmount}
+                      onChange={(e) => setTotalAmount(e.target.value)}
+                      className="input"
+                    />
+                  </Field>
+                )}
+              </div>
+
+              <Field label={t('المشرف المسؤول')}>
+                <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className="input">
+                  <option value="">{t('بدون تحديد')}</option>
+                  {supervisors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label={t('الحالة')}>
+                <select value={status} onChange={(e) => setStatus(e.target.value as Contract['status'])} className="input">
+                  <option value="active">{t('ساري')}</option>
+                  <option value="completed">{t('مكتمل')}</option>
+                  <option value="cancelled">{t('ملغى')}</option>
+                  <option value="expired">{t('منتهي')}</option>
+                </select>
+              </Field>
+
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {t('تعديل التكرار أو أيام الزيارة لا يعيد توليد المواعيد تلقائياً — المواعيد المولَّدة سابقاً تبقى كما هي.')}
+              </p>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  disabled={submitting}
+                  onClick={save}
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" /> {submitting ? t('جارِ الحفظ…') : t('حفظ')}
+                </button>
+                <button onClick={() => setEditing(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                  {t('إلغاء')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!editing && (
+            <div>
+              <div className="mb-2 text-sm font-medium text-slate-600">
+                {t('المواعيد المولَّدة من هذا العقد')} ({sortedAppts.length})
+              </div>
+              <div className="max-h-64 space-y-1.5 overflow-y-auto">
+                {sortedAppts.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                    <span className="text-slate-600">
+                      {formatDateAr(a.scheduled_at)} · {formatTimeAr(a.scheduled_at)}
+                    </span>
+                    <AppointmentStatusBadge status={a.status} />
+                  </div>
+                ))}
+                {sortedAppts.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                    {t('لا توجد مواعيد مولَّدة من هذا العقد')}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
