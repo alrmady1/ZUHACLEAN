@@ -50,6 +50,10 @@ export const CAN_DELETE_PHOTOS_ROLES: UserRole[] = ['general_manager', 'admin', 
 // حذف الموعد بالكامل (من تفاصيله أو من قائمة/تقويم المواعيد) — للمدير
 // العام فقط.
 export const CAN_DELETE_APPOINTMENT_ROLES: UserRole[] = ['general_manager'];
+// حذف عقد دوري بالكامل — للمدير العام فقط (نفس مستوى الثقة المطلوب
+// لحذف موعد). لا يحذف الحذف المواعيد المولَّدة سابقاً من هذا العقد —
+// تبقى في الجدول كسجل تاريخي.
+export const CAN_DELETE_CONTRACT_ROLES: UserRole[] = ['general_manager'];
 
 export type AppointmentStatus =
   | 'scheduled'
@@ -140,7 +144,11 @@ export interface Contract {
   service_name_snapshot: string;
   contract_type: ContractType;
   visit_frequency: VisitFrequency;
-  visit_day_of_week?: string;
+  // أيام الأسبوع المختارة للزيارة (يمكن أكثر من يوم معاً، مثل الأحد
+  // والثلاثاء والخميس لعقد بثلاث زيارات أسبوعياً) — تُستخدم فقط مع
+  // visit_frequency === 'weekly'؛ عقود نصف الشهر والشهرية ما زالت تعتمد
+  // على يوم أسبوع تاريخ البدء كما كانت (انظر generateAppointmentsForContract).
+  visit_days_of_week?: string[];
   visit_time?: string;
   start_date: string;
   end_date: string;

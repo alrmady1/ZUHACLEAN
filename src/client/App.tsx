@@ -9,13 +9,24 @@ import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
 import TechnicianPortal from './pages/TechnicianPortal.js';
 import Settings from './pages/Settings.js';
+import { useAuth } from './lib/auth.js';
+
+// الفني الميداني ليس له أصلاً رابط "لوحة التحكم" في القائمة (أرقام على
+// مستوى الشركة كاملة لا تعنيه)، لكن "/" كانت تعرض لوحة التحكم لأي مستخدم
+// بلا استثناء لو وصل إليها مباشرة (كما يحدث فور تسجيل الدخول). الآن
+// يُحوَّل الفني مباشرة لبوابته الخاصة بدلاً منها.
+function Home() {
+  const { user } = useAuth();
+  if (user?.role === 'technician') return <Navigate to="/technician" replace />;
+  return <Dashboard />;
+}
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Home />} />
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/expenses" element={<Expenses />} />

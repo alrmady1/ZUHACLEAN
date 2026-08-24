@@ -17,6 +17,7 @@ import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, Invoice } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
+import StatCard from '../components/StatCard.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -36,37 +37,6 @@ function isSameMonth(iso: string, ref: Date): boolean {
 }
 
 const BAR_TINTS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500'];
-
-function StatCard({
-  icon: Icon,
-  iconTint,
-  label,
-  value,
-  valueTint,
-  sub,
-  subTint,
-}: {
-  icon: typeof CalendarClock;
-  iconTint: string;
-  label: string;
-  value: string;
-  valueTint: string;
-  sub: string;
-  subTint: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm text-slate-400">{label}</span>
-        <span className={`rounded-lg p-1.5 ${iconTint}`}>
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <div className={`text-3xl font-bold ${valueTint}`}>{value}</div>
-      <div className={`mt-1 text-xs ${subTint}`}>{sub}</div>
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const navigate = useNavigate();

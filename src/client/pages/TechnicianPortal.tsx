@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown } from 'lucide-react';
+import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
+import StatCard from '../components/StatCard.js';
 import { api } from '../lib/api.js';
 import type { Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -272,7 +273,7 @@ type TechDisplay = 'cards' | 'rows';
 
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
-  const { t } = useI18n();
+  const { t, tt } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
     user?.role === 'technician' ? user.id : undefined,
@@ -299,6 +300,14 @@ export default function TechnicianPortal() {
   const mine = appointments
     .filter((a) => a.assignments.some((x) => x.technician_id === effectiveId))
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+
+  // إحصائيات اليوم الخاصة بهذا الفني فقط — تحل محل الصفحة الرئيسية العامة
+  // (لوحة التحكم) التي كانت تعرض أرقاماً على مستوى الشركة كاملة، غير
+  // ذات معنى لفني يريد فقط معرفة مهامه اليوم.
+  const todayMine = useMemo(() => mine.filter((a) => new Date(a.scheduled_at).toDateString() === new Date().toDateString()), [mine]);
+  const inProgressTodayCount = todayMine.filter((a) => a.status === 'in_progress').length;
+  const completedTodayCount = todayMine.filter((a) => a.status === 'completed').length;
+  const completionRate = todayMine.length > 0 ? Math.round((completedTodayCount / todayMine.length) * 100) : 0;
 
   const apptsByDate = useMemo(() => {
     const map = new Map<string, Appointment[]>();
@@ -358,6 +367,36 @@ export default function TechnicianPortal() {
       <div>
         <h1 className="text-xl font-bold text-slate-800">{t('بوابة الفني الميداني')}</h1>
         <p className="text-sm text-slate-400">{t('مهامك، الصور، والتحصيل — من جوالك')}</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatCard
+          icon={Clock}
+          iconTint="bg-amber-100 text-amber-600"
+          label={t('قيد التنفيذ')}
+          value={String(inProgressTodayCount)}
+          valueTint="text-amber-500"
+          sub={t('جارية الآن')}
+          subTint="text-amber-500"
+        />
+        <StatCard
+          icon={CheckCircle2}
+          iconTint="bg-emerald-100 text-emerald-600"
+          label={t('مكتملة اليوم')}
+          value={String(completedTodayCount)}
+          valueTint="text-emerald-600"
+          sub={tt(`${completionRate}% نسبة الإنجاز`, `${completionRate}% Completion rate`)}
+          subTint="text-emerald-600"
+        />
+        <StatCard
+          icon={CalendarClock}
+          iconTint="bg-slate-100 text-slate-600"
+          label={t('مواعيد اليوم')}
+          value={String(todayMine.length)}
+          valueTint="text-slate-800"
+          sub={t('إجمالي مهامك اليوم')}
+          subTint="text-slate-400"
+        />
       </div>
 
       {user?.role !== 'technician' && (

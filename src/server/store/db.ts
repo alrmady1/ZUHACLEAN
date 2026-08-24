@@ -222,7 +222,7 @@ function seed(): DbShape {
       service_name_snapshot: 'تنظيف مكاتب',
       contract_type: 'monthly',
       visit_frequency: 'weekly',
-      visit_day_of_week: 'sunday',
+      visit_days_of_week: ['sunday'],
       visit_time: '09:00',
       start_date: '2026-08-01',
       end_date: '2026-10-31',
@@ -511,6 +511,13 @@ export const store = {
       db.contracts[idx] = { ...db.contracts[idx], ...patch, updated_at: new Date().toISOString() };
       persist();
       return db.contracts[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.contracts.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      db.contracts.splice(idx, 1);
+      persist();
+      return true;
     },
   },
   expenses: {

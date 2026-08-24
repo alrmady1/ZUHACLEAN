@@ -348,20 +348,50 @@ function addFrequency(date: Date, freq: VisitFrequency): Date {
   return d;
 }
 
+// getDay() index (0=Sunday..6=Saturday) — matches the keys the client's
+// weekday checkboxes send.
+const WEEKDAY_INDEX: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+
 function generateAppointmentsForContract(contract: Contract): Appointment[] {
   const customer = store.customers.get(contract.customer_id);
   const service = store.services.get(contract.service_id);
+  const [visitHour, visitMinute] = (contract.visit_time ?? '09:00').split(':').map(Number);
   const start = new Date(`${contract.start_date}T${contract.visit_time ?? '09:00'}:00`);
   const end = new Date(contract.end_date);
 
-  // Pass 1: walk the frequency to find every visit date, so we know the
-  // real visit count before splitting total_amount across visits (the
-  // contract form doesn't ask the user for total_visits directly).
   const dates: Date[] = [];
-  let cursor = start;
-  while (cursor <= end && dates.length < 200) {
-    dates.push(new Date(cursor));
-    cursor = addFrequency(cursor, contract.visit_frequency);
+  const selectedDayIndices = (contract.visit_days_of_week ?? [])
+    .map((d) => WEEKDAY_INDEX[d])
+    .filter((n) => n !== undefined);
+
+  if (contract.visit_frequency === 'weekly' && selectedDayIndices.length > 0) {
+    // أكثر من زيارة في الأسبوع الواحد (مثلاً الأحد والثلاثاء والخميس) —
+    // نمشي يوماً بيوم من تاريخ البدء حتى الانتهاء، ونُبقي فقط الأيام التي
+    // تطابق أحد الأيام المختارة.
+    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    while (cursor <= endDay && dates.length < 400) {
+      if (selectedDayIndices.includes(cursor.getDay())) {
+        const visit = new Date(cursor);
+        visit.setHours(visitHour || 9, visitMinute || 0, 0, 0);
+        dates.push(visit);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else {
+    // Pass 1: walk the frequency to find every visit date, so we know the
+    // real visit count before splitting total_amount across visits (the
+    // contract form doesn't ask the user for total_visits directly).
+    // Also the fallback for bi_weekly/monthly contracts and for legacy
+    // weekly contracts saved before visit_days_of_week existed — those
+    // keep visiting on start_date's own weekday, one visit per cycle.
+    let cursor = start;
+    while (cursor <= end && dates.length < 200) {
+      dates.push(new Date(cursor));
+      cursor = addFrequency(cursor, contract.visit_frequency);
+    }
   }
 
   const perVisitAmount = dates.length > 0 ? contract.total_amount / dates.length : 0;
@@ -409,7 +439,7 @@ api.post('/contracts', (req, res) => {
     service_name_snapshot: service?.name ?? '',
     contract_type: body.contract_type,
     visit_frequency: body.visit_frequency,
-    visit_day_of_week: body.visit_day_of_week,
+    visit_days_of_week: Array.isArray(body.visit_days_of_week) ? body.visit_days_of_week : undefined,
     visit_time: body.visit_time ?? '09:00',
     start_date: body.start_date,
     end_date: body.end_date,
@@ -436,6 +466,15 @@ api.post('/contracts', (req, res) => {
   store.contracts.update(contract.id, { total_visits: generated.length, remaining_amount: contract.total_amount });
 
   res.status(201).json({ contract: store.contracts.get(contract.id), generated_appointments: generated.length });
+});
+
+// حذف عقد بالكامل — للمدير العام فقط (مقيَّد في الواجهة عبر
+// CAN_DELETE_CONTRACT_ROLES). لا يحذف هذا المواعيد المولَّدة سابقاً من
+// العقد — تبقى في جدول المواعيد كسجل تاريخي (نفس منطق حذف صور الموعد).
+api.delete('/contracts/:id', (req, res) => {
+  const removed = store.contracts.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------
