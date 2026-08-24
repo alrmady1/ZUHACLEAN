@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -23,6 +23,7 @@ export default function Customers() {
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'list' | 'grid'>('list');
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
   function refresh() {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -197,14 +198,11 @@ export default function Customers() {
                       <Trash2 className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => {
-                        setEditing(c);
-                        setShowForm(true);
-                      }}
-                      title={t('تعديل')}
+                      onClick={() => setViewingCustomer(c)}
+                      title={t('عرض التفاصيل والتعديل')}
                       className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Eye className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => toggleExpanded(c.id)}
@@ -284,14 +282,11 @@ export default function Customers() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => {
-                      setEditing(c);
-                      setShowForm(true);
-                    }}
-                    title={t('تعديل')}
+                    onClick={() => setViewingCustomer(c)}
+                    title={t('عرض التفاصيل والتعديل')}
                     className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Eye className="h-4 w-4" />
                   </button>
                 </div>
                 <button
@@ -407,6 +402,223 @@ export default function Customers() {
           </form>
         </div>
       )}
+
+      {viewingCustomer && (
+        <CustomerDetailModal
+          customer={viewingCustomer}
+          visits={visitsByCustomer.get(viewingCustomer.id) ?? []}
+          onClose={() => setViewingCustomer(null)}
+          onSaved={refresh}
+        />
+      )}
+    </div>
+  );
+}
+
+// عين بدل قلم على مستوى الصف: تفتح هذه النافذة كل تفاصيل العميل مع
+// إمكانية التعديل من داخلها مباشرة (تبديل عرض/تحرير)، بدل فتح نموذج
+// تعديل منفصل فوراً — بحيث "الاطلاع" و"التعديل" كلاهما من نفس المكان.
+function CustomerDetailModal({
+  customer,
+  visits,
+  onClose,
+  onSaved,
+}: {
+  customer: Customer;
+  visits: Appointment[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t, lang } = useI18n();
+  const [editing, setEditing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [name, setName] = useState(customer.name);
+  const [phone, setPhone] = useState(customer.phone);
+  const [address, setAddress] = useState(customer.address);
+  const [district, setDistrict] = useState(customer.district ?? '');
+  const [city, setCity] = useState(customer.city ?? '');
+  const [locationUrl, setLocationUrl] = useState(customer.location_url ?? '');
+
+  async function save() {
+    setSubmitting(true);
+    try {
+      await api.patch(`/customers/${customer.id}`, {
+        name,
+        phone,
+        address,
+        district: district || undefined,
+        city: city || undefined,
+        location_url: locationUrl || undefined,
+      });
+      onSaved();
+      setEditing(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const sortedVisits = [...visits].sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-bold text-slate-800">{t('تفاصيل العميل')}</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {!editing ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-base font-bold text-slate-800">{customer.name}</span>
+                <button
+                  onClick={() => {
+                    setName(customer.name);
+                    setPhone(customer.phone);
+                    setAddress(customer.address);
+                    setDistrict(customer.district ?? '');
+                    setCity(customer.city ?? '');
+                    setLocationUrl(customer.location_url ?? '');
+                    setEditing(true);
+                  }}
+                  title={t('تعديل بيانات العميل')}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-brand-600"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="space-y-1.5 text-sm text-slate-600">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 shrink-0" /> {customer.phone}
+                </div>
+                {customer.address && (
+                  <div className="flex items-start gap-1.5">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {customer.address}
+                      {customer.district ? `، ${customer.district}` : ''}
+                      {customer.city ? `، ${customer.city}` : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <a
+                  href={`tel:${customer.phone}`}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  <Phone className="h-3.5 w-3.5" /> {t('اتصال')}
+                </a>
+                <a
+                  href={waLink(customer.phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> {t('واتساب')}
+                </a>
+                {customer.location_url && (
+                  <a
+                    href={customer.location_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={t('فتح موقع العميل في الخريطة')}
+                    className="flex items-center justify-center rounded-xl bg-brand-600 p-2 text-white hover:bg-brand-700"
+                  >
+                    <MapIcon className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('الاسم')}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} className="input" />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('الجوال')}</span>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" placeholder="9665xxxxxxxx" />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('العنوان')}</span>
+                <input value={address} onChange={(e) => setAddress(e.target.value)} className="input" />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الحي')}</span>
+                  <input value={district} onChange={(e) => setDistrict(e.target.value)} className="input" />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المدينة')}</span>
+                  <input value={city} onChange={(e) => setCity(e.target.value)} className="input" />
+                </label>
+              </div>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('رابط الموقع (خرائط جوجل)')}</span>
+                <div className="flex gap-2">
+                  <input
+                    value={locationUrl}
+                    onChange={(e) => setLocationUrl(e.target.value)}
+                    className="input"
+                    placeholder="https://maps.google.com/..."
+                  />
+                  <a
+                    href="https://www.google.com/maps"
+                    target="_blank"
+                    rel="noreferrer"
+                    title={t('فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا')}
+                    className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
+                  >
+                    <MapIcon className="h-4 w-4" />
+                  </a>
+                </div>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={submitting}
+                  onClick={save}
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" /> {submitting ? t('جارِ الحفظ…') : t('حفظ')}
+                </button>
+                <button onClick={() => setEditing(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                  {t('إلغاء')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-600">{t('سجل الزيارات')}</span>
+              <span
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500"
+                dir={lang === 'en' ? 'ltr' : undefined}
+              >
+                {visits.length} {t('زيارات')}
+              </span>
+            </div>
+            <div className="max-h-64 space-y-2 overflow-y-auto">
+              {sortedVisits.map((v) => (
+                <div key={v.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <div>
+                    <div className="font-medium text-slate-700">{v.service_name_snapshot}</div>
+                    <div className="text-slate-400">
+                      {formatDateAr(v.scheduled_at)} · {formatTimeAr(v.scheduled_at)} · {formatMoney(v.amount)}
+                    </div>
+                  </div>
+                  <AppointmentStatusBadge status={v.status} />
+                </div>
+              ))}
+              {visits.length === 0 && <div className="text-xs text-slate-400">{t('لا يوجد سجل زيارات بعد')}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
