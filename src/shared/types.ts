@@ -30,8 +30,6 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
 // auth (login just returns the matching profile), so these gate the UI
 // only — not a server-enforced security boundary.
 export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
-// تعيين/تغيير المشرف والفني المسؤولين عن الموعد — للمدير العام ومدير النظام فقط.
-export const CAN_ASSIGN_TEAM_ROLES: UserRole[] = ['general_manager', 'admin'];
 // إضافة/تعديل رابط موقع العميل من تفاصيل الموعد — للجميع ما عدا الفني الميداني.
 export const CAN_EDIT_LOCATION_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
@@ -72,12 +70,17 @@ export type PermissionKey =
   | 'view_sales_invoices'
   | 'issue_invoices'
   | 'add_before_after_photos'
-  | 'view_all_supervisors_appointments';
+  | 'view_all_supervisors_appointments'
+  | 'view_settings_page'
+  | 'update_appointment_status'
+  | 'edit_appointment_team';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
   create_appointments: 'إضافة المواعيد',
   edit_appointments: 'تعديل المواعيد',
+  update_appointment_status: 'تحديث حالة المهمة للموعد',
+  edit_appointment_team: 'تعديل الفريق المسند للموعد',
   create_customers: 'إضافة عميل',
   edit_customers: 'تعديل عميل',
   delete_customers: 'حذف عميل',
@@ -94,9 +97,12 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   edit_custody_expenses: 'تعديل العهد والمصروفات',
   edit_tech_supervisor_links: 'تعديل ربط الفنيين بالمشرفين',
   view_sales_invoices: 'الاطلاع على المبيعات والفواتير',
-  issue_invoices: 'اصدار الفواتير',
+  // كانت "اصدار الفواتير" فقط — وسِّع الاسم ليشمل إعادة الطباعة التي كانت
+  // مشمولة بها فعلياً منذ البداية (نفس الصلاحية، تسمية أدق).
+  issue_invoices: 'اصدار وطباعة الفواتير',
   add_before_after_photos: 'اضافة الصور قبل وبعد',
   view_all_supervisors_appointments: 'الاطلاع على كافة المواعيد لجميع المشرفين',
+  view_settings_page: 'الاطلاع على الاعدادات',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -127,6 +133,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   issue_invoices: GM_ADMIN,
   add_before_after_photos: EVERYONE,
   view_all_supervisors_appointments: GM_ADMIN_ADMINSUP,
+  view_settings_page: GM_ADMIN_ADMINSUP,
+  update_appointment_status: NOT_TECHNICIAN,
+  edit_appointment_team: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير

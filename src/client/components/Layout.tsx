@@ -37,10 +37,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, permissionKey: 'view_expenses_page' },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
-  // المشرف الإداري يرى الإعدادات أيضاً — يفتح له تلقائياً على تبويب "ربط
-  // الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية التبويبات. غير
-  // خاضع لصفحة الصلاحيات (وصول الإعدادات نفسه ثابت عمداً).
-  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin', 'admin_supervisor'] },
+  // المشرف الإداري يرى الإعدادات أيضاً افتراضياً — يفتح له تلقائياً على
+  // تبويب "ربط الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية
+  // التبويبات. صار الوصول نفسه صلاحية ديناميكية قابلة للتعديل.
+  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, permissionKey: 'view_settings_page' },
 ];
 
 export default function Layout() {

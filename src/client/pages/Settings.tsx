@@ -1544,12 +1544,10 @@ export default function Settings() {
     return 'permissions';
   });
 
-  // كل تبويب له صلاحيته الخاصة الآن (قابلة للتعديل من تبويب "الصلاحيات"
-  // نفسه) — الحارس هنا يسمح بالدخول لو ملك المستخدم أي تبويب واحد على
-  // الأقل، والتبويبات نفسها تُصفَّى أدناه فرداً فرداً.
-  if (user && !canUsers && !canTeamLinks && !canServices && !canPaymentMethods && !canExpenseCategories && !canPermissions) {
-    return <Navigate to="/" replace />;
-  }
+  // "الاطلاع على الاعدادات" هي البوابة الرئيسية لدخول الصفحة كاملة (نفس
+  // الصلاحية التي تتحكم بظهور رابط "الإعدادات" في القائمة الجانبية —
+  // Layout.tsx). أي تبويب داخلها يبقى محكوماً بصلاحيته الخاصة أدناه.
+  if (user && !can('view_settings_page')) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-5">
