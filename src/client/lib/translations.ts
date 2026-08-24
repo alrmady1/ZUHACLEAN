@@ -7,6 +7,8 @@ export const AR_TO_EN: Record<string, string> = {
   "إغلاق": "Close",
   "كاميرا": "Camera",
   "المعرض": "Gallery",
+  "بطاقات": "Cards",
+  "أسطر": "Rows",
   "حذف هذه الصورة؟ لا يمكن التراجع عن هذا الإجراء.": "Delete this image? This action cannot be undone.",
   "حذف الموعد نهائياً": "Delete Appointment Permanently",
   "حذف هذا الموعد نهائياً؟ سيُحذف مع كل صوره ومدفوعاته المرتبطة به، ولا يمكن التراجع عن هذا الإجراء.": "Delete this appointment permanently? It will be deleted along with all its related photos and payments. This action cannot be undone.",

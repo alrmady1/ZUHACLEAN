@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -240,7 +240,35 @@ function AppointmentCard({
   );
 }
 
+// عرض مضغوط: سطر واحد لكل موعد (الوقت، اسم العميل، الحالة، وعدد الصور
+// إن وُجدت) — النقر عليه يفتح/يطوي بطاقة الموعد الكاملة تحته (نفس بطاقة
+// عرض "بطاقات" بكل أزرارها) بدل استبدالها بشيء منفصل.
+function AppointmentRow({ appt, expanded, onToggle }: { appt: Appointment; expanded: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-start"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        <span className="shrink-0 text-xs text-slate-400">{formatTimeAr(appt.scheduled_at)}</span>
+        <span className="truncate text-sm font-medium text-slate-800">{appt.customer_name_snapshot}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {appt.photos.length > 0 && (
+          <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
+            <Camera className="h-3 w-3" /> {appt.photos.length}
+          </span>
+        )}
+        <AppointmentStatusBadge status={appt.status} />
+      </div>
+    </button>
+  );
+}
+
 type TechView = 'all' | 'day' | 'month';
+type TechDisplay = 'cards' | 'rows';
 
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
@@ -255,6 +283,10 @@ export default function TechnicianPortal() {
   // الكاملة (صور، رفع...) لكن مقسّمة على تاريخ محدد بدل قائمة واحدة طويلة.
   const [view, setView] = useState<TechView>('all');
   const [calDate, setCalDate] = useState(new Date());
+  // عرض "بطاقات" (الحالي) أو "أسطر" (سطر واحد مضغوط لكل موعد، يُفتح
+  // بالنقر لإظهار البطاقة الكاملة تحته) — ينطبق على عرضي "الكل" و"يومي".
+  const [display, setDisplay] = useState<TechDisplay>('cards');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -291,6 +323,36 @@ export default function TechnicianPortal() {
 
   const dayAppts = apptsByDate.get(calDate.toDateString()) ?? [];
 
+  function renderApptList(list: Appointment[]) {
+    if (display === 'rows') {
+      return (
+        <div className="space-y-2">
+          {list.map((appt) => (
+            <div key={appt.id}>
+              <AppointmentRow
+                appt={appt}
+                expanded={expandedId === appt.id}
+                onToggle={() => setExpandedId(expandedId === appt.id ? null : appt.id)}
+              />
+              {expandedId === appt.id && (
+                <div className="mt-2">
+                  <AppointmentCard appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        {list.map((appt) => (
+          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-md space-y-4">
       <div>
@@ -315,33 +377,51 @@ export default function TechnicianPortal() {
         </label>
       )}
 
-      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
-        {([
-          ['all', 'الكل'],
-          ['day', 'يومي'],
-          ['month', 'شهري'],
-        ] as const).map(([v, label]) => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${view === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-          >
-            {t(label)}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+          {([
+            ['all', 'الكل'],
+            ['day', 'يومي'],
+            ['month', 'شهري'],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${view === v ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
+        {view !== 'month' && (
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+            <button
+              onClick={() => setDisplay('cards')}
+              title={t('بطاقات')}
+              className={`rounded-lg p-1.5 ${display === 'cards' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setDisplay('rows')}
+              title={t('أسطر')}
+              className={`rounded-lg p-1.5 ${display === 'rows' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {view === 'all' && (
-        <div className="space-y-3">
-          {mine.map((appt) => (
-            <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
-          ))}
+        <>
+          {renderApptList(mine)}
           {mine.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
               {t('لا توجد مهام مسندة حالياً')}
             </div>
           )}
-        </div>
+        </>
       )}
 
       {(view === 'day' || view === 'month') && (
@@ -404,16 +484,14 @@ export default function TechnicianPortal() {
           )}
 
           {view === 'day' && (
-            <div className="space-y-3">
-              {dayAppts.map((appt) => (
-                <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
-              ))}
+            <>
+              {renderApptList(dayAppts)}
               {dayAppts.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
                   {t('لا توجد مواعيد في هذا اليوم')}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
