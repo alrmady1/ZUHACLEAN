@@ -15,6 +15,11 @@ interface AuthState {
   // DEFAULT_PERMISSIONS قبل اكتمال أول تحميل أو لصلاحية لم تُعدَّل بعد.
   can: (key: PermissionKey) => boolean;
   refreshPermissions: () => void;
+  // allProfiles يُحمَّل مرة واحدة فقط عند بدء الجلسة — أي صفحة تُعدِّل
+  // بيانات مستخدم آخر (أيام الإجازة، ربط الفني بالمشرف...) يجب أن تستدعي
+  // هذه بعد الحفظ، وإلا بقيت النماذج المفتوحة بالفعل (مثل نافذة حجز موعد
+  // جديد) ترى نسخة قديمة من الملف الشخصي حتى إعادة تحميل الصفحة كاملة.
+  refreshProfiles: () => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -46,9 +51,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return roles.includes(user.role);
   }
 
-  useEffect(() => {
-    api.get<Profile[]>('/profiles').then((profiles) => {
+  // يُعيد جلب كل الملفات الشخصية ويزامن نسخة المستخدم الحالي منها (لو
+  // تغيّرت بياناته هو نفسه من مكان آخر) — مستخدَمة عند أول تحميل، وأيضاً
+  // تُستدعى يدوياً (refreshProfiles) من أي صفحة تُعدِّل ملف مستخدم آخر.
+  function refreshProfiles(): Promise<Profile[]> {
+    return api.get<Profile[]>('/profiles').then((profiles) => {
       setAllProfiles(profiles);
+      setUser((prev) => (prev ? (profiles.find((p) => p.id === prev.id) ?? prev) : prev));
+      return profiles;
+    });
+  }
+
+  useEffect(() => {
+    refreshProfiles().then((profiles) => {
       const savedId = localStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(STORAGE_KEY);
       const restored = profiles.find((p) => p.id === savedId);
       if (restored) setUser(restored);
@@ -82,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, allProfiles, loading, login, loginAs, logout, can, refreshPermissions }}>
+    <AuthContext.Provider value={{ user, allProfiles, loading, login, loginAs, logout, can, refreshPermissions, refreshProfiles }}>
       {children}
     </AuthContext.Provider>
   );

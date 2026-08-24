@@ -98,7 +98,7 @@ function Modal({
 // Users tab
 // ---------------------------------------------------------------------------
 function UsersTab() {
-  const { user: currentUser, loginAs } = useAuth();
+  const { user: currentUser, loginAs, refreshProfiles } = useAuth();
   const { t, tt, roleLabel, lang } = useI18n();
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -153,6 +153,7 @@ function UsersTab() {
       setShowForm(false);
       setEditing(null);
       refresh();
+      refreshProfiles();
     } finally {
       setSubmitting(false);
     }
@@ -168,6 +169,7 @@ function UsersTab() {
     try {
       await api.del(`/profiles/${p.id}`);
       refresh();
+      refreshProfiles();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : t('تعذّر حذف الحساب'));
     }
@@ -1342,6 +1344,7 @@ function ExpenseCategoriesTab() {
 // ---------------------------------------------------------------------------
 function TeamLinksTab() {
   const { t, roleLabel } = useI18n();
+  const { refreshProfiles } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -1363,6 +1366,10 @@ function TeamLinksTab() {
       // server and silently fail to clear the existing link.
       await api.patch(`/profiles/${techId}`, { supervisor_id: supervisorId || null });
       refresh();
+      // بدون هذا، بوابة الفني (وأي مكان آخر يعتمد على allProfiles) تبقى
+      // ترى الربط القديم حتى إعادة تحميل الصفحة كاملة — نفس سبب مشكلة
+      // تنبيه الإجازة الأسبوعية أعلاه.
+      refreshProfiles();
     } finally {
       setSavingId(null);
     }
@@ -1451,6 +1458,7 @@ function TeamLinksTab() {
 // ---------------------------------------------------------------------------
 function DaysOffTab() {
   const { t, roleLabel } = useI18n();
+  const { refreshProfiles } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -1468,6 +1476,10 @@ function DaysOffTab() {
     try {
       await api.patch(`/profiles/${person.id}`, { weekly_days_off: next });
       refresh();
+      // بدون هذا، نافذة حجز موعد جديد المفتوحة بالفعل (أو حتى المفتوحة
+      // لاحقاً في نفس الجلسة) تبقى ترى allProfiles القديمة من AuthProvider
+      // (تُحمَّل مرة واحدة فقط عند بدء الجلسة)، فلا يظهر تنبيه الإجازة.
+      refreshProfiles();
     } finally {
       setSavingId(null);
     }
