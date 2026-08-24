@@ -592,31 +592,35 @@ function CustomerDetailModal({
             </div>
           )}
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">{t('سجل الزيارات')}</span>
-              <span
-                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500"
-                dir={lang === 'en' ? 'ltr' : undefined}
-              >
-                {visits.length} {t('زيارات')}
-              </span>
-            </div>
-            <div className="max-h-64 space-y-2 overflow-y-auto">
-              {sortedVisits.map((v) => (
-                <div key={v.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
-                  <div>
-                    <div className="font-medium text-slate-700">{v.service_name_snapshot}</div>
-                    <div className="text-slate-400">
-                      {formatDateAr(v.scheduled_at)} · {formatTimeAr(v.scheduled_at)} · {formatMoney(v.amount)}
+          {/* مخفي أثناء التعديل — يشتت عن نموذج التعديل بلا فائدة، ويعود
+              يظهر بمجرد الحفظ أو الإلغاء والعودة لوضع العرض. */}
+          {!editing && (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-600">{t('سجل الزيارات')}</span>
+                <span
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500"
+                  dir={lang === 'en' ? 'ltr' : undefined}
+                >
+                  {visits.length} {t('زيارات')}
+                </span>
+              </div>
+              <div className="max-h-64 space-y-2 overflow-y-auto">
+                {sortedVisits.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                    <div>
+                      <div className="font-medium text-slate-700">{v.service_name_snapshot}</div>
+                      <div className="text-slate-400">
+                        {formatDateAr(v.scheduled_at)} · {formatTimeAr(v.scheduled_at)} · {formatMoney(v.amount)}
+                      </div>
                     </div>
+                    <AppointmentStatusBadge status={v.status} />
                   </div>
-                  <AppointmentStatusBadge status={v.status} />
-                </div>
-              ))}
-              {visits.length === 0 && <div className="text-xs text-slate-400">{t('لا يوجد سجل زيارات بعد')}</div>}
+                ))}
+                {visits.length === 0 && <div className="text-xs text-slate-400">{t('لا يوجد سجل زيارات بعد')}</div>}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
