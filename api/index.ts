@@ -37,7 +37,12 @@ app.use('/api', api);
 // least returns JSON and logs the actual error to Vercel's runtime logs.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('❌ خطأ في الخادم:', err);
-  res.status(500).json({ error: 'حدث خطأ في الخادم، حاول مرة أخرى' });
+  // TEMPORARY (incident diagnosis, 2026-08-24): expose the error's
+  // code/name only — never the full message, which for pg errors can echo
+  // back connection details — so the outage can be diagnosed from the
+  // browser without needing Vercel log access. Revert once root-caused.
+  const e = err as { code?: string; name?: string } | undefined;
+  res.status(500).json({ error: 'حدث خطأ في الخادم، حاول مرة أخرى', debug_code: e?.code, debug_name: e?.name });
 });
 
 export default app;
