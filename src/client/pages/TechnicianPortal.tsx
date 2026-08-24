@@ -6,15 +6,7 @@ import { AppointmentStatusBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+import { compressImageToDataUrl } from '../lib/image.js';
 
 function AppointmentCard({ appt, onChange }: { appt: Appointment; onChange: () => void }) {
   const { t } = useI18n();
@@ -26,7 +18,7 @@ function AppointmentCard({ appt, onChange }: { appt: Appointment; onChange: () =
     if (!file) return;
     setBusy(true);
     try {
-      const data_url = await fileToDataUrl(file);
+      const data_url = await compressImageToDataUrl(file);
       await api.post(`/appointments/${appt.id}/photos`, { stage, data_url });
       onChange();
     } finally {

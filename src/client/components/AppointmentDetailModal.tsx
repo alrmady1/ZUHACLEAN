@@ -15,15 +15,7 @@ import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink } from '../lib/whatsapp.js';
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+import { compressImageToDataUrl } from '../lib/image.js';
 
 const STATUS_ORDER: AppointmentStatus[] = ['scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
@@ -127,7 +119,7 @@ export default function AppointmentDetailModal({
     if (!file) return;
     setBusy(true);
     try {
-      const data_url = await fileToDataUrl(file);
+      const data_url = await compressImageToDataUrl(file);
       await api.post(`/appointments/${appointment.id}/photos`, { stage, data_url });
       onChanged();
     } finally {
