@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MapPin, Camera } from 'lucide-react';
+import { MapPin, Camera, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -8,7 +8,15 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 
-function AppointmentCard({ appt, onChange }: { appt: Appointment; onChange: () => void }) {
+function AppointmentCard({
+  appt,
+  onChange,
+  onOpenPhoto,
+}: {
+  appt: Appointment;
+  onChange: () => void;
+  onOpenPhoto: (url: string) => void;
+}) {
   const { t } = useI18n();
   const beforeInput = useRef<HTMLInputElement>(null);
   const afterInput = useRef<HTMLInputElement>(null);
@@ -90,6 +98,52 @@ function AppointmentCard({ appt, onChange }: { appt: Appointment; onChange: () =
           onChange={(e) => uploadPhoto('after', e.target.files?.[0])}
         />
       </div>
+
+      {/* صور مصغّرة لما تم رفعه فعلياً — الأزرار أعلاه كانت تعرض العدد فقط
+          بلا أي طريقة لاستعراض الصور نفسها؛ النقر على أي مصغّرة يفتحها
+          بالحجم الكامل عبر onOpenPhoto. */}
+      {appt.photos.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {beforeCount > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-slate-400">{t('صورة قبل')}</div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {appt.photos
+                  .filter((p) => p.stage === 'before')
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onOpenPhoto(p.data_url)}
+                      className="aspect-square overflow-hidden rounded-lg border border-slate-200"
+                    >
+                      <img src={p.data_url} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+          {afterCount > 0 && (
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-slate-400">{t('صورة بعد')}</div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {appt.photos
+                  .filter((p) => p.stage === 'after')
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onOpenPhoto(p.data_url)}
+                      className="aspect-square overflow-hidden rounded-lg border border-slate-200"
+                    >
+                      <img src={p.data_url} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -101,6 +155,7 @@ export default function TechnicianPortal() {
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
     user?.role === 'technician' ? user.id : undefined,
   );
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -140,7 +195,7 @@ export default function TechnicianPortal() {
 
       <div className="space-y-3">
         {mine.map((appt) => (
-          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} />
+          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
         ))}
         {mine.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
@@ -148,6 +203,23 @@ export default function TechnicianPortal() {
           </div>
         )}
       </div>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            aria-label={t('إغلاق')}
+            className="absolute end-4 top-4 rounded-full bg-white/90 p-2 text-slate-700 hover:bg-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
