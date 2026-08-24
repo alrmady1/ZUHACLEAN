@@ -74,7 +74,8 @@ export type PermissionKey =
   | 'view_settings_page'
   | 'update_appointment_status'
   | 'edit_appointment_team'
-  | 'edit_days_off';
+  | 'edit_days_off'
+  | 'assign_appointment_technician';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -105,6 +106,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_all_supervisors_appointments: 'الاطلاع على كافة المواعيد لجميع المشرفين',
   view_settings_page: 'الاطلاع على الاعدادات',
   edit_days_off: 'تعديل أيام الإجازة الأسبوعية',
+  assign_appointment_technician: 'اضافة وتعديل الفني للموعد',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -139,6 +141,14 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   update_appointment_status: NOT_TECHNICIAN,
   edit_appointment_team: GM_ADMIN,
   edit_days_off: GM_ADMIN_ADMINSUP,
+  // صلاحية جديدة مستقلة عن edit_appointment_team (التي تبقى تتحكم فقط
+  // بالمشرف المسؤول عن الموعد) — تتحكم تحديداً بمن يستطيع اختيار/تغيير
+  // الفني عند حجز موعد جديد وعند تعديل موعد قائم. الافتراضي هنا يطابق من
+  // كان يستطيع اختيار الفني أصلاً عند الحجز (NOT_TECHNICIAN، بلا صلاحية
+  // مستقلة سابقاً) — تعديل الفني على موعد قائم كان مقصوراً على GM_ADMIN
+  // عبر edit_appointment_team فقط، وهذا يوسِّعه عمداً ليطابق سلوك الحجز؛
+  // يمكن تضييقه لاحقاً من صفحة الصلاحيات لو رغب المدير العام.
+  assign_appointment_technician: NOT_TECHNICIAN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير

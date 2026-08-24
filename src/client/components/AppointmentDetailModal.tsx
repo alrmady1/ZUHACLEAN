@@ -50,7 +50,11 @@ export default function AppointmentDetailModal({
   const navigate = useNavigate();
   const canEditPayments = can('issue_invoices');
   const canReprintInvoice = can('issue_invoices');
+  // canAssignTeam يتحكم بالمشرف المسؤول عن الموعد فقط — اختيار/تغيير
+  // الفني صار صلاحية مستقلة (assign_appointment_technician) حتى يمكن
+  // منح شخص إسناد الفني دون المشرف أو العكس.
   const canAssignTeam = can('edit_appointment_team');
+  const canAssignTechnician = can('assign_appointment_technician');
   const canEditLocation = user ? CAN_EDIT_LOCATION_ROLES.includes(user.role) : false;
   const canDeletePhotos = user ? CAN_DELETE_PHOTOS_ROLES.includes(user.role) : false;
   const canDeleteAppointment = can('delete_appointments');
@@ -442,7 +446,7 @@ export default function AppointmentDetailModal({
               <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
                 <TeamIcon className="h-4 w-4" /> {t('فريق العمل المسند')}
               </div>
-              {canAssignTeam && !editingTeam && (
+              {(canAssignTeam || canAssignTechnician) && !editingTeam && (
                 <button
                   onClick={() => {
                     setTeamSupervisorId(appointment.supervisor_id ?? '');
@@ -461,25 +465,37 @@ export default function AppointmentDetailModal({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium text-slate-600">{t('المشرف المسؤول')}</span>
-                    <select value={teamSupervisorId} onChange={(e) => setTeamSupervisorId(e.target.value)} className="input">
-                      <option value="">{t('-- بدون تحديد --')}</option>
-                      {supervisorOptions.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.full_name} ({roleLabel(s.role)})
-                        </option>
-                      ))}
-                    </select>
+                    {canAssignTeam ? (
+                      <select value={teamSupervisorId} onChange={(e) => setTeamSupervisorId(e.target.value)} className="input">
+                        <option value="">{t('-- بدون تحديد --')}</option>
+                        {supervisorOptions.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.full_name} ({roleLabel(s.role)})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="input flex items-center bg-slate-50 text-slate-500">
+                        {supervisorOptions.find((s) => s.id === teamSupervisorId)?.full_name ?? t('-- بدون تحديد --')}
+                      </div>
+                    )}
                   </label>
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium text-slate-600">{t('الفني المسند')}</span>
-                    <select value={teamTechnicianId} onChange={(e) => setTeamTechnicianId(e.target.value)} className="input">
-                      <option value="">{t('-- بدون تحديد --')}</option>
-                      {technicianOptions.map((tech) => (
-                        <option key={tech.id} value={tech.id}>
-                          {tech.full_name}
-                        </option>
-                      ))}
-                    </select>
+                    {canAssignTechnician ? (
+                      <select value={teamTechnicianId} onChange={(e) => setTeamTechnicianId(e.target.value)} className="input">
+                        <option value="">{t('-- بدون تحديد --')}</option>
+                        {technicianOptions.map((tech) => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="input flex items-center bg-slate-50 text-slate-500">
+                        {technicianOptions.find((tech) => tech.id === teamTechnicianId)?.full_name ?? t('-- بدون تحديد --')}
+                      </div>
+                    )}
                   </label>
                 </div>
                 <div className="flex items-center gap-2">

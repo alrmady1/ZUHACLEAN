@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import type { Customer, Service, Profile, Appointment } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
+import { useAuth } from '../lib/auth.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
@@ -39,6 +40,8 @@ export default function NewAppointmentModal({
   onCustomerCreated?: (customer: Customer) => void;
 }) {
   const { t, tt } = useI18n();
+  const { can } = useAuth();
+  const canAssignTechnician = can('assign_appointment_technician');
   const today = new Date().toISOString().slice(0, 10);
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
@@ -408,7 +411,7 @@ export default function NewAppointmentModal({
           </Section>
 
           <Section icon={<TeamIcon className="h-3.5 w-3.5 text-brand-500" />} title={t('إسناد المهمة (المشرف والفريق الفني)')}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={canAssignTechnician ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('المشرف المسؤول')}</span>
                 <select
@@ -425,17 +428,19 @@ export default function NewAppointmentModal({
                   ))}
                 </select>
               </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">{t('الفني الرئيسي / الفريق')}</span>
-                <select name="technician_id" defaultValue="" className="input">
-                  <option value="">{t('-- اختياري: حدد الفني --')}</option>
-                  {technicians.map((tech) => (
-                    <option key={tech.id} value={tech.id}>
-                      {tech.full_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {canAssignTechnician && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الفني الرئيسي / الفريق')}</span>
+                  <select name="technician_id" defaultValue="" className="input">
+                    <option value="">{t('-- اختياري: حدد الفني --')}</option>
+                    {technicians.map((tech) => (
+                      <option key={tech.id} value={tech.id}>
+                        {tech.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             {conflict && (

@@ -9,6 +9,7 @@ export const AR_TO_EN: Record<string, string> = {
   "لا يوجد مشرفون أو فنيون بعد": "No supervisors or technicians yet",
   "أيام الإجازة الأسبوعية": "Weekly Days Off",
   "تعديل أيام الإجازة الأسبوعية": "Edit Weekly Days Off",
+  "اضافة وتعديل الفني للموعد": "Add & Edit Appointment Technician",
   "المشرف": "Supervisor",
   "الفني": "Technician",
   "إغلاق": "Close",
