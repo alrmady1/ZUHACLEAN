@@ -22,12 +22,18 @@ function AppointmentCard({
   const afterInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
-  async function uploadPhoto(stage: 'before' | 'after', file: File | undefined) {
-    if (!file) return;
+  // بدون capture="environment" (كان يفتح الكاميرا مباشرة ويتجاوز خيار
+  // المعرض) — بدونه يعرض نظام الجهاز نفسه اختيار "كاميرا" أو "معرض
+  // الصور"/الملفات، حسب الجهاز والمتصفح. مع multiple يمكن اختيار أكثر من
+  // صورة دفعة واحدة من المعرض؛ نرفعها بالتتابع ثم نحدّث الواجهة مرة واحدة.
+  async function uploadPhotos(stage: 'before' | 'after', files: FileList | null) {
+    if (!files || files.length === 0) return;
     setBusy(true);
     try {
-      const data_url = await compressImageToDataUrl(file);
-      await api.post(`/appointments/${appt.id}/photos`, { stage, data_url });
+      for (const file of Array.from(files)) {
+        const data_url = await compressImageToDataUrl(file);
+        await api.post(`/appointments/${appt.id}/photos`, { stage, data_url });
+      }
       onChange();
     } finally {
       setBusy(false);
@@ -85,17 +91,23 @@ function AppointmentCard({
           ref={beforeInput}
           type="file"
           accept="image/*"
-          capture="environment"
+          multiple
           hidden
-          onChange={(e) => uploadPhoto('before', e.target.files?.[0])}
+          onChange={(e) => {
+            uploadPhotos('before', e.target.files);
+            e.target.value = '';
+          }}
         />
         <input
           ref={afterInput}
           type="file"
           accept="image/*"
-          capture="environment"
+          multiple
           hidden
-          onChange={(e) => uploadPhoto('after', e.target.files?.[0])}
+          onChange={(e) => {
+            uploadPhotos('after', e.target.files);
+            e.target.value = '';
+          }}
         />
       </div>
 
