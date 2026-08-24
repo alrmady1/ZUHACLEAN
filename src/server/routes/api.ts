@@ -13,10 +13,36 @@ import type {
   ServiceCategory,
   ExpenseCategoryItem,
   CustodyInvoice,
+  PermissionKey,
+  UserRole,
 } from '../../shared/types.js';
-import { VAT_RATE, CUSTODY_CATEGORY_NAME } from '../../shared/types.js';
+import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR } from '../../shared/types.js';
 
 export const api = Router();
+
+// ---------------------------------------------------------------------------
+// Permissions — صفحة الإعدادات ← الصلاحيات (المدير العام ومدير النظام،
+// مقيَّد في الواجهة فقط عبر PERMISSIONS_ACCESS_ROLES، كبقية نقاط التحكم في
+// هذا الملف). القراءة تدمج القيم المحفوظة مع DEFAULT_PERMISSIONS بحيث أي
+// صلاحية لم تُعدَّل يدوياً بعد — أو أُضيفت حديثاً للكود — تُقرأ بقيمتها
+// الافتراضية دون الحاجة لأي migration على البيانات المخزَّنة.
+// ---------------------------------------------------------------------------
+api.get('/permissions', (_req, res) => {
+  const stored = store.permissions.list();
+  const merged: Record<string, { label: string; roles: UserRole[] }> = {};
+  for (const key of Object.keys(PERMISSION_LABELS_AR) as PermissionKey[]) {
+    merged[key] = { label: PERMISSION_LABELS_AR[key], roles: stored[key] ?? DEFAULT_PERMISSIONS[key] };
+  }
+  res.json(merged);
+});
+
+api.patch('/permissions/:key', (req, res) => {
+  const key = req.params.key as PermissionKey;
+  if (!(key in PERMISSION_LABELS_AR)) return res.status(404).json({ error: 'unknown permission key' });
+  const roles = Array.isArray(req.body?.roles) ? (req.body.roles as UserRole[]) : [];
+  const updated = store.permissions.update(key, roles);
+  res.json(updated);
+});
 
 // Strip the password hash before a profile ever leaves the server.
 function toSafeProfile(p: StoredProfile) {

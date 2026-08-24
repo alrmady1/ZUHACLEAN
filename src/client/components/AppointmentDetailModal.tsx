@@ -3,15 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
-import {
-  CAN_EDIT_PAYMENTS_ROLES,
-  CAN_BOOK_APPOINTMENT_ROLES,
-  CAN_ASSIGN_TEAM_ROLES,
-  CAN_EDIT_LOCATION_ROLES,
-  CAN_DELETE_PHOTOS_ROLES,
-  CAN_DELETE_APPOINTMENT_ROLES,
-  CAN_EDIT_APPOINTMENT_TIME_ROLES,
-} from '../../shared/types.js';
+import { CAN_ASSIGN_TEAM_ROLES, CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
@@ -52,16 +44,17 @@ export default function AppointmentDetailModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { t, tt, roleLabel } = useI18n();
   const navigate = useNavigate();
-  const canEditPayments = user ? CAN_EDIT_PAYMENTS_ROLES.includes(user.role) : false;
-  const canReprintInvoice = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canEditPayments = can('issue_invoices');
+  const canReprintInvoice = can('issue_invoices');
   const canAssignTeam = user ? CAN_ASSIGN_TEAM_ROLES.includes(user.role) : false;
   const canEditLocation = user ? CAN_EDIT_LOCATION_ROLES.includes(user.role) : false;
   const canDeletePhotos = user ? CAN_DELETE_PHOTOS_ROLES.includes(user.role) : false;
-  const canDeleteAppointment = user ? CAN_DELETE_APPOINTMENT_ROLES.includes(user.role) : false;
-  const canEditTime = user ? CAN_EDIT_APPOINTMENT_TIME_ROLES.includes(user.role) : false;
+  const canDeleteAppointment = can('delete_appointments');
+  const canEditTime = can('edit_appointments');
+  const canAddPhotos = can('add_before_after_photos');
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
@@ -335,7 +328,7 @@ export default function AppointmentDetailModal({
               {STATUS_ORDER.map((s) => (
                 <button
                   key={s}
-                  disabled={busy}
+                  disabled={busy || !canEditTime}
                   onClick={() => setStatus(s)}
                   className={`rounded-xl px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
                     appointment.status === s
@@ -509,6 +502,7 @@ export default function AppointmentDetailModal({
                 <Camera className="h-4 w-4" /> {t('صور توثيق العمل (قبل وبعد)')}
               </div>
             </div>
+            {canAddPhotos && (
             <div className="mb-3 flex flex-wrap gap-2">
               <div className="relative">
                 <button
@@ -621,6 +615,7 @@ export default function AppointmentDetailModal({
                 }}
               />
             </div>
+            )}
 
             <div className="mb-3 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
               {PHOTO_TABS.map((tab) => (

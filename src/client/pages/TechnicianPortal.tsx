@@ -20,6 +20,8 @@ function AppointmentCard({
   onOpenPhoto: (url: string) => void;
 }) {
   const { t } = useI18n();
+  const { can } = useAuth();
+  const canAddPhotos = can('add_before_after_photos');
   const beforeCameraInput = useRef<HTMLInputElement>(null);
   const beforeGalleryInput = useRef<HTMLInputElement>(null);
   const afterCameraInput = useRef<HTMLInputElement>(null);
@@ -79,6 +81,7 @@ function AppointmentCard({
         {formatDateAr(appt.scheduled_at)} · {formatTimeAr(appt.scheduled_at)}
       </div>
 
+      {canAddPhotos && (
       <div className="grid grid-cols-2 gap-2">
         <div className="relative">
           <button
@@ -191,6 +194,7 @@ function AppointmentCard({
           }}
         />
       </div>
+      )}
 
       {/* صور مصغّرة لما تم رفعه فعلياً — الأزرار أعلاه كانت تعرض العدد فقط
           بلا أي طريقة لاستعراض الصور نفسها؛ النقر على أي مصغّرة يفتحها

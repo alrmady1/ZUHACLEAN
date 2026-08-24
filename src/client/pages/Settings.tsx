@@ -23,10 +23,11 @@ import {
   Banknote as PaymentIcon,
   Wallet as ExpensesIcon,
   Link2 as TeamLinkIcon,
+  ShieldCheck as PermissionsIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES, CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES } from '../../shared/types.js';
+import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -1439,21 +1440,114 @@ function TeamLinksTab() {
 }
 
 // ---------------------------------------------------------------------------
-export default function Settings() {
-  const { user } = useAuth();
-  const { t } = useI18n();
-  const canSeeFullSettings = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
-  const [tab, setTab] = useState<'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links'>(
-    // المشرف الإداري لا يرى إلا تبويب "ربط الفنيين بالمشرفين" — فليكن هو
-    // التبويب الافتراضي له بدل "المستخدمون" الذي لا يملك صلاحية رؤيته.
-    user && !canSeeFullSettings ? 'team_links' : 'users',
-  );
+// Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
+// مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
+// فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
+// Settings() أدناه). الأعمدة الخمسة هي كل مسمى وظيفي موجود في النظام
+// (ROLES) — فتشمل تلقائياً أي موظف جديد يُضاف مستقبلاً بأحد هذه المسميات،
+// بلا حاجة لأي إعداد إضافي هنا.
+// ---------------------------------------------------------------------------
+function PermissionsTab() {
+  const { t, roleLabel } = useI18n();
+  const { refreshPermissions } = useAuth();
+  const [rows, setRows] = useState<Record<string, { label: string; roles: UserRole[] }> | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // بقية الإعدادات (المستخدمون، الخدمات، طرق الدفع، العهد والمصروفات)
-  // تبقى مقصورة على المدير العام ومدير النظام. تبويب "ربط الفنيين
-  // بالمشرفين" وحده متاح للمشرف الإداري أيضاً — لذا الحارس هنا أوسع من
-  // SETTINGS_ACCESS_ROLES وحدها؛ التبويبات نفسها تُصفَّى أدناه حسب الدور.
-  if (user && !canSeeFullSettings && !CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES.includes(user.role)) {
+  function refresh() {
+    api.get<Record<string, { label: string; roles: UserRole[] }>>('/permissions').then(setRows);
+  }
+  useEffect(refresh, []);
+
+  async function toggle(key: string, role: UserRole, checked: boolean) {
+    if (!rows) return;
+    const current = rows[key].roles;
+    const nextRoles = checked ? [...current, role] : current.filter((r) => r !== role);
+    setSavingKey(key);
+    // تحديث متفائل فوري في الجدول المحلي، ثم حفظ على الخادم — يبقى
+    // متجاوباً بصرياً حتى مع بطء الشبكة.
+    setRows({ ...rows, [key]: { ...rows[key], roles: nextRoles } });
+    try {
+      await api.patch(`/permissions/${key}`, { roles: nextRoles });
+      // يحدّث can() في كل الواجهة فوراً (مثلاً لو عدَّل المدير العام صلاحية
+      // نفسه بينما الصفحة مفتوحة) بدل انتظار إعادة تحميل الصفحة بالكامل.
+      refreshPermissions();
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  if (!rows) {
+    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">{t('جارِ التحميل…')}</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+        {t('حدِّد لكل صلاحية المسميات الوظيفية المسموح لها بها — التغيير يُحفظ فوراً وينطبق على كل من يحمل هذا المسمى، بمن فيهم من يُضاف مستقبلاً.')}
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="p-3 text-start font-medium">{t('الصلاحية')}</th>
+              {ROLES.map((role) => (
+                <th key={role} className="p-3 text-center font-medium">
+                  {roleLabel(role)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(rows).map(([key, { label, roles }]) => (
+              <tr key={key} className={`border-b border-slate-50 last:border-0 ${savingKey === key ? 'opacity-50' : ''}`}>
+                <td className="p-3 font-medium text-slate-700">{t(label)}</td>
+                {ROLES.map((role) => (
+                  <td key={role} className="p-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={roles.includes(role)}
+                      disabled={savingKey === key}
+                      onChange={(e) => toggle(key, role, e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+export default function Settings() {
+  const { user, can } = useAuth();
+  const { t } = useI18n();
+  const canUsers = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
+  const canTeamLinks = can('edit_tech_supervisor_links');
+  const canServices = can('edit_services');
+  const canPaymentMethods = can('edit_payment_methods');
+  const canExpenseCategories = can('edit_custody_expenses');
+  const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
+
+  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'permissions';
+  const [tab, setTab] = useState<SettingsTab>(() => {
+    // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
+    // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
+    if (canUsers) return 'users';
+    if (canTeamLinks) return 'team_links';
+    if (canServices) return 'services';
+    if (canPaymentMethods) return 'payment_methods';
+    if (canExpenseCategories) return 'expense_categories';
+    return 'permissions';
+  });
+
+  // كل تبويب له صلاحيته الخاصة الآن (قابلة للتعديل من تبويب "الصلاحيات"
+  // نفسه) — الحارس هنا يسمح بالدخول لو ملك المستخدم أي تبويب واحد على
+  // الأقل، والتبويبات نفسها تُصفَّى أدناه فرداً فرداً.
+  if (user && !canUsers && !canTeamLinks && !canServices && !canPaymentMethods && !canExpenseCategories && !canPermissions) {
     return <Navigate to="/" replace />;
   }
 
@@ -1465,7 +1559,7 @@ export default function Settings() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
-        {canSeeFullSettings && (
+        {canUsers && (
           <button
             onClick={() => setTab('users')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'users' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
@@ -1473,47 +1567,61 @@ export default function Settings() {
             <UsersIcon className="h-4 w-4" /> {t('المستخدمون')}
           </button>
         )}
-        <button
-          onClick={() => setTab('team_links')}
-          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'team_links' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <TeamLinkIcon className="h-4 w-4" /> {t('ربط الفنيين بالمشرفين')}
-        </button>
-        {canSeeFullSettings && (
-          <>
-            <button
-              onClick={() => setTab('services')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'services' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-            >
-              <ServicesIcon className="h-4 w-4" /> {t('الخدمات')}
-            </button>
-            <button
-              onClick={() => setTab('payment_methods')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'payment_methods' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-            >
-              <PaymentIcon className="h-4 w-4" /> {t('طرق الدفع')}
-            </button>
-            <button
-              onClick={() => setTab('expense_categories')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expense_categories' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-            >
-              <ExpensesIcon className="h-4 w-4" /> {t('العهد والمصروفات')}
-            </button>
-          </>
+        {canTeamLinks && (
+          <button
+            onClick={() => setTab('team_links')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'team_links' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <TeamLinkIcon className="h-4 w-4" /> {t('ربط الفنيين بالمشرفين')}
+          </button>
+        )}
+        {canServices && (
+          <button
+            onClick={() => setTab('services')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'services' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <ServicesIcon className="h-4 w-4" /> {t('الخدمات')}
+          </button>
+        )}
+        {canPaymentMethods && (
+          <button
+            onClick={() => setTab('payment_methods')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'payment_methods' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <PaymentIcon className="h-4 w-4" /> {t('طرق الدفع')}
+          </button>
+        )}
+        {canExpenseCategories && (
+          <button
+            onClick={() => setTab('expense_categories')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expense_categories' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <ExpensesIcon className="h-4 w-4" /> {t('العهد والمصروفات')}
+          </button>
+        )}
+        {canPermissions && (
+          <button
+            onClick={() => setTab('permissions')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'permissions' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <PermissionsIcon className="h-4 w-4" /> {t('الصلاحيات')}
+          </button>
         )}
       </div>
 
-      {tab === 'users' && canSeeFullSettings ? (
+      {tab === 'users' && canUsers ? (
         <UsersTab />
-      ) : tab === 'services' && canSeeFullSettings ? (
-        <ServicesTab />
-      ) : tab === 'payment_methods' && canSeeFullSettings ? (
-        <PaymentMethodsTab />
-      ) : tab === 'expense_categories' && canSeeFullSettings ? (
-        <ExpenseCategoriesTab />
-      ) : (
+      ) : tab === 'team_links' && canTeamLinks ? (
         <TeamLinksTab />
-      )}
+      ) : tab === 'services' && canServices ? (
+        <ServicesTab />
+      ) : tab === 'payment_methods' && canPaymentMethods ? (
+        <PaymentMethodsTab />
+      ) : tab === 'expense_categories' && canExpenseCategories ? (
+        <ExpenseCategoriesTab />
+      ) : canPermissions ? (
+        <PermissionsTab />
+      ) : null}
     </div>
   );
 }

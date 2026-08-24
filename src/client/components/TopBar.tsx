@@ -4,7 +4,6 @@ import { Menu, Search, Plus, Languages } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
-import { CAN_BOOK_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 
@@ -12,7 +11,7 @@ import NewAppointmentModal from './NewAppointmentModal.js';
 // scrollable <main> area — so it naturally stays pinned at the top on every
 // page without needing extra sticky/fixed CSS.
 export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
-  const { user, allProfiles } = useAuth();
+  const { user, allProfiles, can } = useAuth();
   const { t, roleLabel, lang, toggleLang } = useI18n();
   const navigate = useNavigate();
 
@@ -51,7 +50,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicians = allProfiles.filter((p) => p.role === 'technician');
-  const canBook = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canBook = can('create_appointments');
 
   return (
     <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">

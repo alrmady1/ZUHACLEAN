@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Navigate } from 'react-router-dom';
 import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment } from '../../shared/types.js';
@@ -7,9 +7,14 @@ import { AppointmentStatusBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
+import { useAuth } from '../lib/auth.js';
 
 export default function Customers() {
   const { t, tt, lang } = useI18n();
+  const { user, can } = useAuth();
+  const canCreate = can('create_customers');
+  const canEdit = can('edit_customers');
+  const canDelete = can('delete_customers');
   const [searchParams] = useSearchParams();
   // فتح صفحة العملاء من "تفاصيل الموعد" (النقر على اسم العميل) يمرّر
   // ?customerId=... بدل نص بحث — يعزل هذا العميل تحديداً بمعرّفه الدقيق
@@ -107,6 +112,10 @@ export default function Customers() {
     }
   }
 
+  // مخفية عن الفني الميداني — حتى لو دخل الرابط مباشرة (لا يظهر له أصلاً
+  // في القائمة الجانبية، انظر Layout.tsx).
+  if (user && !can('view_customer_history')) return <Navigate to="/" replace />;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -115,15 +124,17 @@ export default function Customers() {
           <p className="text-sm text-slate-400">{t('إدارة بيانات العملاء، المواقع، وأرقام التواصل وسجل الزيارات السابقة')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-          >
-            <Plus className="h-4 w-4" /> {t('إضافة عميل جديد')}
-          </button>
+          {canCreate && (
+            <button
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Plus className="h-4 w-4" /> {t('إضافة عميل جديد')}
+            </button>
+          )}
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
             <button
               onClick={() => setView('list')}
@@ -190,13 +201,15 @@ export default function Customers() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => handleDelete(c)}
-                      title={t('حذف')}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(c)}
+                        title={t('حذف')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => setViewingCustomer(c)}
                       title={t('عرض التفاصيل والتعديل')}
@@ -274,13 +287,15 @@ export default function Customers() {
 
               <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleDelete(c)}
-                    title={t('حذف')}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(c)}
+                      title={t('حذف')}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => setViewingCustomer(c)}
                     title={t('عرض التفاصيل والتعديل')}
@@ -407,6 +422,7 @@ export default function Customers() {
         <CustomerDetailModal
           customer={viewingCustomer}
           visits={visitsByCustomer.get(viewingCustomer.id) ?? []}
+          canEdit={canEdit}
           onClose={() => setViewingCustomer(null)}
           onSaved={refresh}
         />
@@ -421,11 +437,13 @@ export default function Customers() {
 function CustomerDetailModal({
   customer,
   visits,
+  canEdit,
   onClose,
   onSaved,
 }: {
   customer: Customer;
   visits: Appointment[];
+  canEdit: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -474,21 +492,23 @@ function CustomerDetailModal({
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-base font-bold text-slate-800">{customer.name}</span>
-                <button
-                  onClick={() => {
-                    setName(customer.name);
-                    setPhone(customer.phone);
-                    setAddress(customer.address);
-                    setDistrict(customer.district ?? '');
-                    setCity(customer.city ?? '');
-                    setLocationUrl(customer.location_url ?? '');
-                    setEditing(true);
-                  }}
-                  title={t('تعديل بيانات العميل')}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-brand-600"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => {
+                      setName(customer.name);
+                      setPhone(customer.phone);
+                      setAddress(customer.address);
+                      setDistrict(customer.district ?? '');
+                      setCity(customer.city ?? '');
+                      setLocationUrl(customer.location_url ?? '');
+                      setEditing(true);
+                    }}
+                    title={t('تعديل بيانات العميل')}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-brand-600"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
               </div>
               <div className="space-y-1.5 text-sm text-slate-600">
                 <div className="flex items-center gap-1.5">

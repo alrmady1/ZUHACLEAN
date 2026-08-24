@@ -30,38 +30,109 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
 // auth (login just returns the matching profile), so these gate the UI
 // only — not a server-enforced security boundary.
 export const SETTINGS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
-// ربط الفنيين بالمشرفين (تبويب "الفريق" داخل الإعدادات) — متاح أيضاً
-// للمشرف الإداري، رغم أن بقية تبويبات الإعدادات تبقى مقصورة على
-// SETTINGS_ACCESS_ROLES أعلاه. الموعد المسنَد لمشرف يظهر تلقائياً لكل
-// فني مربوط بذلك المشرف (انظر الفلترة في Appointments.tsx و
-// TechnicianPortal.tsx).
-export const CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
-export const CAN_BOOK_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
-export const CAN_SEE_CONTRACT_VALUE_ROLES: UserRole[] = ['general_manager', 'admin'];
-export const CAN_EDIT_PAYMENTS_ROLES: UserRole[] = ['general_manager', 'admin'];
 // تعيين/تغيير المشرف والفني المسؤولين عن الموعد — للمدير العام ومدير النظام فقط.
 export const CAN_ASSIGN_TEAM_ROLES: UserRole[] = ['general_manager', 'admin'];
 // إضافة/تعديل رابط موقع العميل من تفاصيل الموعد — للجميع ما عدا الفني الميداني.
 export const CAN_EDIT_LOCATION_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
 export const CAN_SEE_CUSTODY_ROLES: UserRole[] = ['general_manager', 'admin'];
-// المصروفات (والعُهد) مخفية عن المشرف الميداني — يبقى متاحاً للمدير العام،
-// مدير النظام، والمشرف الإداري فقط.
-export const CAN_SEE_EXPENSES_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
-// العقود الدورية مخفية عن المشرف الميداني لنفس السبب.
-export const CAN_SEE_CONTRACTS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
 export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
 // حذف صور توثيق العمل من تفاصيل الموعد — للجميع ما عدا الفني الميداني
-// (نفس منطق CAN_EDIT_LOCATION_ROLES).
+// (نفس منطق CAN_EDIT_LOCATION_ROLES). هذه صلاحية حذف صورة واحدة بعد
+// رفعها — مختلفة عن "إضافة الصور قبل وبعد" الديناميكية أدناه.
 export const CAN_DELETE_PHOTOS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
-// حذف الموعد بالكامل (من تفاصيله أو من قائمة/تقويم المواعيد) — للمدير
-// العام ومدير النظام.
-export const CAN_DELETE_APPOINTMENT_ROLES: UserRole[] = ['general_manager', 'admin'];
-// حذف عقد دوري بالكامل — للمدير العام ومدير النظام (نفس مستوى الثقة
-// المطلوب لحذف موعد). لا يحذف الحذف المواعيد المولَّدة سابقاً من هذا
-// العقد — تبقى في الجدول كسجل تاريخي.
-export const CAN_DELETE_CONTRACT_ROLES: UserRole[] = ['general_manager', 'admin'];
-// تعديل وقت/تاريخ الموعد من تفاصيله — للجميع ما عدا الفني الميداني.
-export const CAN_EDIT_APPOINTMENT_TIME_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
+
+// ============================================================================
+// نظام الصلاحيات الديناميكي — صفحة "الإعدادات ← الصلاحيات" (المدير العام
+// ومدير النظام فقط) تتحكم بمن يملك كل صلاحية من القائمة أدناه، لكل مسمى
+// وظيفي (دور). القيم تُحفظ في قاعدة البيانات (جدول permissions) وتُقرأ عبر
+// useAuth().can('key') — أينما استُبدلت مصفوفة أدوار ثابتة (CAN_XXX_ROLES)
+// بهذا النظام. DEFAULT_PERMISSIONS هي القيم المبدئية (قبل أي تعديل يدوي من
+// صفحة الصلاحيات) وتطابق تماماً السلوك الذي كان مبرمجاً ثابتاً سابقاً، بحيث
+// لا يتغير شيء فعلياً إلا بعد أن يُعدِّل المدير العام/مدير النظام الجدول.
+// ============================================================================
+export type PermissionKey =
+  | 'delete_appointments'
+  | 'create_appointments'
+  | 'edit_appointments'
+  | 'create_customers'
+  | 'edit_customers'
+  | 'delete_customers'
+  | 'view_customer_history'
+  | 'view_monthly_sales_total'
+  | 'view_expenses_page'
+  | 'view_contracts_page'
+  | 'create_contracts'
+  | 'delete_contracts'
+  | 'edit_contracts'
+  | 'view_contract_value'
+  | 'edit_services'
+  | 'edit_payment_methods'
+  | 'edit_custody_expenses'
+  | 'edit_tech_supervisor_links'
+  | 'view_sales_invoices'
+  | 'issue_invoices'
+  | 'add_before_after_photos'
+  | 'view_all_supervisors_appointments';
+
+export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
+  delete_appointments: 'حذف المواعيد',
+  create_appointments: 'إضافة المواعيد',
+  edit_appointments: 'تعديل المواعيد',
+  create_customers: 'إضافة عميل',
+  edit_customers: 'تعديل عميل',
+  delete_customers: 'حذف عميل',
+  view_customer_history: 'عرض سجل العميل',
+  view_monthly_sales_total: 'الاطلاع على اجمالي المبيعات الشهرية',
+  view_expenses_page: 'الاطلاع على صفحة المصروفات',
+  view_contracts_page: 'الاطلاع على صفحة العقود',
+  create_contracts: 'اضافة عقد جديد',
+  delete_contracts: 'حذف عقد',
+  edit_contracts: 'تعديل العقد',
+  view_contract_value: 'الاطلاع على قيمة العقود',
+  edit_services: 'تعديل الخدمات',
+  edit_payment_methods: 'تعديل طرق الدفع',
+  edit_custody_expenses: 'تعديل العهد والمصروفات',
+  edit_tech_supervisor_links: 'تعديل ربط الفنيين بالمشرفين',
+  view_sales_invoices: 'الاطلاع على المبيعات والفواتير',
+  issue_invoices: 'اصدار الفواتير',
+  add_before_after_photos: 'اضافة الصور قبل وبعد',
+  view_all_supervisors_appointments: 'الاطلاع على كافة المواعيد لجميع المشرفين',
+};
+
+const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
+const GM_ADMIN_ADMINSUP: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
+const NOT_TECHNICIAN: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
+const EVERYONE: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
+
+export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
+  delete_appointments: GM_ADMIN,
+  create_appointments: NOT_TECHNICIAN,
+  edit_appointments: NOT_TECHNICIAN,
+  create_customers: NOT_TECHNICIAN,
+  edit_customers: NOT_TECHNICIAN,
+  delete_customers: NOT_TECHNICIAN,
+  view_customer_history: NOT_TECHNICIAN,
+  view_monthly_sales_total: GM_ADMIN,
+  view_expenses_page: GM_ADMIN_ADMINSUP,
+  view_contracts_page: GM_ADMIN_ADMINSUP,
+  create_contracts: GM_ADMIN_ADMINSUP,
+  delete_contracts: GM_ADMIN,
+  edit_contracts: GM_ADMIN,
+  view_contract_value: GM_ADMIN,
+  edit_services: GM_ADMIN,
+  edit_payment_methods: GM_ADMIN,
+  edit_custody_expenses: GM_ADMIN_ADMINSUP,
+  edit_tech_supervisor_links: GM_ADMIN_ADMINSUP,
+  view_sales_invoices: GM_ADMIN,
+  issue_invoices: GM_ADMIN,
+  add_before_after_photos: EVERYONE,
+  view_all_supervisors_appointments: GM_ADMIN_ADMINSUP,
+};
+
+// من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
+// العام ومدير النظام فقط، بلا استثناء (ثابتة عمداً، غير قابلة للتعديل من
+// نفس الصفحة حتى لا يستطيع أحد إقصاء نفسه أو غيره من الوصول إليها).
+export const PERMISSIONS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
 
 export type AppointmentStatus =
   | 'scheduled'

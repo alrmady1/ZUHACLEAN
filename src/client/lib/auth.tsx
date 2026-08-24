@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Profile } from '../../shared/types.js';
+import type { Profile, PermissionKey, UserRole } from '../../shared/types.js';
+import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { api } from './api.js';
 
 interface AuthState {
@@ -9,6 +10,11 @@ interface AuthState {
   login: (username: string, password: string, remember: boolean) => Promise<void>;
   loginAs: (profileId: string) => void;
   logout: () => void;
+  // هل يملك المستخدم الحالي هذه الصلاحية؟ يُقرأ من جدول الصلاحيات
+  // الديناميكي (صفحة الإعدادات ← الصلاحيات)، ويرجع افتراضياً إلى
+  // DEFAULT_PERMISSIONS قبل اكتمال أول تحميل أو لصلاحية لم تُعدَّل بعد.
+  can: (key: PermissionKey) => boolean;
+  refreshPermissions: () => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -18,6 +24,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [user, setUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState<Partial<Record<PermissionKey, UserRole[]>>>({});
+
+  function refreshPermissions() {
+    api
+      .get<Record<PermissionKey, { label: string; roles: UserRole[] }>>('/permissions')
+      .then((data) => {
+        const roles: Partial<Record<PermissionKey, UserRole[]>> = {};
+        for (const key of Object.keys(data) as PermissionKey[]) roles[key] = data[key].roles;
+        setPermissions(roles);
+      })
+      .catch(() => {
+        // لو فشل التحميل (شبكة، نشر لم يكتمل...) تبقى DEFAULT_PERMISSIONS
+        // سارية عبر can() أدناه — لا تعطُّل للتطبيق.
+      });
+  }
+
+  function can(key: PermissionKey): boolean {
+    if (!user) return false;
+    const roles = permissions[key] ?? DEFAULT_PERMISSIONS[key];
+    return roles.includes(user.role);
+  }
 
   useEffect(() => {
     api.get<Profile[]>('/profiles').then((profiles) => {
@@ -27,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (restored) setUser(restored);
       setLoading(false);
     });
+    refreshPermissions();
   }, []);
 
   // Real sign-in with username + password (set from Settings → المستخدمون).
@@ -54,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, allProfiles, loading, login, loginAs, logout }}>
+    <AuthContext.Provider value={{ user, allProfiles, loading, login, loginAs, logout, can, refreshPermissions }}>
       {children}
     </AuthContext.Provider>
   );

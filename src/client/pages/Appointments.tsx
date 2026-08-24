@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
-import { CAN_BOOK_APPOINTMENT_ROLES, CAN_DELETE_APPOINTMENT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
@@ -29,11 +28,6 @@ import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 
 type ScopeFilter = 'mine' | 'all' | string; // string = a specific supervisor id
 type PeriodFilter = 'all' | 'today' | 'week' | 'month';
-
-// Field supervisors and technicians only ever see their own schedule — the
-// "كافة المشرفين والفرق" toggle and the "الاطلاع على مشرف آخر" picker are
-// restricted to admin_supervisor / admin / general_manager.
-const CAN_SEE_ALL_SCHEDULES_ROLES = ['general_manager', 'admin', 'admin_supervisor'];
 
 const STATUS_OPTIONS = (Object.entries(APPT_STATUS_STYLE) as [AppointmentStatus, { label: string }][]).map(([value, { label }]) => ({
   value,
@@ -72,7 +66,7 @@ function getWeekDays(ref: Date): Date[] {
 }
 
 export default function Appointments() {
-  const { user, allProfiles } = useAuth();
+  const { user, allProfiles, can } = useAuth();
   const { t, roleLabel, lang } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -101,9 +95,9 @@ export default function Appointments() {
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
 
-  const canSeeAllSchedules = user ? CAN_SEE_ALL_SCHEDULES_ROLES.includes(user.role) : false;
-  const canBook = user ? CAN_BOOK_APPOINTMENT_ROLES.includes(user.role) : false;
-  const canDeleteAppointment = user ? CAN_DELETE_APPOINTMENT_ROLES.includes(user.role) : false;
+  const canSeeAllSchedules = can('view_all_supervisors_appointments');
+  const canBook = can('create_appointments');
+  const canDeleteAppointment = can('delete_appointments');
 
   async function deleteAppointment(a: Appointment) {
     if (!window.confirm(t('حذف هذا الموعد نهائياً؟ سيُحذف مع كل صوره ومدفوعاته المرتبطة به، ولا يمكن التراجع عن هذا الإجراء.'))) return;

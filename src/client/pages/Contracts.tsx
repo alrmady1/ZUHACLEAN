@@ -3,7 +3,6 @@ import { Navigate } from 'react-router-dom';
 import { Plus, X, Eye, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Contract, Customer, Service } from '../../shared/types.js';
-import { CAN_SEE_CONTRACT_VALUE_ROLES, CAN_SEE_CONTRACTS_ROLES, CAN_DELETE_CONTRACT_ROLES } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -23,10 +22,11 @@ const WEEKDAYS: { key: string; label: string }[] = [
 ];
 
 export default function Contracts() {
-  const { user, allProfiles } = useAuth();
+  const { user, allProfiles, can } = useAuth();
   const { t, tt } = useI18n();
-  const canSeeValue = user ? CAN_SEE_CONTRACT_VALUE_ROLES.includes(user.role) : false;
-  const canDeleteContract = user ? CAN_DELETE_CONTRACT_ROLES.includes(user.role) : false;
+  const canSeeValue = can('view_contract_value');
+  const canDeleteContract = can('delete_contracts');
+  const canCreateContract = can('create_contracts');
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -51,7 +51,7 @@ export default function Contracts() {
 
   // مخفية عن المشرف الميداني — حتى لو دخل الرابط مباشرة (بعد كل الـ hooks
   // أعلاه، حسب قواعد React — لا يجوز إرجاع مبكر قبلها).
-  if (user && !CAN_SEE_CONTRACTS_ROLES.includes(user.role)) return <Navigate to="/" replace />;
+  if (user && !can('view_contracts_page')) return <Navigate to="/" replace />;
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -98,12 +98,14 @@ export default function Contracts() {
           <h1 className="text-xl font-bold text-slate-800">{t('العقود الدورية')}</h1>
           <p className="text-sm text-slate-400">{t('تُولَّد الزيارات تلقائياً في جدول المواعيد عند إنشاء العقد')}</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> {t('عقد جديد')}
-        </button>
+        {canCreateContract && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> {t('عقد جديد')}
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">

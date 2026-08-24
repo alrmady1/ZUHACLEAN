@@ -40,7 +40,7 @@ const BAR_TINTS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-5
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { allProfiles } = useAuth();
+  const { allProfiles, can } = useAuth();
   const { t, tt } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -302,27 +302,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-slate-900 p-6 text-white">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="text-sm text-slate-300">{t('إجمالي مبيعات الشهر')}</div>
-            <div className="mt-1 text-3xl font-bold">{formatMoney(salesThisMonth)}</div>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium ${
-              growthAmount >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
-            }`}
-          >
-            {growthAmount >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-            <span>{t('النمو مقارنة بالشهر السابق:')}</span>
-            <span>
-              {growthAmount >= 0 ? '+' : ''}
-              {formatMoney(growthAmount)} ({growthPercent >= 0 ? '+' : ''}
-              {growthPercent.toFixed(1)}%)
-            </span>
+      {can('view_monthly_sales_total') && (
+        <div className="rounded-2xl bg-slate-900 p-6 text-white">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-sm text-slate-300">{t('إجمالي مبيعات الشهر')}</div>
+              <div className="mt-1 text-3xl font-bold">{formatMoney(salesThisMonth)}</div>
+            </div>
+            <div
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium ${
+                growthAmount >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
+              }`}
+            >
+              {growthAmount >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+              <span>{t('النمو مقارنة بالشهر السابق:')}</span>
+              <span>
+                {growthAmount >= 0 ? '+' : ''}
+                {formatMoney(growthAmount)} ({growthPercent >= 0 ? '+' : ''}
+                {growthPercent.toFixed(1)}%)
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {showNewAppt && (
         <NewAppointmentModal

@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
-import { CAN_SEE_EXPENSES_ROLES, CAN_SEE_CONTRACTS_ROLES, CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES, type UserRole } from '../../shared/types.js';
+import type { UserRole, PermissionKey } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
 
@@ -22,24 +22,29 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  roles: UserRole[];
+  // إما مصفوفة أدوار ثابتة (غير خاضعة لصفحة "الإعدادات ← الصلاحيات")، أو
+  // مفتاح صلاحية ديناميكي يُقرأ عبر useAuth().can(). عنصر واحد فقط من
+  // الاثنين لكل رابط.
+  roles?: UserRole[];
+  permissionKey?: PermissionKey;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/customers', label: 'العملاء', icon: Users, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, roles: ['general_manager', 'admin'] },
-  { to: '/contracts', label: 'العقود', icon: FileSignature, roles: CAN_SEE_CONTRACTS_ROLES },
-  { to: '/expenses', label: 'المصروفات', icon: Wallet, roles: CAN_SEE_EXPENSES_ROLES },
+  { to: '/customers', label: 'العملاء', icon: Users, permissionKey: 'view_customer_history' },
+  { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, permissionKey: 'view_sales_invoices' },
+  { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },
+  { to: '/expenses', label: 'المصروفات', icon: Wallet, permissionKey: 'view_expenses_page' },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
-  // المشرف الإداري يرى الإعدادات أيضاً الآن — يفتح له تلقائياً على تبويب
-  // "ربط الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية التبويبات.
-  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: CAN_MANAGE_TECH_SUPERVISOR_LINKS_ROLES },
+  // المشرف الإداري يرى الإعدادات أيضاً — يفتح له تلقائياً على تبويب "ربط
+  // الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية التبويبات. غير
+  // خاضع لصفحة الصلاحيات (وصول الإعدادات نفسه ثابت عمداً).
+  { to: '/settings', label: 'الإعدادات', icon: SettingsIcon, roles: ['general_manager', 'admin', 'admin_supervisor'] },
 ];
 
 export default function Layout() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, can } = useAuth();
   const { t, roleLabel } = useI18n();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -56,7 +61,7 @@ export default function Layout() {
   }
   if (!user) return <Navigate to="/login" replace />;
 
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
+  const items = NAV_ITEMS.filter((item) => (item.permissionKey ? can(item.permissionKey) : item.roles!.includes(user.role)));
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">

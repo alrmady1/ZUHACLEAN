@@ -21,7 +21,10 @@ import type {
   ServiceCategory,
   ExpenseCategoryItem,
   CustodyInvoice,
+  PermissionKey,
+  UserRole,
 } from '../../shared/types.js';
+import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 
 // Server-only: carries the password hash alongside the public Profile
 // fields. Never sent to the client as-is — routes must strip password_hash
@@ -42,6 +45,10 @@ interface DbShape {
   serviceCategories: ServiceCategory[];
   expenseCategories: ExpenseCategoryItem[];
   custodyInvoices: CustodyInvoice[];
+  // صفحة الإعدادات ← الصلاحيات — من يملك كل صلاحية من PermissionKey.
+  // مفتاح غائب من هذا الكائن (سجل قديم لم يُعدَّل بعد، أو صلاحية جديدة
+  // أُضيفت للكود لاحقاً) يعني: استخدم DEFAULT_PERMISSIONS لتلك الصلاحية.
+  permissions: Partial<Record<PermissionKey, UserRole[]>>;
 }
 
 if (!process.env.DATABASE_URL) {
@@ -305,6 +312,7 @@ function seed(): DbShape {
     serviceCategories,
     expenseCategories,
     custodyInvoices: [],
+    permissions: {},
   };
 }
 
@@ -330,6 +338,7 @@ async function load(): Promise<DbShape> {
     }
     if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
+    if (!parsed.permissions) parsed.permissions = {};
     return parsed;
   }
   const initial = seed();
@@ -529,6 +538,17 @@ export const store = {
       db.expenses.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  // صلاحية واحدة = مفتاح ← مصفوفة أدوار مسموح لها بها. تُدمَج مع
+  // DEFAULT_PERMISSIONS عند القراءة (انظر GET /permissions في api.ts) بحيث
+  // أي صلاحية لم تُعدَّل يدوياً بعد تُقرأ بقيمتها الافتراضية تلقائياً.
+  permissions: {
+    list: () => db.permissions,
+    update: (key: PermissionKey, roles: UserRole[]) => {
+      db.permissions = { ...db.permissions, [key]: roles };
+      persist();
+      return db.permissions;
     },
   },
   custodyInvoices: {
