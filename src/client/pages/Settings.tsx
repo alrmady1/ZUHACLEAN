@@ -133,7 +133,10 @@ function UsersTab() {
       email: form.get('email') || undefined,
       phone: form.get('phone') || undefined,
       role: form.get('role'),
-      supervisor_id: form.get('supervisor_id') || undefined,
+      // null (not undefined) — JSON.stringify drops undefined keys
+      // entirely, so an empty selection would never reach the server at
+      // all and silently fail to clear an existing supervisor link.
+      supervisor_id: form.get('supervisor_id') || null,
       username: form.get('username') || undefined,
       password: form.get('password') || undefined,
     };
@@ -1351,7 +1354,10 @@ function TeamLinksTab() {
   async function setSupervisor(techId: string, supervisorId: string) {
     setSavingId(techId);
     try {
-      await api.patch(`/profiles/${techId}`, { supervisor_id: supervisorId || undefined });
+      // null (not undefined) — JSON.stringify drops undefined keys
+      // entirely, so choosing "بدون تحديد" would never actually reach the
+      // server and silently fail to clear the existing link.
+      await api.patch(`/profiles/${techId}`, { supervisor_id: supervisorId || null });
       refresh();
     } finally {
       setSavingId(null);
