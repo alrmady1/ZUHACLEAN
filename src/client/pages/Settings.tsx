@@ -25,6 +25,7 @@ import {
   Link2 as TeamLinkIcon,
   ShieldCheck as PermissionsIcon,
   GripVertical as DragHandleIcon,
+  CalendarOff as DaysOffIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
@@ -32,6 +33,7 @@ import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES } from '../../shared/ty
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { WEEKDAYS } from '../lib/weekdays.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
 
@@ -1441,6 +1443,88 @@ function TeamLinksTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Days-off tab — أيام الإجازة الأسبوعية الثابتة لكل مشرف ميداني وفني.
+// لا تمنع حجز موعد في ذلك اليوم — فقط تُستخدم لاحقاً كتنبيه تأكيدي عند
+// محاولة إسناد موعد لشخص في يوم إجازته (انظر findDayOffConflicts في
+// src/client/lib/weekdays.ts، ومواضع استخدامها في NewAppointmentModal
+// وAppointmentDetailModal).
+// ---------------------------------------------------------------------------
+function DaysOffTab() {
+  const { t, roleLabel } = useI18n();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  function refresh() {
+    api.get<Profile[]>('/profiles').then(setProfiles);
+  }
+  useEffect(refresh, []);
+
+  const people = profiles.filter((p) => p.role === 'supervisor' || p.role === 'technician');
+
+  async function toggleDay(person: Profile, dayKey: string) {
+    const current = person.weekly_days_off ?? [];
+    const next = current.includes(dayKey) ? current.filter((d) => d !== dayKey) : [...current, dayKey];
+    setSavingId(person.id);
+    try {
+      await api.patch(`/profiles/${person.id}`, { weekly_days_off: next });
+      refresh();
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+        {t('حدِّد يوم أو أكثر كإجازة أسبوعية ثابتة لكل مشرف ميداني أو فني. لا يمنع هذا حجز موعد له في ذلك اليوم، لكن يظهر تنبيه تأكيدي عند محاولة ذلك قبل تسجيل الموعد.')}
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="p-3 text-start font-medium">{t('الاسم')}</th>
+              <th className="p-3 text-start font-medium">{t('المسمى الوظيفي')}</th>
+              {WEEKDAYS.map((d) => (
+                <th key={d.key} className="p-3 text-center font-medium">
+                  {t(d.label)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {people.map((p) => (
+              <tr key={p.id} className="border-b border-slate-50 last:border-0">
+                <td className="p-3 font-medium text-slate-700">{p.full_name}</td>
+                <td className="p-3 text-slate-500">{roleLabel(p.role)}</td>
+                {WEEKDAYS.map((d) => (
+                  <td key={d.key} className="p-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={(p.weekly_days_off ?? []).includes(d.key)}
+                      disabled={savingId === p.id}
+                      onChange={() => toggleDay(p, d.key)}
+                      className="h-4 w-4"
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {people.length === 0 && (
+              <tr>
+                <td colSpan={2 + WEEKDAYS.length} className="p-8 text-center text-slate-400">
+                  {t('لا يوجد مشرفون أو فنيون بعد')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -1598,9 +1682,10 @@ export default function Settings() {
   const canServices = can('edit_services');
   const canPaymentMethods = can('edit_payment_methods');
   const canExpenseCategories = can('edit_custody_expenses');
+  const canDaysOff = can('edit_days_off');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
 
-  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'permissions';
+  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'permissions';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
     // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
@@ -1609,6 +1694,7 @@ export default function Settings() {
     if (canServices) return 'services';
     if (canPaymentMethods) return 'payment_methods';
     if (canExpenseCategories) return 'expense_categories';
+    if (canDaysOff) return 'days_off';
     return 'permissions';
   });
 
@@ -1665,6 +1751,14 @@ export default function Settings() {
             <ExpensesIcon className="h-4 w-4" /> {t('العهد والمصروفات')}
           </button>
         )}
+        {canDaysOff && (
+          <button
+            onClick={() => setTab('days_off')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'days_off' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <DaysOffIcon className="h-4 w-4" /> {t('أيام الإجازة الأسبوعية')}
+          </button>
+        )}
         {canPermissions && (
           <button
             onClick={() => setTab('permissions')}
@@ -1685,6 +1779,8 @@ export default function Settings() {
         <PaymentMethodsTab />
       ) : tab === 'expense_categories' && canExpenseCategories ? (
         <ExpenseCategoriesTab />
+      ) : tab === 'days_off' && canDaysOff ? (
+        <DaysOffTab />
       ) : canPermissions ? (
         <PermissionsTab />
       ) : null}

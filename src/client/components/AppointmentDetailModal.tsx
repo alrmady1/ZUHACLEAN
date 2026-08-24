@@ -12,6 +12,7 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+import { findDayOffConflicts } from '../lib/weekdays.js';
 
 // تحويل ISO إلى صيغة <input type="datetime-local"> (بالتوقيت المحلي —
 // datetime-local لا يفهم "Z"/UTC، فيجب بناء السلسلة يدوياً من مكوّنات
@@ -93,6 +94,20 @@ export default function AppointmentDetailModal({
   const technicianOptions = allProfiles.filter((p) => p.role === 'technician');
 
   async function saveTeam() {
+    // تنبيه (وليس منعاً) إن كان المشرف أو الفني المختار في إجازته الأسبوعية
+    // الثابتة يوم هذا الموعد (Settings ← أيام الإجازة الأسبوعية).
+    const dayOffConflicts = findDayOffConflicts(appointment.scheduled_at, [
+      { profile: supervisorOptions.find((s) => s.id === teamSupervisorId), roleLabel: t('المشرف') },
+      { profile: technicianOptions.find((tech) => tech.id === teamTechnicianId), roleLabel: t('الفني') },
+    ]);
+    if (dayOffConflicts.length > 0) {
+      const names = dayOffConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ');
+      const proceed = window.confirm(tt(
+        `${names} لديه إجازة أسبوعية في هذا اليوم. هل ترغب باستكمال إجراءات إسناد الموعد؟`,
+        `${names} has a weekly day off on this day. Do you want to continue assigning the appointment?`,
+      ));
+      if (!proceed) return;
+    }
     setBusy(true);
     try {
       const technicianName = technicianOptions.find((tech) => tech.id === teamTechnicianId)?.full_name;
@@ -126,9 +141,24 @@ export default function AppointmentDetailModal({
 
   async function saveTime() {
     if (!timeInput) return;
+    const newScheduledAt = new Date(timeInput).toISOString();
+    // نفس تنبيه الإجازة الأسبوعية، لكن على التاريخ الجديد بعد تعديل الوقت
+    // (المشرف/الفني المسندان حالياً لهذا الموعد قد يصبحان في إجازتهما).
+    const dayOffConflicts = findDayOffConflicts(newScheduledAt, [
+      { profile: supervisor, roleLabel: t('المشرف') },
+      { profile: allProfiles.find((p) => p.id === appointment.assignments[0]?.technician_id), roleLabel: t('الفني') },
+    ]);
+    if (dayOffConflicts.length > 0) {
+      const names = dayOffConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ');
+      const proceed = window.confirm(tt(
+        `${names} لديه إجازة أسبوعية في هذا اليوم. هل ترغب باستكمال إجراءات تعديل وقت الموعد؟`,
+        `${names} has a weekly day off on this day. Do you want to continue changing the appointment time?`,
+      ));
+      if (!proceed) return;
+    }
     setBusy(true);
     try {
-      await api.patch(`/appointments/${appointment.id}`, { scheduled_at: new Date(timeInput).toISOString() });
+      await api.patch(`/appointments/${appointment.id}`, { scheduled_at: newScheduledAt });
       onChanged();
       setEditingTime(false);
     } finally {

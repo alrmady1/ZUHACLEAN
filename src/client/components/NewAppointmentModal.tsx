@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import type { Customer, Service, Profile, Appointment } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
+import { findDayOffConflicts } from '../lib/weekdays.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -37,7 +38,7 @@ export default function NewAppointmentModal({
   onCreated: () => void;
   onCustomerCreated?: (customer: Customer) => void;
 }) {
-  const { t } = useI18n();
+  const { t, tt } = useI18n();
   const today = new Date().toISOString().slice(0, 10);
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
@@ -125,9 +126,25 @@ export default function NewAppointmentModal({
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (conflict) return; // guarded again below the fields, but never submit over a clash
-    setSubmitting(true);
     const form = new FormData(e.currentTarget);
-    const technicianId = form.get('technician_id');
+    const technicianId = form.get('technician_id') as string | null;
+
+    // تنبيه (وليس منعاً) إن كان المشرف أو الفني المختار في إجازته
+    // الأسبوعية الثابتة يوم هذا الموعد (Settings ← أيام الإجازة الأسبوعية).
+    const dayOffConflicts = findDayOffConflicts(date, [
+      { profile: supervisors.find((s) => s.id === supervisorId), roleLabel: t('المشرف') },
+      { profile: technicians.find((tech) => tech.id === technicianId), roleLabel: t('الفني') },
+    ]);
+    if (dayOffConflicts.length > 0) {
+      const names = dayOffConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ');
+      const proceed = window.confirm(tt(
+        `${names} لديه إجازة أسبوعية في هذا اليوم. هل ترغب باستكمال إجراءات تسجيل الموعد؟`,
+        `${names} has a weekly day off on this day. Do you want to continue booking the appointment?`,
+      ));
+      if (!proceed) return;
+    }
+
+    setSubmitting(true);
     const scheduledAt = new Date(`${date}T${time}`).toISOString();
     try {
       await api.post('/appointments', {

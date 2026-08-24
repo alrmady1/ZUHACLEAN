@@ -73,7 +73,8 @@ export type PermissionKey =
   | 'view_all_supervisors_appointments'
   | 'view_settings_page'
   | 'update_appointment_status'
-  | 'edit_appointment_team';
+  | 'edit_appointment_team'
+  | 'edit_days_off';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -103,6 +104,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   add_before_after_photos: 'اضافة الصور قبل وبعد',
   view_all_supervisors_appointments: 'الاطلاع على كافة المواعيد لجميع المشرفين',
   view_settings_page: 'الاطلاع على الاعدادات',
+  edit_days_off: 'تعديل أيام الإجازة الأسبوعية',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -136,6 +138,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   view_settings_page: GM_ADMIN_ADMINSUP,
   update_appointment_status: NOT_TECHNICIAN,
   edit_appointment_team: GM_ADMIN,
+  edit_days_off: GM_ADMIN_ADMINSUP,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -185,6 +188,12 @@ export interface Profile {
   phone?: string;
   role: UserRole;
   supervisor_id?: string;
+  // أيام الإجازة الأسبوعية الثابتة (لمشرف ميداني أو فني) — مفاتيح أيام
+  // الأسبوع (sunday..saturday، انظر src/client/lib/weekdays.ts). لا تمنع
+  // إسناد موعد في هذا اليوم، فقط تُظهر تنبيهاً تأكيدياً قبل الحفظ (انظر
+  // findDayOffConflicts وموضعي استخدامها: NewAppointmentModal،
+  // AppointmentDetailModal).
+  weekly_days_off?: string[];
   username?: string;
   is_active: boolean;
   created_at: string;

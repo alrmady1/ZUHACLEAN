@@ -124,6 +124,7 @@ api.patch('/profiles/:id', (req, res) => {
   if (body.phone !== undefined) patch.phone = body.phone || undefined;
   if (body.role !== undefined) patch.role = body.role;
   if (body.supervisor_id !== undefined) patch.supervisor_id = body.supervisor_id || undefined;
+  if (body.weekly_days_off !== undefined) patch.weekly_days_off = Array.isArray(body.weekly_days_off) ? body.weekly_days_off : [];
   if (body.username !== undefined) patch.username = body.username || undefined;
   if (body.is_active !== undefined) patch.is_active = body.is_active;
   if (body.password) patch.password_hash = hashPassword(body.password);

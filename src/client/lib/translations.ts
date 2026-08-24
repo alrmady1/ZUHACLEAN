@@ -4,6 +4,13 @@
 // useI18n().t('النص العربي').
 export const AR_TO_EN: Record<string, string> = {
   "زهى الأعمال | نظام التشغيل والصيانة": "ZUHA Business | Operations and Maintenance System",
+  "حدِّد يوم أو أكثر كإجازة أسبوعية ثابتة لكل مشرف ميداني أو فني. لا يمنع هذا حجز موعد له في ذلك اليوم، لكن يظهر تنبيه تأكيدي عند محاولة ذلك قبل تسجيل الموعد.": "Mark one or more days as a fixed weekly day off for each field supervisor or technician. This does not block booking an appointment for them on that day — it just shows a confirmation warning before the appointment is saved.",
+  "المسمى الوظيفي": "Job Title",
+  "لا يوجد مشرفون أو فنيون بعد": "No supervisors or technicians yet",
+  "أيام الإجازة الأسبوعية": "Weekly Days Off",
+  "تعديل أيام الإجازة الأسبوعية": "Edit Weekly Days Off",
+  "المشرف": "Supervisor",
+  "الفني": "Technician",
   "إغلاق": "Close",
   "كاميرا": "Camera",
   "المعرض": "Gallery",

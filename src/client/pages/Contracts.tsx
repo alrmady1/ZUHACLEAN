@@ -7,19 +7,7 @@ import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from 
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
-
-// أيام الأسبوع القابلة للاختيار (أكثر من يوم معاً) لعقود الزيارة
-// الأسبوعية — المفاتيح تُرسَل للخادم كما هي وتُطابق getDay() JS (انظر
-// generateAppointmentsForContract في src/server/routes/api.ts).
-const WEEKDAYS: { key: string; label: string }[] = [
-  { key: 'sunday', label: 'الأحد' },
-  { key: 'monday', label: 'الاثنين' },
-  { key: 'tuesday', label: 'الثلاثاء' },
-  { key: 'wednesday', label: 'الأربعاء' },
-  { key: 'thursday', label: 'الخميس' },
-  { key: 'friday', label: 'الجمعة' },
-  { key: 'saturday', label: 'السبت' },
-];
+import { WEEKDAYS } from '../lib/weekdays.js';
 
 export default function Contracts() {
   const { user, allProfiles, can } = useAuth();
