@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MapPin, Camera, X } from 'lucide-react';
+import { MapPin, Camera, Image as ImageIcon, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
@@ -18,14 +18,19 @@ function AppointmentCard({
   onOpenPhoto: (url: string) => void;
 }) {
   const { t } = useI18n();
-  const beforeInput = useRef<HTMLInputElement>(null);
-  const afterInput = useRef<HTMLInputElement>(null);
+  const beforeCameraInput = useRef<HTMLInputElement>(null);
+  const beforeGalleryInput = useRef<HTMLInputElement>(null);
+  const afterCameraInput = useRef<HTMLInputElement>(null);
+  const afterGalleryInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  // الاعتماد على أن يعرض المتصفح تلقائياً خيار "كاميرا" أو "معرض" لم يكن
+  // ثابتاً عبر كل الأجهزة/المتصفحات — بعضها يعرض المعرض فقط. لذا حقلان
+  // منفصلان صراحة لكل مرحلة: كاميرا (capture) ومعرض (multiple)، مع قائمة
+  // صغيرة تفتح عند الضغط على الزر لاختيار أيهما.
+  const [photoMenu, setPhotoMenu] = useState<'before' | 'after' | null>(null);
 
-  // بدون capture="environment" (كان يفتح الكاميرا مباشرة ويتجاوز خيار
-  // المعرض) — بدونه يعرض نظام الجهاز نفسه اختيار "كاميرا" أو "معرض
-  // الصور"/الملفات، حسب الجهاز والمتصفح. مع multiple يمكن اختيار أكثر من
-  // صورة دفعة واحدة من المعرض؛ نرفعها بالتتابع ثم نحدّث الواجهة مرة واحدة.
+  // مع multiple يمكن اختيار أكثر من صورة دفعة واحدة من المعرض؛ نرفعها
+  // بالتتابع (بعد ضغطها) ثم نحدّث الواجهة مرة واحدة بعد اكتمال الكل.
   async function uploadPhotos(stage: 'before' | 'after', files: FileList | null) {
     if (!files || files.length === 0) return;
     setBusy(true);
@@ -73,22 +78,85 @@ function AppointmentCard({
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button
-          disabled={busy}
-          onClick={() => beforeInput.current?.click()}
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700"
-        >
-          <Camera className="h-3.5 w-3.5" /> {t('صورة قبل')} ({beforeCount})
-        </button>
-        <button
-          disabled={busy}
-          onClick={() => afterInput.current?.click()}
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700"
-        >
-          <Camera className="h-3.5 w-3.5" /> {t('صورة بعد')} ({afterCount})
-        </button>
+        <div className="relative">
+          <button
+            disabled={busy}
+            onClick={() => setPhotoMenu(photoMenu === 'before' ? null : 'before')}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700"
+          >
+            <Camera className="h-3.5 w-3.5" /> {t('صورة قبل')} ({beforeCount})
+          </button>
+          {photoMenu === 'before' && (
+            <div className="absolute inset-x-0 top-full z-10 mt-1 flex gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  beforeCameraInput.current?.click();
+                  setPhotoMenu(null);
+                }}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <Camera className="h-3.5 w-3.5" /> {t('كاميرا')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  beforeGalleryInput.current?.click();
+                  setPhotoMenu(null);
+                }}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <ImageIcon className="h-3.5 w-3.5" /> {t('المعرض')}
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <button
+            disabled={busy}
+            onClick={() => setPhotoMenu(photoMenu === 'after' ? null : 'after')}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700"
+          >
+            <Camera className="h-3.5 w-3.5" /> {t('صورة بعد')} ({afterCount})
+          </button>
+          {photoMenu === 'after' && (
+            <div className="absolute inset-x-0 top-full z-10 mt-1 flex gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  afterCameraInput.current?.click();
+                  setPhotoMenu(null);
+                }}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <Camera className="h-3.5 w-3.5" /> {t('كاميرا')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  afterGalleryInput.current?.click();
+                  setPhotoMenu(null);
+                }}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <ImageIcon className="h-3.5 w-3.5" /> {t('المعرض')}
+              </button>
+            </div>
+          )}
+        </div>
         <input
-          ref={beforeInput}
+          ref={beforeCameraInput}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            uploadPhotos('before', e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={beforeGalleryInput}
           type="file"
           accept="image/*"
           multiple
@@ -99,7 +167,18 @@ function AppointmentCard({
           }}
         />
         <input
-          ref={afterInput}
+          ref={afterCameraInput}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            uploadPhotos('after', e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={afterGalleryInput}
           type="file"
           accept="image/*"
           multiple

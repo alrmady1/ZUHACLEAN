@@ -5,6 +5,8 @@
 export const AR_TO_EN: Record<string, string> = {
   "زهى الأعمال | نظام التشغيل والصيانة": "ZUHA Business | Operations and Maintenance System",
   "إغلاق": "Close",
+  "كاميرا": "Camera",
+  "المعرض": "Gallery",
   "حذف هذه الصورة؟ لا يمكن التراجع عن هذا الإجراء.": "Delete this image? This action cannot be undone.",
   "تفاصيل المهمة والموعد": "Important Details and Date",
   "بيانات العميل والموقع": "Customer Data and Location",
