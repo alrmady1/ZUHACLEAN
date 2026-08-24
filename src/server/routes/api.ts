@@ -400,6 +400,9 @@ function addFrequency(date: Date, freq: VisitFrequency): Date {
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
 };
+const WEEKDAY_KEY_BY_INDEX: Record<number, string> = Object.fromEntries(
+  Object.entries(WEEKDAY_INDEX).map(([key, idx]) => [idx, key]),
+);
 
 function generateAppointmentsForContract(contract: Contract): Appointment[] {
   const customer = store.customers.get(contract.customer_id);
@@ -456,7 +459,9 @@ function generateAppointmentsForContract(contract: Contract): Appointment[] {
     expected_duration_minutes: service?.default_duration_minutes ?? 120,
     amount: roundedAmount,
     status: 'scheduled',
-    supervisor_id: contract.supervisor_id,
+    // مشرف اليوم المحدَّد (day_supervisors) له الأولوية على المشرف
+    // الافتراضي للعقد — بسبب احتمال اختلاف المشرف من يوم لآخر.
+    supervisor_id: contract.day_supervisors?.[WEEKDAY_KEY_BY_INDEX[date.getDay()]] || contract.supervisor_id,
     address_snapshot: customer?.address ?? '',
     location_url: customer?.location_url,
     contract_id: contract.id,
@@ -497,6 +502,8 @@ api.post('/contracts', (req, res) => {
     remaining_amount: Number(body.total_amount ?? 0),
     payment_status: 'unpaid',
     supervisor_id: body.supervisor_id,
+    day_supervisors:
+      body.day_supervisors && typeof body.day_supervisors === 'object' ? body.day_supervisors : undefined,
     assigned_technician_ids: body.assigned_technician_ids ?? [],
     status: 'active',
     notes: body.notes,

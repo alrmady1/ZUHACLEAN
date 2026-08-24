@@ -35,6 +35,8 @@ export default function Contracts() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formFrequency, setFormFrequency] = useState<'weekly' | 'bi_weekly' | 'monthly'>('weekly');
+  const [formDays, setFormDays] = useState<string[]>([]);
+  const [formDaySupervisors, setFormDaySupervisors] = useState<Record<string, string>>({});
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
@@ -54,11 +56,14 @@ export default function Contracts() {
   // أعلاه، حسب قواعد React — لا يجوز إرجاع مبكر قبلها).
   if (user && !can('view_contracts_page')) return <Navigate to="/" replace />;
 
+  function toggleFormDay(key: string) {
+    setFormDays((prev) => (prev.includes(key) ? prev.filter((d) => d !== key) : [...prev, key]));
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    const visitDays = form.getAll('visit_days_of_week') as string[];
-    if (form.get('visit_frequency') === 'weekly' && visitDays.length === 0) {
+    if (form.get('visit_frequency') === 'weekly' && formDays.length === 0) {
       window.alert(t('اختر يوماً واحداً على الأقل لأيام الزيارة الأسبوعية'));
       return;
     }
@@ -69,14 +74,20 @@ export default function Contracts() {
         service_id: form.get('service_id'),
         contract_type: form.get('contract_type'),
         visit_frequency: form.get('visit_frequency'),
-        visit_days_of_week: visitDays,
+        visit_days_of_week: formDays,
         visit_time: form.get('visit_time'),
         start_date: form.get('start_date'),
         end_date: form.get('end_date'),
         total_amount: Number(form.get('total_amount')),
         supervisor_id: form.get('supervisor_id') || undefined,
+        day_supervisors:
+          form.get('visit_frequency') === 'weekly'
+            ? Object.fromEntries(Object.entries(formDaySupervisors).filter(([k, v]) => formDays.includes(k) && v))
+            : undefined,
       });
       setShowForm(false);
+      setFormDays([]);
+      setFormDaySupervisors({});
       refresh();
     } finally {
       setSubmitting(false);
@@ -252,9 +263,40 @@ export default function Contracts() {
                         key={d.key}
                         className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-600 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-700"
                       >
-                        <input type="checkbox" name="visit_days_of_week" value={d.key} className="h-3.5 w-3.5" />
+                        <input
+                          type="checkbox"
+                          checked={formDays.includes(d.key)}
+                          onChange={() => toggleFormDay(d.key)}
+                          className="h-3.5 w-3.5"
+                        />
                         {t(d.label)}
                       </label>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
+              {formFrequency === 'weekly' && formDays.length > 0 && (
+                <Field label={t('مشرف كل يوم زيارة (اختياري — إن تُرك بدون تحديد يُستخدم المشرف الافتراضي أدناه)')}>
+                  <div className="space-y-2">
+                    {formDays.map((dayKey) => (
+                      <div key={dayKey} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-xs text-slate-500">
+                          {t(WEEKDAYS.find((w) => w.key === dayKey)?.label ?? dayKey)}
+                        </span>
+                        <select
+                          value={formDaySupervisors[dayKey] ?? ''}
+                          onChange={(e) => setFormDaySupervisors((prev) => ({ ...prev, [dayKey]: e.target.value }))}
+                          className="input"
+                        >
+                          <option value="">{t('نفس المشرف الافتراضي')}</option>
+                          {supervisors.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ))}
                   </div>
                 </Field>
@@ -278,7 +320,7 @@ export default function Contracts() {
                 </Field>
               </div>
 
-              <Field label={t('المشرف المسؤول')}>
+              <Field label={formFrequency === 'weekly' ? t('المشرف الافتراضي') : t('المشرف المسؤول')}>
                 <select name="supervisor_id" defaultValue={user?.role === 'supervisor' ? user.id : ''} className="input">
                   <option value="">{t('بدون تحديد')}</option>
                   {supervisors.map((s) => (
@@ -360,13 +402,14 @@ function ContractDetailModal({
   onDelete: () => void;
   onSaved: (updated: Contract) => void;
 }) {
-  const { t } = useI18n();
+  const { t, tt } = useI18n();
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [serviceId, setServiceId] = useState(contract.service_id);
   const [contractType, setContractType] = useState(contract.contract_type);
   const [visitFrequency, setVisitFrequency] = useState(contract.visit_frequency);
   const [visitDays, setVisitDays] = useState<string[]>(contract.visit_days_of_week ?? []);
+  const [daySupervisors, setDaySupervisors] = useState<Record<string, string>>(contract.day_supervisors ?? {});
   const [visitTime, setVisitTime] = useState(contract.visit_time ?? '09:00');
   const [startDate, setStartDate] = useState(contract.start_date);
   const [endDate, setEndDate] = useState(contract.end_date);
@@ -376,12 +419,15 @@ function ContractDetailModal({
 
   const sortedAppts = [...appointments].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   const selectedDays = contract.visit_days_of_week ?? [];
+  const supervisorName = (id: string | undefined) => (id ? supervisors.find((s) => s.id === id)?.full_name : undefined);
+  const defaultSupervisorName = supervisorName(contract.supervisor_id) ?? t('بدون تحديد');
 
   function startEditing() {
     setServiceId(contract.service_id);
     setContractType(contract.contract_type);
     setVisitFrequency(contract.visit_frequency);
     setVisitDays(contract.visit_days_of_week ?? []);
+    setDaySupervisors(contract.day_supervisors ?? {});
     setVisitTime(contract.visit_time ?? '09:00');
     setStartDate(contract.start_date);
     setEndDate(contract.end_date);
@@ -414,6 +460,10 @@ function ContractDetailModal({
         end_date: endDate,
         total_amount: Number(totalAmount),
         supervisor_id: supervisorId || null,
+        day_supervisors:
+          visitFrequency === 'weekly'
+            ? Object.fromEntries(Object.entries(daySupervisors).filter(([k, v]) => visitDays.includes(k) && v))
+            : null,
         status,
       });
       onSaved(updated);
@@ -471,10 +521,23 @@ function ContractDetailModal({
               </div>
               {selectedDays.length > 0 && (
                 <div className="col-span-2">
-                  <div className="text-xs text-slate-400">{t('أيام الزيارة الأسبوعية')}</div>
-                  <div className="font-medium text-slate-700">
-                    {selectedDays.map((d) => t(WEEKDAYS.find((w) => w.key === d)?.label ?? d)).join('، ')}
+                  <div className="text-xs text-slate-400">{t('أيام الزيارة الأسبوعية والمشرف المسؤول عن كل يوم')}</div>
+                  <div className="mt-1 space-y-1">
+                    {selectedDays.map((d) => (
+                      <div key={d} className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-slate-700">{t(WEEKDAYS.find((w) => w.key === d)?.label ?? d)}</span>
+                        <span className="text-slate-500">
+                          {supervisorName(contract.day_supervisors?.[d]) ?? tt(`${defaultSupervisorName} (افتراضي)`, `${defaultSupervisorName} (default)`)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                </div>
+              )}
+              {selectedDays.length === 0 && (
+                <div>
+                  <div className="text-xs text-slate-400">{t('المشرف المسؤول')}</div>
+                  <div className="font-medium text-slate-700">{defaultSupervisorName}</div>
                 </div>
               )}
               <div>
@@ -559,6 +622,32 @@ function ContractDetailModal({
                 </Field>
               )}
 
+              {visitFrequency === 'weekly' && visitDays.length > 0 && (
+                <Field label={t('مشرف كل يوم زيارة (اختياري — إن تُرك بدون تحديد يُستخدم المشرف الافتراضي أدناه)')}>
+                  <div className="space-y-2">
+                    {visitDays.map((dayKey) => (
+                      <div key={dayKey} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-xs text-slate-500">
+                          {t(WEEKDAYS.find((w) => w.key === dayKey)?.label ?? dayKey)}
+                        </span>
+                        <select
+                          value={daySupervisors[dayKey] ?? ''}
+                          onChange={(e) => setDaySupervisors((prev) => ({ ...prev, [dayKey]: e.target.value }))}
+                          className="input"
+                        >
+                          <option value="">{t('نفس المشرف الافتراضي')}</option>
+                          {supervisors.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t('تاريخ البدء')}>
                   <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
@@ -586,7 +675,7 @@ function ContractDetailModal({
                 )}
               </div>
 
-              <Field label={t('المشرف المسؤول')}>
+              <Field label={visitFrequency === 'weekly' ? t('المشرف الافتراضي') : t('المشرف المسؤول')}>
                 <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className="input">
                   <option value="">{t('بدون تحديد')}</option>
                   {supervisors.map((s) => (
@@ -607,7 +696,7 @@ function ContractDetailModal({
               </Field>
 
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                {t('تعديل التكرار أو أيام الزيارة لا يعيد توليد المواعيد تلقائياً — المواعيد المولَّدة سابقاً تبقى كما هي.')}
+                {t('تعديل التكرار أو أيام الزيارة أو المشرفين لا يعيد توليد المواعيد تلقائياً — المواعيد المولَّدة سابقاً تبقى كما هي.')}
               </p>
 
               <div className="flex items-center gap-2 pt-1">

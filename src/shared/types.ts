@@ -246,7 +246,14 @@ export interface Contract {
   paid_amount: number;
   remaining_amount: number;
   payment_status: PaymentStatus;
+  // مشرف افتراضي للعقد — يُستخدم للعقود غير الأسبوعية، وكقيمة احتياطية
+  // لأي يوم أسبوعي لم يُحدَّد له مشرف خاص في day_supervisors أدناه.
   supervisor_id?: string;
+  // مشرف مختلف لكل يوم من أيام الزيارة الأسبوعية (visit_days_of_week) —
+  // بسبب احتمال اختلاف المشرف المسؤول من يوم لآخر لنفس العقد. المفتاح هو
+  // مفتاح اليوم (sunday..saturday) والقيمة معرّف المشرف؛ يوم بلا مفتاح هنا
+  // يستخدم supervisor_id كافتراضي. تُستخدم فقط مع visit_frequency === 'weekly'.
+  day_supervisors?: Record<string, string>;
   assigned_technician_ids?: string[];
   status: ContractStatus;
   notes?: string;
