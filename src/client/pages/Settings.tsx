@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Plus,
@@ -35,6 +35,8 @@ import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { WEEKDAYS } from '../lib/weekdays.js';
+import { leaveTypeDisplay } from '../lib/leaves.js';
+import { compressImageToDataUrl } from '../lib/image.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
 
@@ -1468,6 +1470,9 @@ function DaysOffTab() {
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
   const [deletingLeaveId, setDeletingLeaveId] = useState<string | null>(null);
+  const [leaveTypeInput, setLeaveTypeInput] = useState<LeaveType>('sick');
+  const [leavePhotoPreview, setLeavePhotoPreview] = useState<string | null>(null);
+  const [compressingPhoto, setCompressingPhoto] = useState(false);
 
   function refresh() {
     api.get<Profile[]>('/profiles').then(setProfiles);
@@ -1505,19 +1510,38 @@ function DaysOffTab() {
       window.alert(t('تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء'));
       return;
     }
+    if (leaveTypeInput === 'other' && !(form.get('other_type_label') as string)?.trim()) {
+      window.alert(t('يجب كتابة نوع الإجازة عند اختيار "أخرى"'));
+      return;
+    }
     setSubmittingLeave(true);
     try {
       await api.post('/leaves', {
         profile_id: form.get('profile_id'),
         leave_type: form.get('leave_type'),
+        other_type_label: leaveTypeInput === 'other' ? form.get('other_type_label') : undefined,
         start_date: start,
         end_date: end,
         notes: form.get('notes') || undefined,
+        photo_data_url: leavePhotoPreview || undefined,
       });
       setShowLeaveForm(false);
+      setLeaveTypeInput('sick');
+      setLeavePhotoPreview(null);
       refreshLeaves();
     } finally {
       setSubmittingLeave(false);
+    }
+  }
+
+  async function handleLeavePhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressingPhoto(true);
+    try {
+      setLeavePhotoPreview(await compressImageToDataUrl(file));
+    } finally {
+      setCompressingPhoto(false);
     }
   }
 
@@ -1526,8 +1550,8 @@ function DaysOffTab() {
     if (
       !window.confirm(
         tt(
-          `حذف إجازة ${person?.full_name ?? ''} (${LEAVE_TYPE_LABELS_AR[leave.leave_type]}، ${leave.start_date} - ${leave.end_date})؟`,
-          `Delete ${person?.full_name ?? ''}'s leave (${leave.leave_type}, ${leave.start_date} - ${leave.end_date})?`,
+          `حذف إجازة ${person?.full_name ?? ''} (${leaveTypeDisplay(leave)}، ${leave.start_date} - ${leave.end_date})؟`,
+          `Delete ${person?.full_name ?? ''}'s leave (${leaveTypeDisplay(leave)}, ${leave.start_date} - ${leave.end_date})?`,
         ),
       )
     )
@@ -1627,7 +1651,13 @@ function DaysOffTab() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('نوع الإجازة')}</span>
-                <select name="leave_type" required className="input">
+                <select
+                  name="leave_type"
+                  required
+                  value={leaveTypeInput}
+                  onChange={(e) => setLeaveTypeInput(e.target.value as LeaveType)}
+                  className="input"
+                >
                   {(Object.keys(LEAVE_TYPE_LABELS_AR) as LeaveType[]).map((key) => (
                     <option key={key} value={key}>
                       {t(LEAVE_TYPE_LABELS_AR[key])}
@@ -1636,6 +1666,12 @@ function DaysOffTab() {
                 </select>
               </label>
             </div>
+            {leaveTypeInput === 'other' && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('حدِّد نوع الإجازة')}</span>
+                <input name="other_type_label" required className="input" />
+              </label>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('من تاريخ')}</span>
@@ -1650,6 +1686,23 @@ function DaysOffTab() {
               <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
               <input name="notes" className="input" />
             </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('صورة مرفقة بالملاحظات (اختياري)')}</span>
+              <input type="file" accept="image/*" onChange={handleLeavePhotoChange} className="input" />
+              {compressingPhoto && <span className="mt-1 block text-xs text-slate-400">{t('جارِ تجهيز الصورة…')}</span>}
+              {leavePhotoPreview && !compressingPhoto && (
+                <div className="mt-2 flex items-center gap-2">
+                  <img src={leavePhotoPreview} alt="" className="h-16 w-16 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setLeavePhotoPreview(null)}
+                    className="text-xs font-medium text-red-500 hover:underline"
+                  >
+                    {t('إزالة الصورة')}
+                  </button>
+                </div>
+              )}
+            </label>
             <div className="flex items-center gap-2">
               <button
                 type="submit"
@@ -1660,7 +1713,11 @@ function DaysOffTab() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowLeaveForm(false)}
+                onClick={() => {
+                  setShowLeaveForm(false);
+                  setLeaveTypeInput('sick');
+                  setLeavePhotoPreview(null);
+                }}
                 className="text-xs font-medium text-slate-400 hover:text-slate-600"
               >
                 {t('إلغاء')}
@@ -1694,11 +1751,22 @@ function DaysOffTab() {
                       key={l.id}
                       className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs"
                     >
-                      <span className="font-medium text-slate-600">{t(LEAVE_TYPE_LABELS_AR[l.leave_type])}</span>
+                      <span className="font-medium text-slate-600">{t(leaveTypeDisplay(l))}</span>
                       <span dir="ltr" className="text-slate-500">
                         {l.start_date} → {l.end_date} ({l.days_count} {t('يوم')})
                       </span>
                       {l.notes && <span className="truncate text-slate-400">{l.notes}</span>}
+                      {l.photo_url && (
+                        <a
+                          href={l.photo_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={t('عرض الصورة المرفقة')}
+                          className="shrink-0"
+                        >
+                          <img src={l.photo_url} alt="" className="h-8 w-8 rounded-md object-cover" />
+                        </a>
+                      )}
                       <button
                         onClick={() => deleteLeave(l)}
                         disabled={deletingLeaveId === l.id}

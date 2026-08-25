@@ -212,13 +212,15 @@ export interface Profile {
   updated_at: string;
 }
 
-export type LeaveType = 'sick' | 'emergency' | 'absence' | 'unpaid';
+export type LeaveType = 'sick' | 'emergency' | 'absence' | 'unpaid' | 'paid' | 'other';
 
 export const LEAVE_TYPE_LABELS_AR: Record<LeaveType, string> = {
   sick: 'مرضية',
   emergency: 'اضطرارية',
   absence: 'غياب',
   unpaid: 'بدون راتب',
+  paid: 'إجازة مدفوعة',
+  other: 'أخرى',
 };
 
 // إجازة سنوية مسجَّلة لمشرف ميداني أو فني — بخلاف weekly_days_off (إجازة
@@ -230,12 +232,18 @@ export interface LeaveRecord {
   id: string;
   profile_id: string;
   leave_type: LeaveType;
+  // مطلوب فقط حين leave_type === 'other' — نوع الإجازة كما كتبه المدير
+  // يدوياً (انظر leaveTypeDisplay في src/client/lib/leaves.ts).
+  other_type_label?: string;
   start_date: string;
   end_date: string;
   // عدد أيام الإجازة شاملاً تاريخي البدء والانتهاء — يُحسب على الخادم عند
   // الإضافة (لا يُعتمَد على قيمة يرسلها العميل).
   days_count: number;
   notes?: string;
+  // صورة داعمة اختيارية للملاحظات (مثل تقرير طبي أو مستند إثبات) — تُرفع
+  // إلى Supabase Storage مثل صور المواعيد، ويُحفَظ رابطها فقط هنا.
+  photo_url?: string;
   created_at: string;
 }
 

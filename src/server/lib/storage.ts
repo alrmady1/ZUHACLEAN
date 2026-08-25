@@ -64,3 +64,25 @@ export async function uploadAppointmentPhoto(
 
   return data.signedUrl;
 }
+
+// نفس منطق uploadAppointmentPhoto أعلاه بالضبط، لكن لصورة داعمة مرفقة
+// بإجازة سنوية (مثل تقرير طبي) بدل صور قبل/بعد الموعد — تُخزَّن في نفس
+// الحاوية (bucket) تحت مسار "leaves/" منفصل عن مجلدات المواعيد.
+export async function uploadLeavePhoto(leaveId: string, dataUrl: string): Promise<string> {
+  await ensureBucket();
+  const { buffer, contentType, ext } = parseDataUrl(dataUrl);
+  const path = `leaves/${leaveId}/${Date.now()}-${randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, buffer, {
+    contentType,
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const { data, error: signError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, TEN_YEARS_IN_SECONDS);
+  if (signError) throw signError;
+
+  return data.signedUrl;
+}

@@ -2,6 +2,14 @@
 // إجازة سارية يمنع فعلياً إسناد موعد جديد لصاحبها خلال فترتها. انظر مواضع
 // الاستخدام: NewAppointmentModal، AppointmentDetailModal.
 import type { LeaveRecord, Profile } from '../../shared/types.js';
+import { LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+
+// نص نوع الإجازة المعروض — "أخرى" تعرض النص الذي كتبه المدير يدوياً
+// (other_type_label) بدل التسمية الثابتة العامة.
+export function leaveTypeDisplay(leave: LeaveRecord): string {
+  if (leave.leave_type === 'other' && leave.other_type_label) return leave.other_type_label;
+  return LEAVE_TYPE_LABELS_AR[leave.leave_type];
+}
 
 // appointment.scheduled_at كامل (ISO datetime)، وحقل التاريخ في نماذج
 // الحجز "YYYY-MM-DD" — كلاهما يبدأ بـ"YYYY-MM-DD" فتكفي مقارنة نصية بسيطة

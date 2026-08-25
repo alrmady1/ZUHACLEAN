@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { uploadAppointmentPhoto } from '../lib/storage.js';
+import { uploadAppointmentPhoto, uploadLeavePhoto } from '../lib/storage.js';
 import type {
   Appointment,
   Contract,
@@ -165,13 +165,16 @@ function daysBetweenInclusive(startDate: string, endDate: string): number {
 
 api.get('/leaves', (_req, res) => res.json(store.leaves.list()));
 
-api.post('/leaves', (req, res) => {
+api.post('/leaves', async (req, res) => {
   const body = req.body ?? {};
   if (!body.profile_id || !body.leave_type || !body.start_date || !body.end_date) {
     return res.status(400).json({ error: 'profile_id، leave_type، start_date، end_date مطلوبة' });
   }
   if (!(body.leave_type in LEAVE_TYPE_LABELS_AR)) {
     return res.status(400).json({ error: 'نوع إجازة غير معروف' });
+  }
+  if (body.leave_type === 'other' && !body.other_type_label) {
+    return res.status(400).json({ error: 'يجب كتابة نوع الإجازة عند اختيار "أخرى"' });
   }
   if (body.end_date < body.start_date) {
     return res.status(400).json({ error: 'تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء' });
@@ -180,12 +183,23 @@ api.post('/leaves', (req, res) => {
     id: store.id(),
     profile_id: body.profile_id,
     leave_type: body.leave_type as LeaveType,
+    other_type_label: body.leave_type === 'other' ? body.other_type_label : undefined,
     start_date: body.start_date,
     end_date: body.end_date,
     days_count: daysBetweenInclusive(body.start_date, body.end_date),
     notes: body.notes || undefined,
     created_at: new Date().toISOString(),
   };
+  // صورة داعمة اختيارية (مثل تقرير طبي) — يرسلها العميل كـ base64 data URL،
+  // نرفعها إلى Supabase Storage ونحفظ رابطها فقط (نفس منطق صور المواعيد).
+  if (body.photo_data_url) {
+    try {
+      leave.photo_url = await uploadLeavePhoto(leave.id, body.photo_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع صورة الإجازة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع الصورة' });
+    }
+  }
   store.leaves.insert(leave);
   res.status(201).json(leave);
 });
