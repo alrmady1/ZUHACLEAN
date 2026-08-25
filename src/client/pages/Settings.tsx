@@ -5,6 +5,7 @@ import {
   X,
   Pencil,
   Trash2,
+  Check,
   Clock,
   Tags,
   Tag,
@@ -28,8 +29,8 @@ import {
   CalendarOff as DaysOffIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType } from '../../shared/types.js';
+import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -1450,22 +1451,32 @@ function TeamLinksTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Days-off tab — أيام الإجازة الأسبوعية الثابتة لكل مشرف ميداني وفني.
-// لا تمنع حجز موعد في ذلك اليوم — فقط تُستخدم لاحقاً كتنبيه تأكيدي عند
-// محاولة إسناد موعد لشخص في يوم إجازته (انظر findDayOffConflicts في
-// src/client/lib/weekdays.ts، ومواضع استخدامها في NewAppointmentModal
-// وAppointmentDetailModal).
+// Leaves tab — قسمان: (1) أيام الإجازة الأسبوعية الثابتة لكل مشرف ميداني
+// وفني — لا تمنع حجز موعد في ذلك اليوم، فقط تُستخدم لاحقاً كتنبيه تأكيدي
+// (انظر findDayOffConflicts في src/client/lib/weekdays.ts). (2) الإجازات
+// السنوية — فترة محددة بتاريخين تمنع فعلياً إسناد موعد جديد خلالها (انظر
+// findLeaveConflicts في src/client/lib/leaves.ts). كلاهما تحت صلاحية
+// edit_days_off نفسها، ومواضع الاستخدام: NewAppointmentModal
+// وAppointmentDetailModal.
 // ---------------------------------------------------------------------------
 function DaysOffTab() {
-  const { t, roleLabel } = useI18n();
+  const { t, tt, roleLabel } = useI18n();
   const { refreshProfiles } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [deletingLeaveId, setDeletingLeaveId] = useState<string | null>(null);
 
   function refresh() {
     api.get<Profile[]>('/profiles').then(setProfiles);
   }
+  function refreshLeaves() {
+    api.get<LeaveRecord[]>('/leaves').then(setLeaves);
+  }
   useEffect(refresh, []);
+  useEffect(refreshLeaves, []);
 
   const people = profiles.filter((p) => p.role === 'supervisor' || p.role === 'technician');
 
@@ -1485,52 +1496,229 @@ function DaysOffTab() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
-        {t('حدِّد يوم أو أكثر كإجازة أسبوعية ثابتة لكل مشرف ميداني أو فني. لا يمنع هذا حجز موعد له في ذلك اليوم، لكن يظهر تنبيه تأكيدي عند محاولة ذلك قبل تسجيل الموعد.')}
-      </div>
+  async function handleAddLeave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const start = form.get('start_date') as string;
+    const end = form.get('end_date') as string;
+    if (end < start) {
+      window.alert(t('تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء'));
+      return;
+    }
+    setSubmittingLeave(true);
+    try {
+      await api.post('/leaves', {
+        profile_id: form.get('profile_id'),
+        leave_type: form.get('leave_type'),
+        start_date: start,
+        end_date: end,
+        notes: form.get('notes') || undefined,
+      });
+      setShowLeaveForm(false);
+      refreshLeaves();
+    } finally {
+      setSubmittingLeave(false);
+    }
+  }
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-start text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">{t('الاسم')}</th>
-              <th className="p-3 text-start font-medium">{t('المسمى الوظيفي')}</th>
-              {WEEKDAYS.map((d) => (
-                <th key={d.key} className="p-3 text-center font-medium">
-                  {t(d.label)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {people.map((p) => (
-              <tr key={p.id} className="border-b border-slate-50 last:border-0">
-                <td className="p-3 font-medium text-slate-700">{p.full_name}</td>
-                <td className="p-3 text-slate-500">{roleLabel(p.role)}</td>
+  async function deleteLeave(leave: LeaveRecord) {
+    const person = people.find((p) => p.id === leave.profile_id);
+    if (
+      !window.confirm(
+        tt(
+          `حذف إجازة ${person?.full_name ?? ''} (${LEAVE_TYPE_LABELS_AR[leave.leave_type]}، ${leave.start_date} - ${leave.end_date})؟`,
+          `Delete ${person?.full_name ?? ''}'s leave (${leave.leave_type}, ${leave.start_date} - ${leave.end_date})?`,
+        ),
+      )
+    )
+      return;
+    setDeletingLeaveId(leave.id);
+    try {
+      await api.del(`/leaves/${leave.id}`);
+      refreshLeaves();
+    } finally {
+      setDeletingLeaveId(null);
+    }
+  }
+
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="mb-3 rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+          {t('حدِّد يوم أو أكثر كإجازة أسبوعية ثابتة لكل مشرف ميداني أو فني. لا يمنع هذا حجز موعد له في ذلك اليوم، لكن يظهر تنبيه تأكيدي عند محاولة ذلك قبل تسجيل الموعد.')}
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table className="w-full text-start text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-xs text-slate-400">
+                <th className="p-3 text-start font-medium">{t('الاسم')}</th>
+                <th className="p-3 text-start font-medium">{t('المسمى الوظيفي')}</th>
                 {WEEKDAYS.map((d) => (
-                  <td key={d.key} className="p-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={(p.weekly_days_off ?? []).includes(d.key)}
-                      disabled={savingId === p.id}
-                      onChange={() => toggleDay(p, d.key)}
-                      className="h-4 w-4"
-                    />
-                  </td>
+                  <th key={d.key} className="p-3 text-center font-medium">
+                    {t(d.label)}
+                  </th>
                 ))}
               </tr>
-            ))}
-            {people.length === 0 && (
-              <tr>
-                <td colSpan={2 + WEEKDAYS.length} className="p-8 text-center text-slate-400">
-                  {t('لا يوجد مشرفون أو فنيون بعد')}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {people.map((p) => (
+                <tr key={p.id} className="border-b border-slate-50 last:border-0">
+                  <td className="p-3 font-medium text-slate-700">{p.full_name}</td>
+                  <td className="p-3 text-slate-500">{roleLabel(p.role)}</td>
+                  {WEEKDAYS.map((d) => (
+                    <td key={d.key} className="p-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={(p.weekly_days_off ?? []).includes(d.key)}
+                        disabled={savingId === p.id}
+                        onChange={() => toggleDay(p, d.key)}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {people.length === 0 && (
+                <tr>
+                  <td colSpan={2 + WEEKDAYS.length} className="p-8 text-center text-slate-400">
+                    {t('لا يوجد مشرفون أو فنيون بعد')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">{t('الإجازات السنوية')}</h3>
+            <p className="text-xs text-slate-400">
+              {t('فترة محددة بتاريخين — لا يمكن إسناد موعد جديد لصاحبها خلالها إطلاقاً.')}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowLeaveForm((v) => !v)}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-3.5 w-3.5" /> {t('إضافة إجازة')}
+          </button>
+        </div>
+
+        {showLeaveForm && (
+          <form
+            onSubmit={handleAddLeave}
+            className="mb-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
+                <select name="profile_id" required className="input">
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.full_name} ({roleLabel(p.role)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('نوع الإجازة')}</span>
+                <select name="leave_type" required className="input">
+                  {(Object.keys(LEAVE_TYPE_LABELS_AR) as LeaveType[]).map((key) => (
+                    <option key={key} value={key}>
+                      {t(LEAVE_TYPE_LABELS_AR[key])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('من تاريخ')}</span>
+                <input type="date" name="start_date" required className="input" />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('إلى تاريخ')}</span>
+                <input type="date" name="end_date" required className="input" />
+              </label>
+            </div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
+              <input name="notes" className="input" />
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={submittingLeave}
+                className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" /> {submittingLeave ? t('جارِ الحفظ…') : t('حفظ')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLeaveForm(false)}
+                className="text-xs font-medium text-slate-400 hover:text-slate-600"
+              >
+                {t('إلغاء')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="space-y-3">
+          {people.map((p) => {
+            const personLeaves = leaves
+              .filter((l) => l.profile_id === p.id)
+              .sort((a, b) => b.start_date.localeCompare(a.start_date));
+            const daysThisYear = personLeaves
+              .filter((l) => l.start_date.slice(0, 4) === String(currentYear))
+              .reduce((sum, l) => sum + l.days_count, 0);
+            if (personLeaves.length === 0) return null;
+            return (
+              <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-800">
+                    {p.full_name} <span className="font-normal text-slate-400">({roleLabel(p.role)})</span>
+                  </span>
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                    {tt(`${daysThisYear} يوم إجازة هذا العام`, `${daysThisYear} leave days this year`)}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {personLeaves.map((l) => (
+                    <div
+                      key={l.id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs"
+                    >
+                      <span className="font-medium text-slate-600">{t(LEAVE_TYPE_LABELS_AR[l.leave_type])}</span>
+                      <span dir="ltr" className="text-slate-500">
+                        {l.start_date} → {l.end_date} ({l.days_count} {t('يوم')})
+                      </span>
+                      {l.notes && <span className="truncate text-slate-400">{l.notes}</span>}
+                      <button
+                        onClick={() => deleteLeave(l)}
+                        disabled={deletingLeaveId === l.id}
+                        title={t('حذف الإجازة')}
+                        className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {leaves.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+              {t('لا توجد إجازات سنوية مسجَّلة بعد')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1768,7 +1956,7 @@ export default function Settings() {
             onClick={() => setTab('days_off')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'days_off' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <DaysOffIcon className="h-4 w-4" /> {t('أيام الإجازة الأسبوعية')}
+            <DaysOffIcon className="h-4 w-4" /> {t('الإجازات')}
           </button>
         )}
         {canPermissions && (

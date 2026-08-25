@@ -105,7 +105,9 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   add_before_after_photos: 'اضافة الصور قبل وبعد',
   view_all_supervisors_appointments: 'الاطلاع على كافة المواعيد لجميع المشرفين',
   view_settings_page: 'الاطلاع على الاعدادات',
-  edit_days_off: 'تعديل أيام الإجازة الأسبوعية',
+  // كانت "تعديل أيام الإجازة الأسبوعية" فقط — وسِّع الاسم بعد إضافة
+  // الإجازات السنوية تحت نفس الصلاحية (نفس الصلاحية، تسمية أشمل).
+  edit_days_off: 'تعديل الإجازات',
   assign_appointment_technician: 'اضافة وتعديل الفني للموعد',
 };
 
@@ -208,6 +210,33 @@ export interface Profile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type LeaveType = 'sick' | 'emergency' | 'absence' | 'unpaid';
+
+export const LEAVE_TYPE_LABELS_AR: Record<LeaveType, string> = {
+  sick: 'مرضية',
+  emergency: 'اضطرارية',
+  absence: 'غياب',
+  unpaid: 'بدون راتب',
+};
+
+// إجازة سنوية مسجَّلة لمشرف ميداني أو فني — بخلاف weekly_days_off (إجازة
+// أسبوعية ثابتة متكررة، تُنبِّه فقط)، هذه فترة محددة بتاريخين لا يمكن خلالها
+// إسناد موعد جديد لهذا الشخص إطلاقاً (منع فعلي، انظر findLeaveConflicts في
+// src/client/lib/leaves.ts وموضعي استخدامها: NewAppointmentModal،
+// AppointmentDetailModal).
+export interface LeaveRecord {
+  id: string;
+  profile_id: string;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date: string;
+  // عدد أيام الإجازة شاملاً تاريخي البدء والانتهاء — يُحسب على الخادم عند
+  // الإضافة (لا يُعتمَد على قيمة يرسلها العميل).
+  days_count: number;
+  notes?: string;
+  created_at: string;
 }
 
 export interface Customer {

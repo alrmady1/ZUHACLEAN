@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile, Appointment } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment, LeaveRecord } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
+import { findLeaveConflicts } from '../lib/leaves.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -60,12 +61,15 @@ export default function NewAppointmentModal({
   const [date, setDate] = useState(today);
   const [time, setTime] = useState('10:00');
   const [supervisorId, setSupervisorId] = useState('');
+  const [technicianId, setTechnicianId] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
 
   useEffect(() => {
     api.get<Appointment[]>('/appointments').then(setExistingAppointments);
+    api.get<LeaveRecord[]>('/leaves').then(setLeaves);
   }, []);
 
   function applyCustomer(customer: Customer | undefined) {
@@ -126,11 +130,20 @@ export default function NewAppointmentModal({
     return supervisorDayBookings.find((b) => start < b.end && end > b.start) ?? null;
   })();
 
+  // منع فعلي (وليس مجرد تنبيه) — إن كان المشرف أو الفني المختار في إجازة
+  // سنوية سارية يوم هذا الموعد (Settings ← الإجازات)، لا يمكن الحجز إطلاقاً.
+  const leaveConflicts = findLeaveConflicts(
+    date,
+    [
+      { profile: supervisors.find((s) => s.id === supervisorId), roleLabel: t('المشرف') },
+      { profile: technicians.find((tech) => tech.id === technicianId), roleLabel: t('الفني') },
+    ],
+    leaves,
+  );
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (conflict) return; // guarded again below the fields, but never submit over a clash
-    const form = new FormData(e.currentTarget);
-    const technicianId = form.get('technician_id') as string | null;
+    if (conflict || leaveConflicts.length > 0) return; // guarded again below the fields, but never submit over a clash
 
     // تنبيه (وليس منعاً) إن كان المشرف أو الفني المختار في إجازته
     // الأسبوعية الثابتة يوم هذا الموعد (Settings ← أيام الإجازة الأسبوعية).
@@ -147,6 +160,7 @@ export default function NewAppointmentModal({
       if (!proceed) return;
     }
 
+    const form = new FormData(e.currentTarget);
     setSubmitting(true);
     const scheduledAt = new Date(`${date}T${time}`).toISOString();
     try {
@@ -431,7 +445,11 @@ export default function NewAppointmentModal({
               {canAssignTechnician && (
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('الفني الرئيسي / الفريق')}</span>
-                  <select name="technician_id" defaultValue="" className="input">
+                  <select
+                    value={technicianId}
+                    onChange={(e) => setTechnicianId(e.target.value)}
+                    className="input"
+                  >
                     <option value="">{t('-- اختياري: حدد الفني --')}</option>
                     {technicians.map((tech) => (
                       <option key={tech.id} value={tech.id}>
@@ -442,6 +460,16 @@ export default function NewAppointmentModal({
                 </label>
               )}
             </div>
+
+            {leaveConflicts.length > 0 && (
+              <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {leaveConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ')}{' '}
+                  {t('في إجازة سنوية خلال هذا التاريخ، لا يمكن إسناد موعد له. اختر شخصاً آخر أو تاريخاً خارج فترة الإجازة.')}
+                </span>
+              </div>
+            )}
 
             {conflict && (
               <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
@@ -491,7 +519,7 @@ export default function NewAppointmentModal({
         <div className="mt-5 flex items-center gap-3">
           <button
             type="submit"
-            disabled={submitting || !customerId || selectedServiceIds.length === 0 || !!conflict}
+            disabled={submitting || !customerId || selectedServiceIds.length === 0 || !!conflict || leaveConflicts.length > 0}
             className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {submitting ? t('جارِ الحفظ…') : t('تأكيد وحجز الموعد')}

@@ -15,8 +15,10 @@ import type {
   CustodyInvoice,
   PermissionKey,
   UserRole,
+  LeaveRecord,
+  LeaveType,
 } from '../../shared/types.js';
-import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR } from '../../shared/types.js';
+import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 
 export const api = Router();
 
@@ -146,6 +148,51 @@ api.delete('/profiles/:id', (req, res) => {
     }
   }
   store.profiles.remove(req.params.id);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Leaves — إجازات سنوية (مرضية/اضطرارية/غياب/بدون راتب) لمشرف ميداني أو
+// فني، مقيَّدة في الواجهة عبر صلاحية edit_days_off. عدد الأيام يُحسب هنا
+// دائماً من التاريخين — لا يُعتمَد على أي قيمة يرسلها العميل.
+// ---------------------------------------------------------------------------
+function daysBetweenInclusive(startDate: string, endDate: string): number {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const diffDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  return Math.max(diffDays, 0);
+}
+
+api.get('/leaves', (_req, res) => res.json(store.leaves.list()));
+
+api.post('/leaves', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.profile_id || !body.leave_type || !body.start_date || !body.end_date) {
+    return res.status(400).json({ error: 'profile_id، leave_type، start_date، end_date مطلوبة' });
+  }
+  if (!(body.leave_type in LEAVE_TYPE_LABELS_AR)) {
+    return res.status(400).json({ error: 'نوع إجازة غير معروف' });
+  }
+  if (body.end_date < body.start_date) {
+    return res.status(400).json({ error: 'تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء' });
+  }
+  const leave: LeaveRecord = {
+    id: store.id(),
+    profile_id: body.profile_id,
+    leave_type: body.leave_type as LeaveType,
+    start_date: body.start_date,
+    end_date: body.end_date,
+    days_count: daysBetweenInclusive(body.start_date, body.end_date),
+    notes: body.notes || undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.leaves.insert(leave);
+  res.status(201).json(leave);
+});
+
+api.delete('/leaves/:id', (req, res) => {
+  const removed = store.leaves.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
 });
 

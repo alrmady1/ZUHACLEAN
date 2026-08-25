@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
@@ -13,6 +13,7 @@ import { useI18n } from '../lib/i18n.js';
 import { waLink } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
+import { findLeaveConflicts } from '../lib/leaves.js';
 
 // تحويل ISO إلى صيغة <input type="datetime-local"> (بالتوقيت المحلي —
 // datetime-local لا يفهم "Z"/UTC، فيجب بناء السلسلة يدوياً من مكوّنات
@@ -83,6 +84,7 @@ export default function AppointmentDetailModal({
   // منفصلان صراحة لكل مرحلة: كاميرا (capture) ومعرض (multiple)، مع قائمة
   // صغيرة تفتح عند الضغط على الزر لاختيار أيهما.
   const [photoMenu, setPhotoMenu] = useState<'before' | 'after' | null>(null);
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
 
   // Look up whether this appointment already has an invoice, so a
   // "reprint" option can be offered once the work is completed and paid.
@@ -92,12 +94,34 @@ export default function AppointmentDetailModal({
       .then((list) => setInvoice(list[list.length - 1] ?? null));
   }, [appointment.id, appointment.total_paid]);
 
+  useEffect(() => {
+    api.get<LeaveRecord[]>('/leaves').then(setLeaves);
+  }, []);
+
   const supervisor = allProfiles.find((p) => p.id === appointment.supervisor_id);
   const endTime = new Date(new Date(appointment.scheduled_at).getTime() + appointment.expected_duration_minutes * 60000);
   const supervisorOptions = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicianOptions = allProfiles.filter((p) => p.role === 'technician');
 
   async function saveTeam() {
+    // منع فعلي (وليس مجرد تنبيه) — إن كان المشرف أو الفني المختار في إجازة
+    // سنوية سارية يوم هذا الموعد (Settings ← الإجازات)، لا يمكن الحفظ إطلاقاً.
+    const leaveConflicts = findLeaveConflicts(
+      appointment.scheduled_at,
+      [
+        { profile: supervisorOptions.find((s) => s.id === teamSupervisorId), roleLabel: t('المشرف') },
+        { profile: technicianOptions.find((tech) => tech.id === teamTechnicianId), roleLabel: t('الفني') },
+      ],
+      leaves,
+    );
+    if (leaveConflicts.length > 0) {
+      const names = leaveConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ');
+      window.alert(tt(
+        `${names} في إجازة سنوية خلال تاريخ هذا الموعد — لا يمكن إسناده له. اختر شخصاً آخر.`,
+        `${names} is on annual leave during this appointment's date — cannot be assigned. Choose someone else.`,
+      ));
+      return;
+    }
     // تنبيه (وليس منعاً) إن كان المشرف أو الفني المختار في إجازته الأسبوعية
     // الثابتة يوم هذا الموعد (Settings ← أيام الإجازة الأسبوعية).
     const dayOffConflicts = findDayOffConflicts(appointment.scheduled_at, [
@@ -146,6 +170,24 @@ export default function AppointmentDetailModal({
   async function saveTime() {
     if (!timeInput) return;
     const newScheduledAt = new Date(timeInput).toISOString();
+    // منع فعلي — المشرف/الفني المسندان حالياً قد يصبحان في إجازة سنوية
+    // سارية على التاريخ الجديد بعد تعديل الوقت.
+    const leaveConflicts = findLeaveConflicts(
+      newScheduledAt,
+      [
+        { profile: supervisor, roleLabel: t('المشرف') },
+        { profile: allProfiles.find((p) => p.id === appointment.assignments[0]?.technician_id), roleLabel: t('الفني') },
+      ],
+      leaves,
+    );
+    if (leaveConflicts.length > 0) {
+      const names = leaveConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ');
+      window.alert(tt(
+        `${names} في إجازة سنوية خلال هذا التاريخ — لا يمكن نقل الموعد إليه. اختر تاريخاً آخر أو عدِّل الفريق المسند أولاً.`,
+        `${names} is on annual leave during this date — the appointment cannot be moved there. Choose another date or reassign the team first.`,
+      ));
+      return;
+    }
     // نفس تنبيه الإجازة الأسبوعية، لكن على التاريخ الجديد بعد تعديل الوقت
     // (المشرف/الفني المسندان حالياً لهذا الموعد قد يصبحان في إجازتهما).
     const dayOffConflicts = findDayOffConflicts(newScheduledAt, [

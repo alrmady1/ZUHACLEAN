@@ -23,6 +23,7 @@ import type {
   CustodyInvoice,
   PermissionKey,
   UserRole,
+  LeaveRecord,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 
@@ -54,6 +55,10 @@ interface DbShape {
   // للكود بعد آخر تعديل ترتيب) تُذيَّل تلقائياً في نهاية الجدول — انظر
   // orderedPermissionKeys في api.ts.
   permissionsOrder: string[];
+  // إجازات سنوية مسجَّلة (مرضية/اضطرارية/غياب/بدون راتب) لمشرف ميداني أو
+  // فني — بخلاف weekly_days_off الثابتة، تُستخدم لمنع إسناد موعد فعلياً
+  // خلال فترتها (انظر LeaveRecord في src/shared/types.ts).
+  leaves: LeaveRecord[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -319,6 +324,7 @@ function seed(): DbShape {
     custodyInvoices: [],
     permissions: {},
     permissionsOrder: [],
+    leaves: [],
   };
 }
 
@@ -346,6 +352,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
+    if (!parsed.leaves) parsed.leaves = [];
     return parsed;
   }
   const initial = seed();
@@ -567,6 +574,17 @@ export const store = {
       db.permissionsOrder = order;
       persist();
       return db.permissionsOrder;
+    },
+  },
+  leaves: {
+    list: () => db.leaves,
+    insert: (l: LeaveRecord) => { db.leaves.push(l); persist(); return l; },
+    remove: (id: string) => {
+      const idx = db.leaves.findIndex((l) => l.id === id);
+      if (idx === -1) return false;
+      db.leaves.splice(idx, 1);
+      persist();
+      return true;
     },
   },
   custodyInvoices: {
