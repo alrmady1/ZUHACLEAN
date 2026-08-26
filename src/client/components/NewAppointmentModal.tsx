@@ -48,6 +48,8 @@ export default function NewAppointmentModal({
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
   const [customerId, setCustomerId] = useState<string>('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const customerBoxRef = useRef<HTMLDivElement>(null);
   const [address, setAddress] = useState('');
   const [locationUrl, setLocationUrl] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
@@ -113,10 +115,18 @@ export default function NewAppointmentModal({
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (serviceBoxRef.current && !serviceBoxRef.current.contains(e.target as Node)) setShowServiceDropdown(false);
+      if (customerBoxRef.current && !customerBoxRef.current.contains(e.target as Node)) setShowCustomerSuggestions(false);
     }
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
   }, []);
+
+  function pickCustomer(c: Customer) {
+    setCustomerId(c.id);
+    applyCustomer(c);
+    setCustomerSearch(c.name);
+    setShowCustomerSuggestions(false);
+  }
 
   const previewEnd = (() => {
     if (!date || !time || !duration) return null;
@@ -233,12 +243,38 @@ export default function NewAppointmentModal({
           >
             {!showAddCustomer && (
               <>
-                <input
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder={t('ابحث بالاسم، الجوال، الحي، أو المدينة...')}
-                  className="input"
-                />
+                <div ref={customerBoxRef} className="relative">
+                  <input
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setShowCustomerSuggestions(true);
+                    }}
+                    onFocus={() => setShowCustomerSuggestions(true)}
+                    placeholder={t('ابحث بالاسم، الجوال، الحي، أو المدينة...')}
+                    className="input"
+                  />
+                  {showCustomerSuggestions && (
+                    <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                      {filteredCustomers.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => pickCustomer(c)}
+                          className={`flex w-full flex-col gap-0.5 px-3 py-2 text-start text-sm hover:bg-slate-50 ${c.id === customerId ? 'bg-brand-50' : ''}`}
+                        >
+                          <span className="font-medium text-slate-700">{c.name}</span>
+                          <span dir="ltr" className="text-end text-xs text-slate-400">
+                            {c.phone} {(c.district || c.city) && `— ${[c.district, c.city].filter(Boolean).join('، ')}`}
+                          </span>
+                        </button>
+                      ))}
+                      {filteredCustomers.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-slate-400">{t('لا يوجد عميل مطابق لبحثك')}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <select
                   name="customer_id"
                   required
@@ -256,9 +292,6 @@ export default function NewAppointmentModal({
                     </option>
                   ))}
                 </select>
-                {customerSearch.trim() && filteredCustomers.length === 0 && (
-                  <p className="text-xs text-slate-400">{t('لا يوجد عميل مطابق لبحثك')}</p>
-                )}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium text-slate-600">{t('عنوان موقع التنفيذ')}</span>
