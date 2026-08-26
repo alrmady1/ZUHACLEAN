@@ -31,6 +31,7 @@ export const AR_TO_EN: Record<string, string> = {
   "لا يوجد عميل مطابق لبحثك": "No customer matches your search",
   "طلب تقييم": "Request Rating",
   "عميلنا العزيز": "our valued customer",
+  "بدون تعليق": "No comment",
   "إرسال رابط تقييم الخدمة للعميل عبر واتساب — أرسِله من جهاز مسجَّل به رقم واتساب الشركة": "Send the service rating link to the customer via WhatsApp — send it from a device signed in to the company's WhatsApp number",
   "حدِّد بديلاً لكل موعد أدناه قبل المتابعة والموافقة على الإجازة.": "Choose a replacement for each appointment below before continuing and approving the leave.",
   "-- اختر الفني البديل --": "-- Choose the replacement technician --",
