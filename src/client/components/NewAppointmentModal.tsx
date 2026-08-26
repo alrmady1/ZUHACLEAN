@@ -47,6 +47,7 @@ export default function NewAppointmentModal({
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
   const [customerId, setCustomerId] = useState<string>('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [address, setAddress] = useState('');
   const [locationUrl, setLocationUrl] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
@@ -76,6 +77,23 @@ export default function NewAppointmentModal({
     setAddress(customer?.address ?? '');
     setLocationUrl(customer?.location_url ?? '');
   }
+
+  // محرك بحث فوق القائمة المنسدلة — لا يستبدلها، فقط يضيّق خياراتها أثناء
+  // الكتابة (الاسم، الجوال، الحي، المدينة). العميل المختار حالياً يبقى
+  // ضمن الخيارات دائماً حتى لو لم يعد يطابق نص البحث، حتى لا يُفرَّغ
+  // الاختيار الحالي بشكل غير متوقع.
+  const filteredCustomers = (() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return allCustomers;
+    return allCustomers.filter(
+      (c) =>
+        c.id === customerId ||
+        c.name.toLowerCase().includes(q) ||
+        c.phone.toLowerCase().includes(q) ||
+        (c.district ?? '').toLowerCase().includes(q) ||
+        (c.city ?? '').toLowerCase().includes(q),
+    );
+  })();
 
   const selectedServices = services.filter((s) => selectedServiceIds.includes(s.id));
 
@@ -215,6 +233,12 @@ export default function NewAppointmentModal({
           >
             {!showAddCustomer && (
               <>
+                <input
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder={t('ابحث بالاسم، الجوال، الحي، أو المدينة...')}
+                  className="input"
+                />
                 <select
                   name="customer_id"
                   required
@@ -226,12 +250,15 @@ export default function NewAppointmentModal({
                   }}
                 >
                   <option value="">{t('-- اختر العميل من القائمة --')}</option>
-                  {allCustomers.map((c) => (
+                  {filteredCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} ({c.phone})
                     </option>
                   ))}
                 </select>
+                {customerSearch.trim() && filteredCustomers.length === 0 && (
+                  <p className="text-xs text-slate-400">{t('لا يوجد عميل مطابق لبحثك')}</p>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium text-slate-600">{t('عنوان موقع التنفيذ')}</span>

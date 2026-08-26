@@ -27,6 +27,8 @@ export const AR_TO_EN: Record<string, string> = {
   "جارِ تجهيز الصورة…": "Preparing the photo…",
   "إزالة الصورة": "Remove Photo",
   "عرض الصورة المرفقة": "View Attached Photo",
+  "ابحث بالاسم، الجوال، الحي، أو المدينة...": "Search by name, phone, district, or city...",
+  "لا يوجد عميل مطابق لبحثك": "No customer matches your search",
   "حدِّد يوم أو أكثر كإجازة أسبوعية ثابتة لكل مشرف ميداني أو فني. لا يمنع هذا حجز موعد له في ذلك اليوم، لكن يظهر تنبيه تأكيدي عند محاولة ذلك قبل تسجيل الموعد.": "Mark one or more days as a fixed weekly day off for each field supervisor or technician. This does not block booking an appointment for them on that day — it just shows a confirmation warning before the appointment is saved.",
   "المسمى الوظيفي": "Job Title",
   "لا يوجد مشرفون أو فنيون بعد": "No supervisors or technicians yet",
