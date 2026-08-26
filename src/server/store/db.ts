@@ -25,6 +25,7 @@ import type {
   UserRole,
   LeaveRecord,
   PushSubscriptionRecord,
+  Rating,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -64,6 +65,8 @@ interface DbShape {
   // اشتراكات التنبيهات الفورية (Web Push) لكل جهاز فعّله مستخدم من
   // الإعدادات — انظر PushSubscriptionRecord في src/shared/types.ts.
   pushSubscriptions: PushSubscriptionRecord[];
+  // تقييمات العملاء بعد اكتمال الخدمة — انظر Rating في src/shared/types.ts.
+  ratings: Rating[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -331,6 +334,7 @@ function seed(): DbShape {
     permissionsOrder: [],
     leaves: [],
     pushSubscriptions: [],
+    ratings: [],
   };
 }
 
@@ -360,6 +364,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
     if (!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
+    if (!parsed.ratings) parsed.ratings = [];
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -609,6 +614,18 @@ export const store = {
       const idx = db.leaves.findIndex((l) => l.id === id);
       if (idx === -1) return false;
       db.leaves.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  ratings: {
+    list: () => db.ratings,
+    getByAppointment: (appointmentId: string) => db.ratings.find((r) => r.appointment_id === appointmentId),
+    insert: (r: Rating) => { db.ratings.push(r); persist(); return r; },
+    remove: (id: string) => {
+      const idx = db.ratings.findIndex((r) => r.id === id);
+      if (idx === -1) return false;
+      db.ratings.splice(idx, 1);
       persist();
       return true;
     },

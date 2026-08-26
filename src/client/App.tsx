@@ -9,6 +9,7 @@ import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
 import TechnicianPortal from './pages/TechnicianPortal.js';
 import Settings from './pages/Settings.js';
+import RatePage from './pages/RatePage.js';
 import { useAuth } from './lib/auth.js';
 
 // الفني الميداني ليس له أصلاً رابط "لوحة التحكم" في القائمة (أرقام على
@@ -25,6 +26,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/rate/:appointmentId" element={<RatePage />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/appointments" element={<Appointments />} />

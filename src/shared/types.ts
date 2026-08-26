@@ -260,6 +260,20 @@ export interface PushSubscriptionRecord {
   created_at: string;
 }
 
+// تقييم عميل لموعد مكتمل — يُرسَل رابطها للعميل عبر واتساب بعد اكتمال
+// الخدمة وإصدار الفاتورة (انظر زر "تقييم العميل" في AppointmentDetailModal
+// وصفحة التقييم العامة src/client/pages/RatePage.tsx). موعد واحد = تقييم
+// واحد على الأكثر (يمنعه الخادم عند التكرار، انظر POST /public/ratings).
+export interface Rating {
+  id: string;
+  appointment_id: string;
+  customer_id?: string;
+  customer_name_snapshot: string;
+  stars: number; // 1..5
+  comment?: string;
+  created_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

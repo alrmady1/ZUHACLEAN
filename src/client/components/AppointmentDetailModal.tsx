@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES } from '../../shared/types.js';
@@ -10,7 +10,7 @@ import InvoiceDocument from './InvoiceDocument.js';
 import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
-import { waLink } from '../lib/whatsapp.js';
+import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
 import { findLeaveConflicts } from '../lib/leaves.js';
@@ -776,6 +776,23 @@ export default function AppointmentDetailModal({
                   >
                     <Printer className="h-3.5 w-3.5" /> {t('إعادة طباعة الفاتورة')}
                   </button>
+                )}
+                {invoice && appointment.status === 'completed' && customer?.phone && (
+                  <a
+                    href={waLink(
+                      customer.phone,
+                      ratingRequestMessage(
+                        appointment.customer_name_snapshot ?? customer?.name ?? t('عميلنا العزيز'),
+                        `${window.location.origin}/rate/${appointment.id}`,
+                      ),
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={t('إرسال رابط تقييم الخدمة للعميل عبر واتساب — أرسِله من جهاز مسجَّل به رقم واتساب الشركة')}
+                    className="flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                  >
+                    <Star className="h-3.5 w-3.5" /> {t('طلب تقييم')}
+                  </a>
                 )}
               </div>
             </div>

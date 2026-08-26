@@ -18,6 +18,7 @@ import type {
   UserRole,
   LeaveRecord,
   LeaveType,
+  Rating,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -208,6 +209,56 @@ api.post('/leaves', async (req, res) => {
 
 api.delete('/leaves/:id', (req, res) => {
   const removed = store.leaves.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// تقييم العميل — صفحة عامة تُفتح من رابط يُرسَل عبر واتساب بعد اكتمال
+// الخدمة وإصدار الفاتورة (انظر AppointmentDetailModal وRatePage.tsx). بلا
+// تسجيل دخول عمداً، لذا تُعيد GET أدناه أقل بيانات ممكنة عن الموعد (وليس
+// كامل السجل) حتى لا تُعرِّض بيانات العميل أو الشركة لمن يملك الرابط فقط.
+// ---------------------------------------------------------------------------
+api.get('/public/appointments/:id', (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'الموعد غير موجود' });
+  res.json({
+    id: appt.id,
+    customer_name_snapshot: appt.customer_name_snapshot,
+    service_name_snapshot: appt.service_name_snapshot,
+    scheduled_at: appt.scheduled_at,
+    already_rated: !!store.ratings.getByAppointment(appt.id),
+  });
+});
+
+api.post('/public/ratings', async (req, res) => {
+  const { appointment_id, stars, comment } = req.body ?? {};
+  const appt = store.appointments.get(appointment_id);
+  if (!appt) return res.status(404).json({ error: 'الموعد غير موجود' });
+  const starsNum = Number(stars);
+  if (!Number.isInteger(starsNum) || starsNum < 1 || starsNum > 5) {
+    return res.status(400).json({ error: 'التقييم يجب أن يكون من 1 إلى 5 نجوم' });
+  }
+  if (store.ratings.getByAppointment(appointment_id)) {
+    return res.status(409).json({ error: 'تم إرسال تقييمك مسبقاً لهذا الموعد، شكراً لك' });
+  }
+  const rating: Rating = {
+    id: store.id(),
+    appointment_id,
+    customer_id: appt.customer_id,
+    customer_name_snapshot: appt.customer_name_snapshot ?? store.customers.get(appt.customer_id)?.name ?? 'عميل',
+    stars: starsNum,
+    comment: typeof comment === 'string' && comment.trim() ? comment.trim().slice(0, 500) : undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.ratings.insert(rating);
+  res.status(201).json(rating);
+});
+
+api.get('/ratings', (_req, res) => res.json(store.ratings.list()));
+
+api.delete('/ratings/:id', (req, res) => {
+  const removed = store.ratings.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
 });
