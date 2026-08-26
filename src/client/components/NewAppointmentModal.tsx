@@ -7,6 +7,7 @@ import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
 import { findLeaveConflicts } from '../lib/leaves.js';
+import { phoneMatchesQuery } from '../../shared/phone.js';
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -91,7 +92,7 @@ export default function NewAppointmentModal({
       (c) =>
         c.id === customerId ||
         c.name.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
+        phoneMatchesQuery(c.phone, q) ||
         (c.district ?? '').toLowerCase().includes(q) ||
         (c.city ?? '').toLowerCase().includes(q),
     );

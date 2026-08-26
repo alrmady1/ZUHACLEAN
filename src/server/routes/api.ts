@@ -20,6 +20,7 @@ import type {
   LeaveType,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 export const api = Router();
 
@@ -107,7 +108,7 @@ api.post('/profiles', (req, res) => {
     id: store.id(),
     full_name: body.full_name,
     email: body.email ?? '',
-    phone: body.phone || undefined,
+    phone: body.phone ? normalizeSaudiPhone(body.phone) : undefined,
     role: body.role,
     supervisor_id: body.supervisor_id || undefined,
     username: body.username || undefined,
@@ -124,7 +125,7 @@ api.patch('/profiles/:id', (req, res) => {
   const patch: Partial<StoredProfile> = {};
   if (body.full_name !== undefined) patch.full_name = body.full_name;
   if (body.email !== undefined) patch.email = body.email;
-  if (body.phone !== undefined) patch.phone = body.phone || undefined;
+  if (body.phone !== undefined) patch.phone = body.phone ? normalizeSaudiPhone(body.phone) : undefined;
   if (body.role !== undefined) patch.role = body.role;
   if (body.supervisor_id !== undefined) patch.supervisor_id = body.supervisor_id || undefined;
   if (body.weekly_days_off !== undefined) patch.weekly_days_off = Array.isArray(body.weekly_days_off) ? body.weekly_days_off : [];
@@ -255,7 +256,7 @@ api.post('/customers', (req, res) => {
   const customer = store.customers.insert({
     id: store.id(),
     name,
-    phone,
+    phone: normalizeSaudiPhone(phone),
     address,
     district,
     city,
@@ -270,7 +271,7 @@ api.patch('/customers/:id', (req, res) => {
   const body = req.body ?? {};
   const patch: Partial<{ name: string; phone: string; address: string; district?: string; city?: string; location_url?: string; notes?: string }> = {};
   if (body.name !== undefined) patch.name = body.name;
-  if (body.phone !== undefined) patch.phone = body.phone;
+  if (body.phone !== undefined) patch.phone = normalizeSaudiPhone(body.phone);
   if (body.address !== undefined) patch.address = body.address;
   if (body.district !== undefined) patch.district = body.district || undefined;
   if (body.city !== undefined) patch.city = body.city || undefined;

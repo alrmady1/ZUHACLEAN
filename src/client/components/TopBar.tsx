@@ -7,6 +7,7 @@ import type { Customer, Service } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 import { isPushSupported, getPushSubscriptionStatus, enablePush, disablePush } from '../lib/push.js';
+import { phoneMatchesQuery } from '../../shared/phone.js';
 
 // The global top bar: lives in Layout's <header>, which sits outside the
 // scrollable <main> area — so it naturally stays pinned at the top on every
@@ -63,7 +64,10 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const q = query.trim().toLowerCase();
   const results = q
     ? customers
-        .filter((c) => [c.name, c.phone, c.address].filter(Boolean).join(' ').toLowerCase().includes(q))
+        .filter(
+          (c) =>
+            [c.name, c.address].filter(Boolean).join(' ').toLowerCase().includes(q) || phoneMatchesQuery(c.phone, q),
+        )
         .slice(0, 6)
     : [];
 

@@ -485,7 +485,7 @@ function UsersTab() {
                 <input type="email" name="email" defaultValue={editing?.email} className="input" />
               </Field>
               <Field label={t('الجوال')}>
-                <input name="phone" defaultValue={editing?.phone} className="input" placeholder="9665xxxxxxxx" />
+                <input name="phone" defaultValue={editing?.phone} className="input" placeholder="05xxxxxxxx" />
               </Field>
             </div>
             <Field label={t('الوظيفة')}>

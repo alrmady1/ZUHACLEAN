@@ -27,6 +27,7 @@ import type {
   PushSubscriptionRecord,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
+import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 // Server-only: carries the password hash alongside the public Profile
 // fields. Never sent to the client as-is — routes must strip password_hash
@@ -229,9 +230,9 @@ function seed(): DbShape {
   ];
 
   const customers: Customer[] = [
-    { id: 'c-1', name: 'عبدالعزيز الغامدي', phone: '966501234567', address: 'حي النرجس، الرياض', district: 'النرجس', city: 'الرياض', created_at: now },
-    { id: 'c-2', name: 'شركة النخبة العقارية', phone: '966559876543', address: 'طريق الملك فهد، جدة', district: 'الروضة', city: 'جدة', created_at: now },
-    { id: 'c-3', name: 'مطاعم الواحة', phone: '966545551212', address: 'حي العليا، الرياض', district: 'العليا', city: 'الرياض', created_at: now },
+    { id: 'c-1', name: 'عبدالعزيز الغامدي', phone: '0501234567', address: 'حي النرجس، الرياض', district: 'النرجس', city: 'الرياض', created_at: now },
+    { id: 'c-2', name: 'شركة النخبة العقارية', phone: '0559876543', address: 'طريق الملك فهد، جدة', district: 'الروضة', city: 'جدة', created_at: now },
+    { id: 'c-3', name: 'مطاعم الواحة', phone: '0545551212', address: 'حي العليا، الرياض', district: 'العليا', city: 'الرياض', created_at: now },
   ];
 
   const contracts: Contract[] = [
@@ -359,6 +360,25 @@ async function load(): Promise<DbShape> {
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
     if (!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
+    // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
+    // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
+    // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
+    let phonesChanged = false;
+    parsed.customers = parsed.customers.map((c) => {
+      if (!c.phone) return c;
+      const normalized = normalizeSaudiPhone(c.phone);
+      if (normalized === c.phone) return c;
+      phonesChanged = true;
+      return { ...c, phone: normalized };
+    });
+    parsed.profiles = parsed.profiles.map((p) => {
+      if (!p.phone) return p;
+      const normalized = normalizeSaudiPhone(p.phone);
+      if (normalized === p.phone) return p;
+      phonesChanged = true;
+      return { ...p, phone: normalized };
+    });
+    if (phonesChanged) await save(parsed);
     return parsed;
   }
   const initial = seed();

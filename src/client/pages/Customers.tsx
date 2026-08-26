@@ -8,6 +8,7 @@ import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
+import { phoneMatchesQuery } from '../../shared/phone.js';
 
 export default function Customers() {
   const { t, tt, lang } = useI18n();
@@ -65,8 +66,10 @@ export default function Customers() {
     if (customerIdParam) return customers.filter((c) => c.id === customerIdParam);
     const q = search.trim().toLowerCase();
     if (!q) return customers;
-    return customers.filter((c) =>
-      [c.name, c.phone, c.district, c.address, c.city].filter(Boolean).join(' ').toLowerCase().includes(q),
+    return customers.filter(
+      (c) =>
+        [c.name, c.district, c.address, c.city].filter(Boolean).join(' ').toLowerCase().includes(q) ||
+        phoneMatchesQuery(c.phone, q),
     );
   }, [customers, search, customerIdParam]);
 
@@ -370,7 +373,7 @@ export default function Customers() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('الجوال')}</span>
-                <input name="phone" defaultValue={editing?.phone} required className="input" placeholder="9665xxxxxxxx" />
+                <input name="phone" defaultValue={editing?.phone} required className="input" placeholder="05xxxxxxxx" />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('العنوان')}</span>
@@ -561,7 +564,7 @@ function CustomerDetailModal({
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('الجوال')}</span>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" placeholder="9665xxxxxxxx" />
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" placeholder="05xxxxxxxx" />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('العنوان')}</span>
