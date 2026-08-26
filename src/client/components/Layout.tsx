@@ -17,6 +17,7 @@ import { useAuth } from '../lib/auth.js';
 import type { UserRole, PermissionKey } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
+import { ensurePushSubscribed } from '../lib/push.js';
 
 interface NavItem {
   to: string;
@@ -55,6 +56,12 @@ export default function Layout() {
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
+
+  // التنبيهات مفعّلة دائماً بدون زر تحكم في الواجهة — تُشترك تلقائياً بمجرد
+  // تسجيل الدخول، والتحكم الفعلي بها يصير من إعدادات الجهاز (انظر push.ts).
+  useEffect(() => {
+    if (user) ensurePushSubscribed(user.id).catch(() => {});
+  }, [user?.id]);
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center text-slate-500">{t('جارِ التحميل…')}</div>;

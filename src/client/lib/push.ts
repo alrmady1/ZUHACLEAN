@@ -45,6 +45,25 @@ export async function enablePush(profileId: string): Promise<void> {
   });
 }
 
+// التنبيهات مفعّلة دائماً بدون أي تحكم داخل الواجهة — تُشترك تلقائياً بمجرد
+// تسجيل الدخول (إن سمح المتصفح بذلك)، والتحكم الفعلي بها يصير من إعدادات
+// الجهاز نفسه (إشعارات الموقع في المتصفح على الحاسوب، أو إشعارات التطبيق
+// في نظام أندرويد بعد تثبيته كـ PWA). لا تُظهر أي رسالة للمستخدم هنا: لو
+// كان الإذن "denied" فهذا قرار المستخدم من إعدادات جهازه ويجب احترامه
+// بصمت، ولو فشل الاشتراك لأي سبب آخر فسيُعاد المحاولة تلقائياً في الجلسة
+// التالية دون إزعاج المستخدم.
+export async function ensurePushSubscribed(profileId: string): Promise<void> {
+  if (!isPushSupported()) return;
+  if (Notification.permission === 'denied') return;
+  const status = await getPushSubscriptionStatus();
+  if (status === 'subscribed' || status === 'unsupported') return;
+  try {
+    await enablePush(profileId);
+  } catch {
+    // صامت عمداً — لا يوجد جرس أو زر لإظهار الخطأ عليه.
+  }
+}
+
 export async function disablePush(): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
