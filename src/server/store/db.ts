@@ -24,6 +24,7 @@ import type {
   PermissionKey,
   UserRole,
   LeaveRecord,
+  PushSubscriptionRecord,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 
@@ -59,6 +60,9 @@ interface DbShape {
   // فني — بخلاف weekly_days_off الثابتة، تُستخدم لمنع إسناد موعد فعلياً
   // خلال فترتها (انظر LeaveRecord في src/shared/types.ts).
   leaves: LeaveRecord[];
+  // اشتراكات التنبيهات الفورية (Web Push) لكل جهاز فعّله مستخدم من
+  // الإعدادات — انظر PushSubscriptionRecord في src/shared/types.ts.
+  pushSubscriptions: PushSubscriptionRecord[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -325,6 +329,7 @@ function seed(): DbShape {
     permissions: {},
     permissionsOrder: [],
     leaves: [],
+    pushSubscriptions: [],
   };
 }
 
@@ -353,6 +358,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
+    if (!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
     return parsed;
   }
   const initial = seed();
@@ -585,6 +591,23 @@ export const store = {
       db.leaves.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  pushSubscriptions: {
+    list: () => db.pushSubscriptions,
+    // نفس endpoint قد يُعاد الاشتراك به (مثلاً بعد مسح بيانات المتصفح) —
+    // يستبدل السجل القديم بدل تكديس نسخ مكررة لنفس الجهاز.
+    insert: (s: PushSubscriptionRecord) => {
+      db.pushSubscriptions = db.pushSubscriptions.filter((x) => x.endpoint !== s.endpoint);
+      db.pushSubscriptions.push(s);
+      persist();
+      return s;
+    },
+    removeByEndpoint: (endpoint: string) => {
+      const before = db.pushSubscriptions.length;
+      db.pushSubscriptions = db.pushSubscriptions.filter((x) => x.endpoint !== endpoint);
+      persist();
+      return db.pushSubscriptions.length !== before;
     },
   },
   custodyInvoices: {

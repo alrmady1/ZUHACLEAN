@@ -3,6 +3,7 @@ import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { uploadAppointmentPhoto, uploadLeavePhoto } from '../lib/storage.js';
+import { sendPushToProfiles, appointmentNotifyProfileIds } from '../lib/push.js';
 import type {
   Appointment,
   Contract,
@@ -211,6 +212,37 @@ api.delete('/leaves/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Push notifications — تفعيل التنبيهات الفورية لهذا الجهاز من الإعدادات.
+// كل جهاز (متصفح/تثبيت PWA) يشترك بشكل مستقل — نفس المستخدم على جهازين
+// يملك اشتراكين منفصلين، وكلاهما يستقبل التنبيه.
+// ---------------------------------------------------------------------------
+api.get('/push/vapid-public-key', (_req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+});
+
+api.post('/push/subscribe', (req, res) => {
+  const { profile_id, subscription } = req.body ?? {};
+  if (!profile_id || !subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    return res.status(400).json({ error: 'profile_id و subscription (endpoint + keys) مطلوبة' });
+  }
+  store.pushSubscriptions.insert({
+    id: store.id(),
+    profile_id,
+    endpoint: subscription.endpoint,
+    keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+    created_at: new Date().toISOString(),
+  });
+  res.status(201).json({ ok: true });
+});
+
+api.post('/push/unsubscribe', (req, res) => {
+  const { endpoint } = req.body ?? {};
+  if (!endpoint) return res.status(400).json({ error: 'endpoint مطلوب' });
+  store.pushSubscriptions.removeByEndpoint(endpoint);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------
 api.get('/customers', (_req, res) => res.json(store.customers.list()));
@@ -366,6 +398,21 @@ api.post('/appointments', (req, res) => {
   };
   store.appointments.insert(appointment);
   res.status(201).json(appointment);
+
+  // تنبيه فوري (Web Push) لكل من له علاقة بالموعد: المشرف والفني
+  // المُسنَدان، بالإضافة إلى المدير العام ومدير النظام دائماً لكل موعد —
+  // لا يُنتظر (لا يُبطئ الاستجابة، ويُهمَل بصمت لو لم يُضبط VAPID بعد).
+  const technicianIds = appointment.assignments.map((a) => a.technician_id);
+  const notifyIds = appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds);
+  const when = new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(appointment.scheduled_at),
+  );
+  sendPushToProfiles(notifyIds, {
+    title: 'موعد جديد',
+    body: `${appointment.customer_name_snapshot ?? 'عميل'} — ${when}`,
+    url: '/appointments',
+    tag: `appointment-${appointment.id}`,
+  }).catch((err) => console.error('❌ فشل إرسال تنبيه الموعد الجديد:', err));
 });
 
 api.patch('/appointments/:id', (req, res) => {

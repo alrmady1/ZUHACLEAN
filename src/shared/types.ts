@@ -247,6 +247,19 @@ export interface LeaveRecord {
   created_at: string;
 }
 
+// اشتراك دفع (Web Push) لجهاز واحد لمستخدم واحد — نفس المستخدم قد يملك
+// أكثر من اشتراك (جوال + حاسوب مثلاً)، فكل جهاز يشترك بشكل منفصل. تُرسَل
+// تنبيهات إلى كل اشتراكات صاحب الموعد (مشرف/فني) وإلى كل اشتراكات المدير
+// العام ومدير النظام لكل موعد (انظر sendPushToProfiles في
+// src/server/lib/push.ts).
+export interface PushSubscriptionRecord {
+  id: string;
+  profile_id: string;
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  created_at: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

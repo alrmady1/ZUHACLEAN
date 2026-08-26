@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, Plus, Languages } from 'lucide-react';
+import { Menu, Search, Plus, Languages, Bell, BellOff } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
+import { isPushSupported, getPushSubscriptionStatus, enablePush, disablePush } from '../lib/push.js';
 
 // The global top bar: lives in Layout's <header>, which sits outside the
 // scrollable <main> area — so it naturally stays pinned at the top on every
@@ -21,11 +22,35 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
+  const [pushStatus, setPushStatus] = useState<'subscribed' | 'unsubscribed' | 'unsupported' | 'loading'>('loading');
+  const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
   }, []);
+
+  useEffect(() => {
+    getPushSubscriptionStatus().then(setPushStatus);
+  }, []);
+
+  async function togglePush() {
+    if (!user || pushBusy || pushStatus === 'unsupported' || pushStatus === 'loading') return;
+    setPushBusy(true);
+    try {
+      if (pushStatus === 'subscribed') {
+        await disablePush();
+        setPushStatus('unsubscribed');
+      } else {
+        await enablePush(user.id);
+        setPushStatus('subscribed');
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : t('تعذّر تغيير حالة التنبيهات'));
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -97,6 +122,22 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </div>
         )}
       </div>
+
+      {isPushSupported() && (
+        <button
+          type="button"
+          onClick={togglePush}
+          disabled={pushBusy || pushStatus === 'loading'}
+          title={pushStatus === 'subscribed' ? t('التنبيهات مفعّلة على هذا الجهاز — اضغط للإيقاف') : t('تفعيل التنبيهات الفورية على هذا الجهاز')}
+          className={`flex shrink-0 items-center justify-center rounded-xl border p-2 disabled:opacity-50 ${
+            pushStatus === 'subscribed'
+              ? 'border-brand-200 bg-brand-50 text-brand-600'
+              : 'border-slate-200 bg-white text-slate-400 hover:bg-slate-50'
+          }`}
+        >
+          {pushStatus === 'subscribed' ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </button>
+      )}
 
       <button
         type="button"
