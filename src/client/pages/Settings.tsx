@@ -27,11 +27,12 @@ import {
   ShieldCheck as PermissionsIcon,
   GripVertical as DragHandleIcon,
   CalendarOff as DaysOffIcon,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType, Appointment } from '../../shared/types.js';
 import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
-import { formatMoney, formatDuration } from '../lib/date.js';
+import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { WEEKDAYS } from '../lib/weekdays.js';
@@ -1466,6 +1467,7 @@ function DaysOffTab() {
   const { refreshProfiles } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
@@ -1473,6 +1475,14 @@ function DaysOffTab() {
   const [leaveTypeInput, setLeaveTypeInput] = useState<LeaveType>('sick');
   const [leavePhotoPreview, setLeavePhotoPreview] = useState<string | null>(null);
   const [compressingPhoto, setCompressingPhoto] = useState(false);
+  // موعد قائم يتعارض مع فترة إجازة مقترحة (لشخص كان مسنَداً له فعلاً قبل
+  // إضافة الإجازة) — يجب إعادة إسناده لشخص آخر قبل الموافقة على الإجازة
+  // نفسها. انظر checkConflictsAndProceed أدناه.
+  const [conflictAppts, setConflictAppts] = useState<Appointment[] | null>(null);
+  const [conflictPerson, setConflictPerson] = useState<Profile | null>(null);
+  const [pendingLeavePayload, setPendingLeavePayload] = useState<Record<string, unknown> | null>(null);
+  const [reassignments, setReassignments] = useState<Record<string, string>>({});
+  const [savingReschedule, setSavingReschedule] = useState(false);
 
   function refresh() {
     api.get<Profile[]>('/profiles').then(setProfiles);
@@ -1480,8 +1490,12 @@ function DaysOffTab() {
   function refreshLeaves() {
     api.get<LeaveRecord[]>('/leaves').then(setLeaves);
   }
+  function refreshAppointments() {
+    api.get<Appointment[]>('/appointments').then(setAppointments);
+  }
   useEffect(refresh, []);
   useEffect(refreshLeaves, []);
+  useEffect(refreshAppointments, []);
 
   const people = profiles.filter((p) => p.role === 'supervisor' || p.role === 'technician');
 
@@ -1501,9 +1515,25 @@ function DaysOffTab() {
     }
   }
 
+  // إرسال طلب الإجازة فعلياً — يُستدعى مباشرة لو لم يوجد أي تعارض، أو بعد
+  // إتمام إعادة جدولة كل المواعيد المتعارضة (انظر confirmRescheduleAndApprove).
+  async function submitLeave(payload: Record<string, unknown>) {
+    setSubmittingLeave(true);
+    try {
+      await api.post('/leaves', payload);
+      setShowLeaveForm(false);
+      setLeaveTypeInput('sick');
+      setLeavePhotoPreview(null);
+      refreshLeaves();
+    } finally {
+      setSubmittingLeave(false);
+    }
+  }
+
   async function handleAddLeave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const profileId = form.get('profile_id') as string;
     const start = form.get('start_date') as string;
     const end = form.get('end_date') as string;
     if (end < start) {
@@ -1514,23 +1544,71 @@ function DaysOffTab() {
       window.alert(t('يجب كتابة نوع الإجازة عند اختيار "أخرى"'));
       return;
     }
-    setSubmittingLeave(true);
+    const payload = {
+      profile_id: profileId,
+      leave_type: form.get('leave_type'),
+      other_type_label: leaveTypeInput === 'other' ? form.get('other_type_label') : undefined,
+      start_date: start,
+      end_date: end,
+      notes: form.get('notes') || undefined,
+      photo_data_url: leavePhotoPreview || undefined,
+    };
+
+    const person = people.find((p) => p.id === profileId);
+    const conflicts = person
+      ? appointments
+          .filter((a) => a.status !== 'cancelled')
+          .filter((a) => {
+            const d = a.scheduled_at.slice(0, 10);
+            return d >= start && d <= end;
+          })
+          .filter((a) =>
+            person.role === 'technician'
+              ? a.assignments.some((x) => x.technician_id === person.id)
+              : a.supervisor_id === person.id,
+          )
+          .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+      : [];
+
+    if (conflicts.length > 0) {
+      setConflictPerson(person ?? null);
+      setConflictAppts(conflicts);
+      setPendingLeavePayload(payload);
+      setReassignments({});
+      return;
+    }
+
+    await submitLeave(payload);
+  }
+
+  // بعد اختيار بديل لكل موعد متعارض: يعيد إسناد كل موعد لصاحبه الجديد،
+  // ثم يُتمّ حفظ الإجازة نفسها (نفس منطق submitLeave).
+  async function confirmRescheduleAndApprove() {
+    if (!conflictAppts || !conflictPerson || !pendingLeavePayload) return;
+    if (conflictAppts.some((a) => !reassignments[a.id])) return;
+    setSavingReschedule(true);
     try {
-      await api.post('/leaves', {
-        profile_id: form.get('profile_id'),
-        leave_type: form.get('leave_type'),
-        other_type_label: leaveTypeInput === 'other' ? form.get('other_type_label') : undefined,
-        start_date: start,
-        end_date: end,
-        notes: form.get('notes') || undefined,
-        photo_data_url: leavePhotoPreview || undefined,
-      });
-      setShowLeaveForm(false);
-      setLeaveTypeInput('sick');
-      setLeavePhotoPreview(null);
-      refreshLeaves();
+      for (const appt of conflictAppts) {
+        const newId = reassignments[appt.id];
+        if (conflictPerson.role === 'technician') {
+          const newTech = profiles.find((p) => p.id === newId);
+          await api.patch(`/appointments/${appt.id}`, {
+            assignments: [
+              { id: appt.assignments[0]?.id ?? crypto.randomUUID(), technician_id: newId, technician_name: newTech?.full_name },
+            ],
+          });
+        } else {
+          await api.patch(`/appointments/${appt.id}`, { supervisor_id: newId });
+        }
+      }
+      await submitLeave(pendingLeavePayload);
+      refreshAppointments();
     } finally {
-      setSubmittingLeave(false);
+      setSavingReschedule(false);
+      setConflictAppts(null);
+      setConflictPerson(null);
+      setPendingLeavePayload(null);
+      setReassignments({});
     }
   }
 
@@ -1788,6 +1866,83 @@ function DaysOffTab() {
           )}
         </div>
       </div>
+
+      {conflictAppts && conflictPerson && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start gap-2 border-b border-slate-200 bg-amber-50 px-5 py-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <h2 className="text-sm font-bold text-amber-800">
+                  {tt(
+                    `لدى ${conflictPerson.full_name} ${conflictAppts.length} موعد ضمن فترة الإجازة المقترحة`,
+                    `${conflictPerson.full_name} has ${conflictAppts.length} appointment(s) within the proposed leave period`,
+                  )}
+                </h2>
+                <p className="mt-1 text-xs text-amber-700">
+                  {t('حدِّد بديلاً لكل موعد أدناه قبل المتابعة والموافقة على الإجازة.')}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 p-5">
+              {conflictAppts.map((a) => {
+                const replacementOptions =
+                  conflictPerson.role === 'technician'
+                    ? profiles.filter((p) => p.role === 'technician' && p.id !== conflictPerson.id)
+                    : profiles.filter(
+                        (p) => (p.role === 'supervisor' || p.role === 'admin_supervisor') && p.id !== conflictPerson.id,
+                      );
+                return (
+                  <div key={a.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium text-slate-700">{a.customer_name_snapshot ?? t('عميل')}</span>
+                      <span dir="ltr" className="text-slate-400">
+                        {formatDateAr(a.scheduled_at)} · {formatTimeAr(a.scheduled_at)}
+                      </span>
+                    </div>
+                    <select
+                      value={reassignments[a.id] ?? ''}
+                      onChange={(e) => setReassignments((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                      className="input"
+                    >
+                      <option value="">
+                        {conflictPerson.role === 'technician' ? t('-- اختر الفني البديل --') : t('-- اختر المشرف البديل --')}
+                      </option>
+                      {replacementOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                onClick={confirmRescheduleAndApprove}
+                disabled={savingReschedule || conflictAppts.some((a) => !reassignments[a.id])}
+                className="flex items-center gap-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" /> {savingReschedule ? t('جارِ الحفظ…') : t('متابعة والموافقة على الإجازة')}
+              </button>
+              <button
+                onClick={() => {
+                  setConflictAppts(null);
+                  setConflictPerson(null);
+                  setPendingLeavePayload(null);
+                  setReassignments({});
+                }}
+                className="text-sm font-medium text-slate-400 hover:text-slate-600"
+              >
+                {t('إلغاء')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
