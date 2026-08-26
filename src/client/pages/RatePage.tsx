@@ -90,8 +90,12 @@ export default function RatePage() {
           <div className="space-y-5">
             <div className="text-center">
               <p className="text-sm text-slate-600">
-                عزيزنا <span className="font-semibold text-slate-800">{info.customer_name_snapshot}</span>، كيف كانت تجربتك مع
-                خدمة <span className="font-semibold text-slate-800">{info.service_name_snapshot}</span>؟
+                عزيزنا{' '}
+                <span className="font-semibold text-slate-800">
+                  {info.customer_name_snapshot || 'العميل الكريم'}
+                </span>
+                ، كيف كانت تجربتك مع خدمة{' '}
+                <span className="font-semibold text-slate-800">{info.service_name_snapshot}</span>؟
               </p>
             </div>
 

@@ -224,7 +224,7 @@ api.get('/public/appointments/:id', (req, res) => {
   if (!appt) return res.status(404).json({ error: 'الموعد غير موجود' });
   res.json({
     id: appt.id,
-    customer_name_snapshot: appt.customer_name_snapshot,
+    customer_name_snapshot: appt.customer_name_snapshot ?? store.customers.get(appt.customer_id)?.name ?? '',
     service_name_snapshot: appt.service_name_snapshot,
     scheduled_at: appt.scheduled_at,
     already_rated: !!store.ratings.getByAppointment(appt.id),
