@@ -20,6 +20,7 @@ import type {
   LeaveType,
   Rating,
   CustomerRating,
+  Quote,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -1076,4 +1077,51 @@ api.post('/invoices', (req, res) => {
   store.invoices.insert(invoice);
   logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س`);
   res.status(201).json(invoice);
+});
+
+// ---------------------------------------------------------------------------
+// عروض الأسعار — تبويب "عرض سعر" داخل صفحة العقود. مستند مستقل تماماً عن
+// Contract/Invoice: مجرد اقتراح سعر يُطبَع ويُرسَل للعميل قبل أي التزام،
+// فلا يُنشئ عقداً أو موعداً تلقائياً (ذلك قرار لاحق منفصل إن قَبِل العميل).
+// ---------------------------------------------------------------------------
+api.get('/quotes', (_req, res) => res.json(store.quotes.list()));
+
+api.post('/quotes', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.customer_id || !Array.isArray(body.items) || body.items.length === 0) {
+    return res.status(400).json({ error: 'customer_id وقائمة items (خدمة واحدة على الأقل) مطلوبة' });
+  }
+  const customer = store.customers.get(body.customer_id);
+  const items = body.items.map((it: { service_id: string; service_name: string; price: number }) => ({
+    service_id: it.service_id,
+    service_name: it.service_name,
+    price: Number(it.price) || 0,
+  }));
+  const total = Math.round(items.reduce((sum: number, it: { price: number }) => sum + it.price, 0) * 100) / 100;
+  const quote: Quote = {
+    id: store.id(),
+    quote_number: body.quote_number ?? `QT-${Date.now()}`,
+    customer_id: body.customer_id,
+    customer_name_snapshot: customer?.name ?? body.customer_name_snapshot ?? '',
+    customer_phone_snapshot: customer?.phone,
+    path_type: body.path_type === 'contract' ? 'contract' : 'single_visit',
+    items,
+    total,
+    payment_note: typeof body.payment_note === 'string' ? body.payment_note : '',
+    issue_date: body.issue_date ?? new Date().toISOString().slice(0, 10),
+    created_at: new Date().toISOString(),
+    created_by: body.created_by || undefined,
+    created_by_name: body.created_by ? store.profiles.list().find((p) => p.id === body.created_by)?.full_name : undefined,
+  };
+  store.quotes.insert(quote);
+  logActivity(req, `تم إنشاء عرض سعر "${quote.quote_number}" للعميل "${quote.customer_name_snapshot}" بقيمة ${quote.total} ر.س`);
+  res.status(201).json(quote);
+});
+
+api.delete('/quotes/:id', (req, res) => {
+  const target = store.quotes.get(req.params.id);
+  const removed = store.quotes.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف عرض سعر "${target?.quote_number ?? ''}"`);
+  res.status(204).end();
 });

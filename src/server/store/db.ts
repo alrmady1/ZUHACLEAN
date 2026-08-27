@@ -28,6 +28,7 @@ import type {
   Rating,
   CustomerRating,
   ActivityLogEntry,
+  Quote,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -76,6 +77,9 @@ interface DbShape {
   // insert أدناه حتى لا يتضخّم مستند JSONB الوحيد الذي يخزّن كامل حالة
   // التطبيق إلى ما لا نهاية.
   activityLog: ActivityLogEntry[];
+  // عروض الأسعار — انظر Quote في src/shared/types.ts وتبويب "عرض سعر"
+  // داخل صفحة العقود.
+  quotes: Quote[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -346,6 +350,7 @@ function seed(): DbShape {
     ratings: [],
     customerRatings: [],
     activityLog: [],
+    quotes: [],
   };
 }
 
@@ -378,6 +383,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.ratings) parsed.ratings = [];
     if (!parsed.customerRatings) parsed.customerRatings = [];
     if (!parsed.activityLog) parsed.activityLog = [];
+    if (!parsed.quotes) parsed.quotes = [];
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -663,6 +669,18 @@ export const store = {
       if (db.activityLog.length > 2000) db.activityLog.splice(0, db.activityLog.length - 2000);
       persist();
       return e;
+    },
+  },
+  quotes: {
+    list: () => [...db.quotes].reverse(),
+    get: (id: string) => db.quotes.find((q) => q.id === id),
+    insert: (q: Quote) => { db.quotes.push(q); persist(); return q; },
+    remove: (id: string) => {
+      const idx = db.quotes.findIndex((q) => q.id === id);
+      if (idx === -1) return false;
+      db.quotes.splice(idx, 1);
+      persist();
+      return true;
     },
   },
   customerRatings: {

@@ -384,6 +384,18 @@ export interface Contract {
   notes?: string;
   created_at: string;
   updated_at: string;
+  // بنود وشروط العقد الرسمي (انظر ContractDocument.tsx) — غائبة على أي
+  // عقد لم يُفتح مستنده الرسمي بعد؛ الواجهة تعرض عندها بنود DEFAULT_
+  // CONTRACT_CLAUSES (src/shared/documentDefaults.ts) كنقطة بداية، ولا
+  // تُحفَظ على العقد فعلياً إلا بعد أول تعديل أو حفظ صريح — بعدها تصبح
+  // بنود هذا العقد بالذات، مستقلة عن أي عقد آخر أو عن القالب الافتراضي.
+  clauses?: ContractClause[];
+}
+
+export interface ContractClause {
+  id: string;
+  title: string;
+  body: string;
 }
 
 export interface Expense {
@@ -503,7 +515,47 @@ export interface Invoice {
   notes?: string;
 }
 
+// مسار العرض — تصنيف/عنوان فقط يظهر على المستند المطبوع، لا يُنشئ عقداً
+// دورياً فعلياً (ذلك يبقى إجراءً منفصلاً لاحقاً من "عقد جديد" إن قَبِل
+// العميل العرض) — انظر NewQuoteFlow.tsx.
+export type QuotePathType = 'single_visit' | 'contract';
+
+export interface QuoteItem {
+  service_id: string;
+  service_name: string;
+  // شامل ضريبة القيمة المضافة — نفس اصطلاح تسعير الخدمات في كل النظام
+  // (انظر NewAppointmentModal)، يُفصَل عند الطباعة إلى سعر قبل الضريبة
+  // + الضريبة + الإجمالي (نفس منطق الفاتورة).
+  price: number;
+}
+
+export interface Quote {
+  id: string;
+  quote_number: string;
+  customer_id: string;
+  customer_name_snapshot: string;
+  customer_phone_snapshot?: string;
+  path_type: QuotePathType;
+  items: QuoteItem[];
+  // مجموع أسعار items شامل الضريبة — محسوب ومخزَّن وقت الإنشاء (وليس
+  // مشتقاً كل مرة) حتى يبقى العرض المطبوع ثابتاً حتى لو تغيّر سعر إحدى
+  // الخدمات لاحقاً في كتالوج الخدمات.
+  total: number;
+  // رسالة تعليمات الدفع أسفل العرض — قابلة للتحرير قبل الحفظ، تُحفَظ مع
+  // العرض نفسه (وليس كإعداد عام) حتى يمكن تخصيصها لكل عميل عند الحاجة.
+  payment_note: string;
+  issue_date: string;
+  created_at: string;
+  created_by?: string;
+  created_by_name?: string;
+}
+
 // The seller identity ZATCA (Saudi Zakat, Tax and Customs Authority) prints
 // on simplified tax invoices and encodes into the compliance QR code.
 export const COMPANY_NAME = 'زهى الأعمال';
 export const COMPANY_VAT_NUMBER = '314739292200003';
+export const COMPANY_PHONE = '0582464181';
+// لم يزوّدنا صاحب العمل برقم السجل التجاري بعد — يبقى فارغاً عمداً حتى
+// يُضاف هنا لاحقاً، وتُخفي مستندات العقد وعرض السعر هذا السطر تلقائياً
+// طالما فارغ (انظر DocumentHeader.tsx) بدل طباعة رقم غير صحيح.
+export const COMPANY_CR_NUMBER = '';
