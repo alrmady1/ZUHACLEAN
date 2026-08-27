@@ -275,6 +275,11 @@ export default function AppointmentDetailModal({
           <div>
             <h2 className="text-lg font-bold text-slate-800">{t('تفاصيل المهمة والموعد')}</h2>
             <p className="text-xs text-slate-400">{t('رقم المرجع:')} #{appointment.id.slice(0, 8)}</p>
+            {appointment.created_by_name && (
+              <p className="mt-0.5 text-xs text-slate-400">
+                {t('تم إضافة الموعد بواسطة:')} {appointment.created_by_name}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {canDeleteAppointment && (

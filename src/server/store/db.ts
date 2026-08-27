@@ -26,6 +26,7 @@ import type {
   LeaveRecord,
   PushSubscriptionRecord,
   Rating,
+  CustomerRating,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -67,6 +68,9 @@ interface DbShape {
   pushSubscriptions: PushSubscriptionRecord[];
   // تقييمات العملاء بعد اكتمال الخدمة — انظر Rating في src/shared/types.ts.
   ratings: Rating[];
+  // تقييم المشرف للعميل بعد اكتمال الطلب (عكس ratings أعلاه) — انظر
+  // CustomerRating في src/shared/types.ts.
+  customerRatings: CustomerRating[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -335,6 +339,7 @@ function seed(): DbShape {
     leaves: [],
     pushSubscriptions: [],
     ratings: [],
+    customerRatings: [],
   };
 }
 
@@ -365,6 +370,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.leaves) parsed.leaves = [];
     if (!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
     if (!parsed.ratings) parsed.ratings = [];
+    if (!parsed.customerRatings) parsed.customerRatings = [];
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -614,6 +620,27 @@ export const store = {
       const idx = db.leaves.findIndex((l) => l.id === id);
       if (idx === -1) return false;
       db.leaves.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  customerRatings: {
+    list: () => db.customerRatings,
+    getByAppointment: (appointmentId: string) => db.customerRatings.find((r) => r.appointment_id === appointmentId),
+    // موعد واحد = تقييم عميل واحد فقط — يستبدل السجل القائم عند إعادة
+    // التقييم بدل منعه (خلافاً لـ ratings.insert أعلاه)، لأن هذا تقييم
+    // داخلي من الموظف نفسه ومن الطبيعي أن يُعدِّله.
+    upsert: (r: CustomerRating) => {
+      const idx = db.customerRatings.findIndex((x) => x.appointment_id === r.appointment_id);
+      if (idx === -1) db.customerRatings.push(r);
+      else db.customerRatings[idx] = r;
+      persist();
+      return r;
+    },
+    remove: (id: string) => {
+      const idx = db.customerRatings.findIndex((r) => r.id === id);
+      if (idx === -1) return false;
+      db.customerRatings.splice(idx, 1);
       persist();
       return true;
     },

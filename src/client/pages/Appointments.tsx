@@ -16,9 +16,11 @@ import {
   Trash2,
   CheckCircle2,
   Printer,
+  Star,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, Invoice } from '../../shared/types.js';
+import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, CustomerRating, Invoice } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, RatingStars, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
@@ -36,6 +38,10 @@ const STATUS_OPTIONS = (Object.entries(APPT_STATUS_STYLE) as [AppointmentStatus,
   value,
   label,
 }));
+// المكتملة والملغاة انتقلت بالكامل لتبويب "المهام المكتملة" — لا تظهر
+// كخيار في فلتر حالة تبويب "المواعيد" (اختيارها لن يُظهر شيئاً أصلاً بعد
+// أن استُبعدت من filtered أدناه).
+const SCHEDULE_STATUS_OPTIONS = STATUS_OPTIONS.filter((o) => o.value !== 'completed' && o.value !== 'cancelled');
 const PAYMENT_OPTIONS: { value: PaymentStatus; label: string }[] = [
   { value: 'unpaid', label: 'غير مسدد' },
   { value: 'partial', label: 'مسدد جزئياً' },
@@ -68,6 +74,75 @@ function getWeekDays(ref: Date): Date[] {
   });
 }
 
+// تقييم المشرف للعميل بعد اكتمال الطلب (عكس تقييم العميل للخدمة) — 5
+// نجوم + ملاحظات، تُحفظ باستبدال أي تقييم سابق لنفس الموعد (upsert، انظر
+// POST /customer-ratings في src/server/routes/api.ts).
+function CustomerRatingModal({
+  existing,
+  onClose,
+  onSaved,
+}: {
+  existing: { appointmentId: string; stars: number; notes?: string };
+  onClose: () => void;
+  onSaved: (r: CustomerRating) => void;
+}) {
+  const { t } = useI18n();
+  const { user } = useAuth();
+  const [stars, setStars] = useState(existing.stars);
+  const [notes, setNotes] = useState(existing.notes ?? '');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function save() {
+    if (stars === 0) return;
+    setSubmitting(true);
+    try {
+      const saved = await api.post<CustomerRating>('/customer-ratings', {
+        appointment_id: existing.appointmentId,
+        stars,
+        notes: notes.trim() || undefined,
+        rated_by: user?.id,
+      });
+      onSaved(saved);
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">{t('تقييم العميل')}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-slate-400">{t('أضف تقييمك للعميل بعد اكتمال الطلب')}</p>
+        <div className="mb-4 flex justify-center gap-1.5" dir="ltr">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button key={n} type="button" onClick={() => setStars(n)} className="p-1">
+              <Star className={`h-8 w-8 transition ${n <= stars ? 'fill-amber-400 text-amber-400' : 'fill-transparent text-slate-300'}`} />
+            </button>
+          ))}
+        </div>
+        <label className="mb-4 block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات على العميل (اختياري)')}</span>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={1000} className="input resize-none" />
+        </label>
+        <button
+          type="button"
+          disabled={stars === 0 || submitting}
+          onClick={save}
+          className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {submitting ? t('جارِ الحفظ…') : t('حفظ تقييم العميل')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Appointments() {
   const { user, allProfiles, can } = useAuth();
   const { t, roleLabel, lang } = useI18n();
@@ -76,10 +151,12 @@ export default function Appointments() {
   const [services, setServices] = useState<Service[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
+  const [customerRatings, setCustomerRatings] = useState<CustomerRating[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [mainTab, setMainTab] = useState<'schedule' | 'completed'>('schedule');
   const [completedSearch, setCompletedSearch] = useState('');
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [ratingCustomerAppt, setRatingCustomerAppt] = useState<Appointment | null>(null);
   const [scope, setScope] = useState<ScopeFilter>('mine');
   const [view, setView] = useState<'table' | 'calendar'>('table');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'all'>('all');
@@ -102,12 +179,20 @@ export default function Appointments() {
     api.get<Service[]>('/services').then(setServices);
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     api.get<Rating[]>('/ratings').then(setRatings);
+    api.get<CustomerRating[]>('/customer-ratings').then(setCustomerRatings);
     api.get<Invoice[]>('/invoices').then(setInvoices);
   }, []);
 
   const canSeeAllSchedules = can('view_all_supervisors_appointments');
   const canBook = can('create_appointments');
   const canDeleteAppointment = can('delete_appointments');
+  const canViewCompletedTab = can('view_completed_tasks_page');
+
+  // لو فقد المستخدم صلاحية الاطلاع على هذا التبويب أثناء وجوده فيه (تعديل
+  // صلاحيات حي من مكان آخر) يعود تلقائياً لتبويب "المواعيد".
+  useEffect(() => {
+    if (!canViewCompletedTab && mainTab === 'completed') setMainTab('schedule');
+  }, [canViewCompletedTab, mainTab]);
 
   async function deleteAppointment(a: Appointment) {
     if (!window.confirm(t('حذف هذا الموعد نهائياً؟ سيُحذف مع كل صوره ومدفوعاته المرتبطة به، ولا يمكن التراجع عن هذا الإجراء.'))) return;
@@ -153,6 +238,12 @@ export default function Appointments() {
     return map;
   }, [invoices]);
 
+  const customerRatingByAppointment = useMemo(() => {
+    const map = new Map<string, CustomerRating>();
+    for (const r of customerRatings) map.set(r.appointment_id, r);
+    return map;
+  }, [customerRatings]);
+
   // تبويب "المهام المكتملة" — فقط المواعيد المكتملة أو الملغاة، ضمن نفس
   // نطاق المشرف المختار أعلاه (scoped)، الأحدث أولاً (عكس جدول المواعيد
   // النشطة الذي يُرتَّب تصاعدياً بحسب موعد الزيارة القادم).
@@ -176,6 +267,9 @@ export default function Appointments() {
     const q = search.trim().toLowerCase();
     return scoped
       .filter((a) => {
+        // المكتملة والملغاة انتقلت بالكامل لتبويب "المهام المكتملة" — لا
+        // يبقى في تبويب "المواعيد" سوى ما لم ينتهِ بعد.
+        if (a.status === 'completed' || a.status === 'cancelled') return false;
         if (statusFilter !== 'all' && a.status !== statusFilter) return false;
         if (paymentFilter !== 'all' && a.payment_status !== paymentFilter) return false;
         if (!inPeriod(a.scheduled_at, periodFilter)) return false;
@@ -249,20 +343,22 @@ export default function Appointments() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
-        <button
-          onClick={() => setMainTab('schedule')}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'schedule' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <CalendarDays className="h-4 w-4" /> {t('المواعيد')}
-        </button>
-        <button
-          onClick={() => setMainTab('completed')}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'completed' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-        >
-          <CheckCircle2 className="h-4 w-4" /> {t('المهام المكتملة')}
-        </button>
-      </div>
+      {canViewCompletedTab && (
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+          <button
+            onClick={() => setMainTab('schedule')}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'schedule' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <CalendarDays className="h-4 w-4" /> {t('المواعيد')}
+          </button>
+          <button
+            onClick={() => setMainTab('completed')}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'completed' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <CheckCircle2 className="h-4 w-4" /> {t('المهام المكتملة')}
+          </button>
+        </div>
+      )}
 
       {canSeeAllSchedules && user && (
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -311,7 +407,7 @@ export default function Appointments() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'all')} className="input">
           <option value="all">{t('كل حالات المواعيد')}</option>
-          {STATUS_OPTIONS.map((o) => (
+          {SCHEDULE_STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {t(o.label)}
             </option>
@@ -648,7 +744,7 @@ export default function Appointments() {
       </>
       )}
 
-      {mainTab === 'completed' && (
+      {mainTab === 'completed' && canViewCompletedTab && (
         <div className="space-y-4">
           <div className="relative">
             <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -670,7 +766,8 @@ export default function Appointments() {
                   <th className="p-3 text-start font-medium">{t('المشرف / الفريق')}</th>
                   <th className="p-3 text-start font-medium">{t('السعر والدفع')}</th>
                   <th className="p-3 text-start font-medium">{t('حالة الطلب')}</th>
-                  <th className="p-3 text-start font-medium">{t('التقييم')}</th>
+                  <th className="p-3 text-start font-medium">{t('تقييم الخدمة')}</th>
+                  <th className="p-3 text-start font-medium">{t('تقييم العميل')}</th>
                   <th className="p-3 text-start font-medium">{t('إجراء')}</th>
                 </tr>
               </thead>
@@ -680,6 +777,7 @@ export default function Appointments() {
                   const supervisor = allProfiles.find((p) => p.id === a.supervisor_id);
                   const rating = ratingByAppointment.get(a.id);
                   const invoice = invoiceByAppointment.get(a.id);
+                  const customerRating = customerRatingByAppointment.get(a.id);
                   return (
                     <tr
                       key={a.id}
@@ -746,6 +844,29 @@ export default function Appointments() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRatingCustomerAppt(a);
+                          }}
+                          className="text-start"
+                        >
+                          {customerRating ? (
+                            <div className="space-y-1">
+                              <RatingStars value={customerRating.stars} />
+                              {customerRating.notes && (
+                                <div className="max-w-[160px] truncate text-xs text-slate-400">"{customerRating.notes}"</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50">
+                              {t('تقييم العميل')}
+                            </span>
+                          )}
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <div className="flex items-center gap-1">
                           <button
                             onClick={(e) => {
@@ -788,7 +909,7 @@ export default function Appointments() {
                 })}
                 {completedList.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-slate-400">
+                    <td colSpan={9} className="p-10 text-center text-slate-400">
                       {t('لا توجد مهام مكتملة أو ملغاة ضمن هذا العرض')}
                     </td>
                   </tr>
@@ -839,6 +960,18 @@ export default function Appointments() {
           appointment={appointments.find((a) => a.id === viewingInvoice.appointment_id)}
           paymentMethods={paymentMethods}
           onClose={() => setViewingInvoice(null)}
+        />
+      )}
+
+      {ratingCustomerAppt && (
+        <CustomerRatingModal
+          existing={{
+            appointmentId: ratingCustomerAppt.id,
+            stars: customerRatingByAppointment.get(ratingCustomerAppt.id)?.stars ?? 0,
+            notes: customerRatingByAppointment.get(ratingCustomerAppt.id)?.notes,
+          }}
+          onClose={() => setRatingCustomerAppt(null)}
+          onSaved={(r) => setCustomerRatings((prev) => [...prev.filter((x) => x.appointment_id !== r.appointment_id), r])}
         />
       )}
     </div>

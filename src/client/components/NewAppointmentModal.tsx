@@ -42,7 +42,7 @@ export default function NewAppointmentModal({
   onCustomerCreated?: (customer: Customer) => void;
 }) {
   const { t, tt } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canAssignTechnician = can('assign_appointment_technician');
   const today = new Date().toISOString().slice(0, 10);
 
@@ -204,6 +204,7 @@ export default function NewAppointmentModal({
         address_snapshot: address,
         location_url: locationUrl || undefined,
         notes: form.get('notes') || undefined,
+        created_by: user?.id,
         assignments: technicianId
           ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((tech) => tech.id === technicianId)?.full_name }]
           : [],

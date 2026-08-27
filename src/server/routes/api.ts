@@ -19,6 +19,7 @@ import type {
   LeaveRecord,
   LeaveType,
   Rating,
+  CustomerRating,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -264,6 +265,45 @@ api.delete('/ratings/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// تقييم المشرف للعميل — عكس ratings أعلاه (تقييم العميل للخدمة). يُدخَل من
+// داخل التطبيق (تبويب "المهام المكتملة")، لا رابط عام. موعد واحد = تقييم
+// عميل واحد فقط لكنه يُستبدَل بإعادة الإرسال (upsert) لا يُمنَع.
+// ---------------------------------------------------------------------------
+api.get('/customer-ratings', (_req, res) => res.json(store.customerRatings.list()));
+
+api.post('/customer-ratings', (req, res) => {
+  const { appointment_id, stars, notes, rated_by } = req.body ?? {};
+  const appt = store.appointments.get(appointment_id);
+  if (!appt) return res.status(404).json({ error: 'الموعد غير موجود' });
+  const starsNum = Number(stars);
+  if (!Number.isInteger(starsNum) || starsNum < 1 || starsNum > 5) {
+    return res.status(400).json({ error: 'التقييم يجب أن يكون من 1 إلى 5 نجوم' });
+  }
+  const rater = rated_by ? store.profiles.list().find((p) => p.id === rated_by) : undefined;
+  const existing = store.customerRatings.getByAppointment(appointment_id);
+  const rating: CustomerRating = {
+    id: existing?.id ?? store.id(),
+    appointment_id,
+    customer_id: appt.customer_id,
+    customer_name_snapshot: appt.customer_name_snapshot ?? store.customers.get(appt.customer_id)?.name,
+    rated_by: rated_by || existing?.rated_by,
+    rated_by_name: rater?.full_name ?? existing?.rated_by_name,
+    stars: starsNum,
+    notes: typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 1000) : undefined,
+    created_at: existing?.created_at ?? new Date().toISOString(),
+    updated_at: existing ? new Date().toISOString() : undefined,
+  };
+  store.customerRatings.upsert(rating);
+  res.status(existing ? 200 : 201).json(rating);
+});
+
+api.delete('/customer-ratings/:id', (req, res) => {
+  const removed = store.customerRatings.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
 // Push notifications — تفعيل التنبيهات الفورية لهذا الجهاز من الإعدادات.
 // كل جهاز (متصفح/تثبيت PWA) يشترك بشكل مستقل — نفس المستخدم على جهازين
 // يملك اشتراكين منفصلين، وكلاهما يستقبل التنبيه.
@@ -447,6 +487,8 @@ api.post('/appointments', (req, res) => {
     photos: [],
     payments: [],
     created_at: new Date().toISOString(),
+    created_by: body.created_by || undefined,
+    created_by_name: body.created_by ? store.profiles.list().find((p) => p.id === body.created_by)?.full_name : undefined,
   };
   store.appointments.insert(appointment);
   res.status(201).json(appointment);

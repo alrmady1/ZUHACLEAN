@@ -75,7 +75,8 @@ export type PermissionKey =
   | 'update_appointment_status'
   | 'edit_appointment_team'
   | 'edit_days_off'
-  | 'assign_appointment_technician';
+  | 'assign_appointment_technician'
+  | 'view_completed_tasks_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -109,6 +110,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   // الإجازات السنوية تحت نفس الصلاحية (نفس الصلاحية، تسمية أشمل).
   edit_days_off: 'تعديل الإجازات',
   assign_appointment_technician: 'اضافة وتعديل الفني للموعد',
+  view_completed_tasks_page: 'الاطلاع على صفحة المهام المكتملة',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -151,6 +153,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // عبر edit_appointment_team فقط، وهذا يوسِّعه عمداً ليطابق سلوك الحجز؛
   // يمكن تضييقه لاحقاً من صفحة الصلاحيات لو رغب المدير العام.
   assign_appointment_technician: NOT_TECHNICIAN,
+  // مخفية عن الفني الميداني تحديداً — تبويب "المهام المكتملة" داخل صفحة
+  // المواعيد (انظر Appointments.tsx).
+  view_completed_tasks_page: NOT_TECHNICIAN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -272,6 +277,23 @@ export interface Rating {
   stars: number; // 1..5
   comment?: string;
   created_at: string;
+}
+
+// عكس Rating أعلاه — تقييم المشرف (أو أي موظف) للعميل بعد اكتمال الطلب،
+// وليس تقييم العميل للخدمة. يظهر داخل تبويب "المهام المكتملة" في صفحة
+// المواعيد. موعد واحد = تقييم عميل واحد فقط (يُستبدَل عند إعادة التقييم،
+// انظر POST /customer-ratings — upsert وليس منع تكرار كما في Rating).
+export interface CustomerRating {
+  id: string;
+  appointment_id: string;
+  customer_id: string;
+  customer_name_snapshot?: string;
+  rated_by: string; // معرّف الملف الشخصي لمن قيَّم
+  rated_by_name?: string;
+  stars: number; // 1..5
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface Customer {
@@ -433,6 +455,11 @@ export interface Appointment {
   photos: AppointmentPhoto[];
   payments: Payment[];
   created_at: string;
+  // من أضاف هذا الموعد يدوياً (من "حجز موعد جديد") — يُعرض في تفاصيل
+  // الموعد كـ"تم إضافة الموعد بواسطة: ...". غائب على المواعيد المولَّدة
+  // تلقائياً من العقود المتكررة (لا "مضيف" واحد لها).
+  created_by?: string;
+  created_by_name?: string;
 }
 
 export const VAT_RATE = 0.15;
