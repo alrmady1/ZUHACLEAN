@@ -301,7 +301,6 @@ export default function AppointmentDetailModal({
         <div className="space-y-4 p-5">
           {/* Customer + location */}
           <div className="rounded-2xl bg-slate-900 p-4 text-white">
-            <div className="mb-2 text-xs text-slate-400">{t('بيانات العميل والموقع')}</div>
             {customer ? (
               <button
                 type="button"
