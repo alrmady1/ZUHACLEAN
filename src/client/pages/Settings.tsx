@@ -27,11 +27,12 @@ import {
   ShieldCheck as PermissionsIcon,
   GripVertical as DragHandleIcon,
   CalendarOff as DaysOffIcon,
+  History as ActivityLogIcon,
   AlertTriangle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType, Appointment } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType, Appointment, ActivityLogEntry } from '../../shared/types.js';
+import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, ACTIVITY_LOG_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -2096,6 +2097,60 @@ function PermissionsTab() {
   );
 }
 
+// سجل العمليات — الإعدادات ← سجل العمليات (المدير العام ومدير النظام
+// فقط، ACTIVITY_LOG_ACCESS_ROLES). كل عملية تعديل/إضافة/حذف مؤثرة في
+// التطبيق تُسجَّل تلقائياً من الخادم (انظر logActivity في
+// src/server/routes/api.ts) مع من قام بها ووقتها — هذه الصفحة تعرضها
+// فقط، الأحدث أولاً (الخادم يرجعها بهذا الترتيب أصلاً).
+function ActivityLogTab() {
+  const { t, tt } = useI18n();
+  const [entries, setEntries] = useState<ActivityLogEntry[] | null>(null);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    api.get<ActivityLogEntry[]>('/activity-log').then(setEntries);
+  }, []);
+
+  if (!entries) {
+    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">{t('جارِ التحميل…')}</div>;
+  }
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? entries.filter((e) => [e.action, e.actor_name].filter(Boolean).join(' ').toLowerCase().includes(q))
+    : entries;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+        {t('سجل كامل بكل عملية إضافة أو تعديل أو حذف مؤثرة في النظام، مع من قام بها ووقتها — لا يمكن التعديل عليه أو حذف عناصره.')}
+      </div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('ابحث بنوع العملية أو اسم المستخدم...')}
+          className="input ps-9"
+        />
+      </div>
+      <div className="max-h-[70vh] space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3">
+        {filtered.map((e) => (
+          <div key={e.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
+            <div className="font-medium text-slate-700">{e.action}</div>
+            <div className="mt-0.5 text-xs text-slate-400">
+              {tt(`بواسطة ${e.actor_name ?? 'مستخدم غير معروف'}`, `by ${e.actor_name ?? 'Unknown user'}`)}
+              {' — '}
+              {formatDateAr(e.created_at)} {t('الساعة')} {formatTimeAr(e.created_at)}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div className="p-6 text-center text-xs text-slate-400">{t('لا توجد عمليات مسجَّلة بعد')}</div>}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 export default function Settings() {
   const { user, can } = useAuth();
@@ -2107,8 +2162,9 @@ export default function Settings() {
   const canExpenseCategories = can('edit_custody_expenses');
   const canDaysOff = can('edit_days_off');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
+  const canActivityLog = user ? ACTIVITY_LOG_ACCESS_ROLES.includes(user.role) : false;
 
-  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'permissions';
+  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'permissions' | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
     // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
@@ -2118,7 +2174,8 @@ export default function Settings() {
     if (canPaymentMethods) return 'payment_methods';
     if (canExpenseCategories) return 'expense_categories';
     if (canDaysOff) return 'days_off';
-    return 'permissions';
+    if (canPermissions) return 'permissions';
+    return 'activity_log';
   });
 
   // "الاطلاع على الاعدادات" هي البوابة الرئيسية لدخول الصفحة كاملة (نفس
@@ -2190,6 +2247,14 @@ export default function Settings() {
             <PermissionsIcon className="h-4 w-4" /> {t('الصلاحيات')}
           </button>
         )}
+        {canActivityLog && (
+          <button
+            onClick={() => setTab('activity_log')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'activity_log' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <ActivityLogIcon className="h-4 w-4" /> {t('سجل العمليات')}
+          </button>
+        )}
       </div>
 
       {tab === 'users' && canUsers ? (
@@ -2204,8 +2269,10 @@ export default function Settings() {
         <ExpenseCategoriesTab />
       ) : tab === 'days_off' && canDaysOff ? (
         <DaysOffTab />
-      ) : canPermissions ? (
+      ) : tab === 'permissions' && canPermissions ? (
         <PermissionsTab />
+      ) : canActivityLog ? (
+        <ActivityLogTab />
       ) : null}
     </div>
   );

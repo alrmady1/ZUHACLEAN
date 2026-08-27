@@ -27,6 +27,7 @@ import type {
   PushSubscriptionRecord,
   Rating,
   CustomerRating,
+  ActivityLogEntry,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -71,6 +72,10 @@ interface DbShape {
   // تقييم المشرف للعميل بعد اكتمال الطلب (عكس ratings أعلاه) — انظر
   // CustomerRating في src/shared/types.ts.
   customerRatings: CustomerRating[];
+  // سجل العمليات — صفحة الإعدادات ← سجل العمليات. مُقيَّد الحجم في
+  // insert أدناه حتى لا يتضخّم مستند JSONB الوحيد الذي يخزّن كامل حالة
+  // التطبيق إلى ما لا نهاية.
+  activityLog: ActivityLogEntry[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -340,6 +345,7 @@ function seed(): DbShape {
     pushSubscriptions: [],
     ratings: [],
     customerRatings: [],
+    activityLog: [],
   };
 }
 
@@ -371,6 +377,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
     if (!parsed.ratings) parsed.ratings = [];
     if (!parsed.customerRatings) parsed.customerRatings = [];
+    if (!parsed.activityLog) parsed.activityLog = [];
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -622,6 +629,19 @@ export const store = {
       db.leaves.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  activityLog: {
+    // الأحدث أولاً — أكثر ما يهم قارئ سجل العمليات هو آخر ما حدث.
+    list: () => [...db.activityLog].reverse(),
+    insert: (e: ActivityLogEntry) => {
+      db.activityLog.push(e);
+      // يمنع تضخّم مستند JSONB الوحيد الذي يخزّن كامل حالة التطبيق إلى ما
+      // لا نهاية — يحتفظ بآخر 2000 عملية فقط (كافية عملياً لأشهر من
+      // الاستخدام اليومي لعمل بهذا الحجم).
+      if (db.activityLog.length > 2000) db.activityLog.splice(0, db.activityLog.length - 2000);
+      persist();
+      return e;
     },
   },
   customerRatings: {

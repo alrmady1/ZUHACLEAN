@@ -265,6 +265,26 @@ export interface PushSubscriptionRecord {
   created_at: string;
 }
 
+// سجل عملية واحدة — صفحة الإعدادات ← سجل العمليات (المدير العام ومدير
+// النظام فقط، انظر ACTIVITY_LOG_ACCESS_ROLES أدناه). actor_id/actor_name
+// يُرسَلان تلقائياً من العميل مع كل طلب POST/PATCH/DELETE عبر ترويسة
+// X-Actor-Id (انظر src/client/lib/api.ts)، لا حاجة لتمريرهما يدوياً في كل
+// استدعاء — الخادم يقرأها ويلتقط اسم الملف الشخصي وقت التسجيل نفسه
+// (لقطة، لا تتغيّر لو تغيّر اسم المستخدم لاحقاً).
+export interface ActivityLogEntry {
+  id: string;
+  action: string;
+  actor_id?: string;
+  actor_name?: string;
+  created_at: string;
+}
+
+// مطابقة تماماً لـ PERMISSIONS_ACCESS_ROLES — صفحة سجل العمليات مقيَّدة
+// دائماً بنفس الدورين، بلا استثناء وبلا إمكانية تعديل من صفحة الصلاحيات
+// نفسها (لا صلاحية ديناميكية لها عمداً، حساسية البيانات هنا أعلى من أي
+// صفحة أخرى).
+export const ACTIVITY_LOG_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
+
 // تقييم عميل لموعد مكتمل — يُرسَل رابطها للعميل عبر واتساب بعد اكتمال
 // الخدمة وإصدار الفاتورة (انظر زر "تقييم العميل" في AppointmentDetailModal
 // وصفحة التقييم العامة src/client/pages/RatePage.tsx). موعد واحد = تقييم

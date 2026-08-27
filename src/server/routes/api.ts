@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { store } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -25,6 +25,34 @@ import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 export const api = Router();
+
+// ---------------------------------------------------------------------------
+// سجل العمليات — الإعدادات ← سجل العمليات (مقيَّد للمدير العام ومدير
+// النظام فقط، ACTIVITY_LOG_ACCESS_ROLES). العميل يرسل هوية المستخدم
+// الحالي تلقائياً مع كل طلب تعديل/إضافة/حذف عبر ترويسة X-Actor-Id (انظر
+// src/client/lib/api.ts) — لا حاجة لتمريرها يدوياً في كل نقطة، فقط
+// استدعاء logActivity(req, 'وصف العملية') بعد نجاح كل عملية مؤثرة.
+// ---------------------------------------------------------------------------
+function actorFromReq(req: Request): { id?: string; name?: string } {
+  const id = typeof req.headers['x-actor-id'] === 'string' ? req.headers['x-actor-id'] : undefined;
+  const name = id ? store.profiles.list().find((p) => p.id === id)?.full_name : undefined;
+  return { id, name };
+}
+
+function logActivity(req: Request, action: string): void {
+  const { id, name } = actorFromReq(req);
+  store.activityLog.insert({
+    id: store.id(),
+    action,
+    actor_id: id,
+    actor_name: name ?? 'مستخدم غير معروف',
+    created_at: new Date().toISOString(),
+  });
+}
+
+// مقيَّدة في الواجهة فقط (ACTIVITY_LOG_ACCESS_ROLES) — لا تحقق صلاحيات من
+// جهة الخادم، مطابقةً لبقية نقاط التحكم في هذا الملف.
+api.get('/activity-log', (_req, res) => res.json(store.activityLog.list()));
 
 // ---------------------------------------------------------------------------
 // Permissions — صفحة الإعدادات ← الصلاحيات (المدير العام ومدير النظام،
@@ -60,6 +88,7 @@ api.get('/permissions', (_req, res) => {
 api.patch('/permissions/order', (req, res) => {
   const order = Array.isArray(req.body?.order) ? (req.body.order as string[]) : [];
   const updated = store.permissionsOrder.update(order);
+  logActivity(req, 'تم إعادة ترتيب جدول الصلاحيات');
   res.json(updated);
 });
 
@@ -68,6 +97,7 @@ api.patch('/permissions/:key', (req, res) => {
   if (!(key in PERMISSION_LABELS_AR)) return res.status(404).json({ error: 'unknown permission key' });
   const roles = Array.isArray(req.body?.roles) ? (req.body.roles as UserRole[]) : [];
   const updated = store.permissions.update(key, roles);
+  logActivity(req, `تم تعديل صلاحية "${PERMISSION_LABELS_AR[key]}"`);
   res.json(updated);
 });
 
@@ -119,6 +149,7 @@ api.post('/profiles', (req, res) => {
     created_at: now,
     updated_at: now,
   });
+  logActivity(req, `تم إضافة مستخدم "${profile.full_name}"`);
   res.status(201).json(toSafeProfile(profile));
 });
 
@@ -137,6 +168,7 @@ api.patch('/profiles/:id', (req, res) => {
 
   const updated = store.profiles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل بيانات المستخدم "${updated.full_name}"`);
   res.json(toSafeProfile(updated));
 });
 
@@ -152,6 +184,7 @@ api.delete('/profiles/:id', (req, res) => {
     }
   }
   store.profiles.remove(req.params.id);
+  logActivity(req, `تم حذف المستخدم "${target.full_name}"`);
   res.status(204).end();
 });
 
@@ -205,12 +238,17 @@ api.post('/leaves', async (req, res) => {
     }
   }
   store.leaves.insert(leave);
+  const leaveOwner = store.profiles.get(leave.profile_id)?.full_name ?? 'موظف';
+  logActivity(req, `تم إضافة إجازة لـ "${leaveOwner}" من ${leave.start_date} إلى ${leave.end_date}`);
   res.status(201).json(leave);
 });
 
 api.delete('/leaves/:id', (req, res) => {
+  const target = store.leaves.list().find((l) => l.id === req.params.id);
   const removed = store.leaves.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  const leaveOwner = target ? (store.profiles.get(target.profile_id)?.full_name ?? 'موظف') : 'موظف';
+  logActivity(req, `تم حذف إجازة لـ "${leaveOwner}"`);
   res.status(204).end();
 });
 
@@ -261,6 +299,7 @@ api.get('/ratings', (_req, res) => res.json(store.ratings.list()));
 api.delete('/ratings/:id', (req, res) => {
   const removed = store.ratings.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, 'تم حذف تقييم عميل للخدمة');
   res.status(204).end();
 });
 
@@ -294,12 +333,14 @@ api.post('/customer-ratings', (req, res) => {
     updated_at: existing ? new Date().toISOString() : undefined,
   };
   store.customerRatings.upsert(rating);
+  logActivity(req, `تم ${existing ? 'تعديل' : 'إضافة'} تقييم للعميل "${rating.customer_name_snapshot ?? 'عميل'}"`);
   res.status(existing ? 200 : 201).json(rating);
 });
 
 api.delete('/customer-ratings/:id', (req, res) => {
   const removed = store.customerRatings.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, 'تم حذف تقييم عميل');
   res.status(204).end();
 });
 
@@ -355,6 +396,7 @@ api.post('/customers', (req, res) => {
     notes,
     created_at: new Date().toISOString(),
   });
+  logActivity(req, `تم إضافة عميل "${customer.name}"`);
   res.status(201).json(customer);
 });
 
@@ -371,12 +413,15 @@ api.patch('/customers/:id', (req, res) => {
 
   const updated = store.customers.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل بيانات العميل "${updated.name}"`);
   res.json(updated);
 });
 
 api.delete('/customers/:id', (req, res) => {
+  const target = store.customers.get(req.params.id);
   const removed = store.customers.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف العميل "${target?.name ?? ''}"`);
   res.status(204).end();
 });
 
@@ -398,6 +443,7 @@ api.post('/services', (req, res) => {
     is_active: body.is_active ?? true,
   };
   store.services.insert(service);
+  logActivity(req, `تم إضافة خدمة "${service.name}"`);
   res.status(201).json(service);
 });
 
@@ -413,12 +459,15 @@ api.patch('/services/:id', (req, res) => {
 
   const updated = store.services.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل خدمة "${updated.name}"`);
   res.json(updated);
 });
 
 api.delete('/services/:id', (req, res) => {
+  const target = store.services.get(req.params.id);
   const removed = store.services.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف خدمة "${target?.name ?? ''}"`);
   res.status(204).end();
 });
 
@@ -433,6 +482,7 @@ api.post('/service-categories', (req, res) => {
   if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
   const category: ServiceCategory = { id: store.id(), name: body.name };
   store.serviceCategories.insert(category);
+  logActivity(req, `تم إضافة تصنيف خدمة "${category.name}"`);
   res.status(201).json(category);
 });
 
@@ -441,12 +491,15 @@ api.patch('/service-categories/:id', (req, res) => {
   if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
   const updated = store.serviceCategories.update(req.params.id, { name: body.name });
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل تصنيف خدمة إلى "${updated.name}"`);
   res.json(updated);
 });
 
 api.delete('/service-categories/:id', (req, res) => {
+  const target = store.serviceCategories.list().find((c) => c.id === req.params.id);
   const removed = store.serviceCategories.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف تصنيف خدمة "${target?.name ?? ''}"`);
   res.status(204).end();
 });
 
@@ -491,6 +544,7 @@ api.post('/appointments', (req, res) => {
     created_by_name: body.created_by ? store.profiles.list().find((p) => p.id === body.created_by)?.full_name : undefined,
   };
   store.appointments.insert(appointment);
+  logActivity(req, `تم إضافة موعد للعميل "${appointment.customer_name_snapshot ?? ''}"`);
   res.status(201).json(appointment);
 
   // تنبيه فوري (Web Push) لكل من له علاقة بالموعد: المشرف والفني
@@ -509,6 +563,38 @@ api.post('/appointments', (req, res) => {
   }).catch((err) => console.error('❌ فشل إرسال تنبيه الموعد الجديد:', err));
 });
 
+const APPT_STATUS_LABEL_AR: Record<string, string> = {
+  scheduled: 'مجدولة',
+  on_the_way: 'في الطريق',
+  in_progress: 'جارية',
+  completed: 'مكتملة',
+  delayed: 'مؤجلة',
+  cancelled: 'ملغاة',
+};
+
+// موعد واحد له مسارات تعديل مختلفة جداً من نفس نقطة النهاية هذه (حالة،
+// فريق، وقت، خدمة، موقع...) — يُخمَّن وصف العملية من الحقول الفعلية
+// الموجودة في الطلب بترتيب أولوية، بدل رسالة عامة واحدة لا تفيد قارئ
+// السجل بشيء.
+function describeAppointmentPatch(patch: Record<string, unknown>, customerName: string): string {
+  if (typeof patch.status === 'string') {
+    return `تم تحديث حالة موعد "${customerName}" إلى: ${APPT_STATUS_LABEL_AR[patch.status] ?? patch.status}`;
+  }
+  if (patch.service_id !== undefined || patch.service_name_snapshot !== undefined) {
+    return `تم تعديل نوع الخدمة لموعد "${customerName}"`;
+  }
+  if (patch.scheduled_at !== undefined) {
+    return `تم تعديل وقت موعد "${customerName}"`;
+  }
+  if (patch.supervisor_id !== undefined || patch.assignments !== undefined) {
+    return `تم تعديل الفريق المسند لموعد "${customerName}"`;
+  }
+  if (patch.location_url !== undefined) {
+    return `تم تعديل رابط موقع موعد "${customerName}"`;
+  }
+  return `تم تعديل بيانات موعد "${customerName}"`;
+}
+
 api.patch('/appointments/:id', (req, res) => {
   const patch = { ...(req.body ?? {}) };
   // تعديل السعر (مثلاً عند تغيير نوع الخدمة من تفاصيل الموعد) يجب أن
@@ -524,6 +610,7 @@ api.patch('/appointments/:id', (req, res) => {
   }
   const updated = store.appointments.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, describeAppointmentPatch(patch, updated.customer_name_snapshot ?? ''));
   res.json(updated);
 });
 
@@ -531,8 +618,10 @@ api.patch('/appointments/:id', (req, res) => {
 // CAN_DELETE_APPOINTMENT_ROLES؛ لا يوجد تحقق صلاحيات من جهة الخادم في هذا
 // التطبيق أصلاً، مطابقةً لبقية نقاط التحكم بالصلاحيات هنا).
 api.delete('/appointments/:id', (req, res) => {
+  const target = store.appointments.get(req.params.id);
   const removed = store.appointments.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف موعد العميل "${target?.customer_name_snapshot ?? ''}"`);
   res.status(204).end();
 });
 
@@ -548,6 +637,7 @@ api.post('/appointments/:id/photos', async (req, res) => {
     const url = await uploadAppointmentPhoto(appt.id, stage, data_url);
     appt.photos.push({ id: store.id(), stage, data_url: url, taken_at: new Date().toISOString() });
     store.appointments.update(appt.id, { photos: appt.photos });
+    logActivity(req, `تم إضافة صورة ${stage === 'before' ? 'قبل' : 'بعد'} العمل لموعد "${appt.customer_name_snapshot ?? ''}"`);
     res.status(201).json(appt);
   } catch (err) {
     console.error('❌ فشل رفع الصورة إلى Supabase Storage:', err);
@@ -564,6 +654,7 @@ api.delete('/appointments/:id/photos/:photoId', (req, res) => {
   const nextPhotos = appt.photos.filter((p) => p.id !== req.params.photoId);
   if (nextPhotos.length === appt.photos.length) return res.status(404).json({ error: 'photo not found' });
   const updated = store.appointments.update(appt.id, { photos: nextPhotos });
+  logActivity(req, `تم حذف صورة توثيق لموعد "${appt.customer_name_snapshot ?? ''}"`);
   res.json(updated);
 });
 
@@ -577,6 +668,7 @@ api.post('/appointments/:id/payments', (req, res) => {
   const remaining_amount = Math.max(appt.amount - total_paid, 0);
   const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
   const updated = store.appointments.update(appt.id, { total_paid, remaining_amount, payment_status });
+  logActivity(req, `تم تسجيل دفعة ${amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}"`);
   res.status(201).json(updated);
 });
 
@@ -594,6 +686,7 @@ api.patch('/appointments/:id/payments/:paymentId', (req, res) => {
   const remaining_amount = Math.max(appt.amount - total_paid, 0);
   const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
   const updated = store.appointments.update(appt.id, { payments: appt.payments, total_paid, remaining_amount, payment_status });
+  logActivity(req, `تم تعديل دفعة لموعد "${appt.customer_name_snapshot ?? ''}"`);
   res.json(updated);
 });
 
@@ -734,6 +827,8 @@ api.post('/contracts', (req, res) => {
   store.appointments.insertMany(generated);
   store.contracts.update(contract.id, { total_visits: generated.length, remaining_amount: contract.total_amount });
 
+  const contractCustomerName = store.customers.get(contract.customer_id)?.name ?? '';
+  logActivity(req, `تم إضافة عقد "${contract.contract_number}" للعميل "${contractCustomerName}" (${generated.length} زيارة)`);
   res.status(201).json({ contract: store.contracts.get(contract.id), generated_appointments: generated.length });
 });
 
@@ -743,6 +838,7 @@ api.post('/contracts', (req, res) => {
 api.patch('/contracts/:id', (req, res) => {
   const updated = store.contracts.update(req.params.id, req.body ?? {});
   if (!updated) return res.status(404).json({ error: 'العقد غير موجود' });
+  logActivity(req, `تم تعديل العقد "${updated.contract_number}"`);
   res.json(updated);
 });
 
@@ -750,8 +846,10 @@ api.patch('/contracts/:id', (req, res) => {
 // CAN_DELETE_CONTRACT_ROLES). لا يحذف هذا المواعيد المولَّدة سابقاً من
 // العقد — تبقى في جدول المواعيد كسجل تاريخي (نفس منطق حذف صور الموعد).
 api.delete('/contracts/:id', (req, res) => {
+  const target = store.contracts.get(req.params.id);
   const removed = store.contracts.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف العقد "${target?.contract_number ?? ''}"`);
   res.status(204).end();
 });
 
@@ -784,14 +882,23 @@ api.post('/expenses', (req, res) => {
     notes: body.notes,
     created_at: new Date().toISOString(),
   });
+  logActivity(
+    req,
+    isCustody
+      ? `تم إضافة عهدة "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
+      : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+  );
   res.status(201).json(expense);
 });
 
 // Deleting an expense (used for custody grants — see CAN_DELETE_CUSTODY_ROLES,
 // المدير العام only) is unrestricted server-side like the rest of this app.
 api.delete('/expenses/:id', (req, res) => {
+  const target = store.expenses.list().find((e) => e.id === req.params.id);
   const removed = store.expenses.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  const isCustody = target?.category === CUSTODY_CATEGORY_NAME;
+  logActivity(req, isCustody ? `تم حذف عهدة "${target?.custody_holder_name ?? ''}"` : `تم حذف مصروف "${target?.title ?? ''}"`);
   res.status(204).end();
 });
 
@@ -813,6 +920,7 @@ api.post('/expense-categories', (req, res) => {
     is_active: body.is_active ?? true,
   };
   store.expenseCategories.insert(item);
+  logActivity(req, `تم إضافة تصنيف مصروفات "${item.name}"`);
   res.status(201).json(item);
 });
 
@@ -823,12 +931,15 @@ api.patch('/expense-categories/:id', (req, res) => {
   if (body.is_active !== undefined) patch.is_active = body.is_active;
   const updated = store.expenseCategories.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل تصنيف مصروفات "${updated.name}"`);
   res.json(updated);
 });
 
 api.delete('/expense-categories/:id', (req, res) => {
+  const target = store.expenseCategories.list().find((c) => c.id === req.params.id);
   const removed = store.expenseCategories.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف تصنيف مصروفات "${target?.name ?? ''}"`);
   res.status(204).end();
 });
 
@@ -866,14 +977,17 @@ api.post('/custody-invoices', (req, res) => {
     created_at: new Date().toISOString(),
   };
   store.custodyInvoices.insert(invoice);
+  logActivity(req, `تم إضافة سند عهدة "${invoice.title}" لـ "${invoice.custody_holder_name ?? ''}"`);
   res.status(201).json(invoice);
 });
 
 // Deleting custody entries (grants or the invoices submitted against them)
 // is gated client-side to المدير العام only (see CAN_DELETE_CUSTODY_ROLES).
 api.delete('/custody-invoices/:id', (req, res) => {
+  const target = store.custodyInvoices.list().find((i) => i.id === req.params.id);
   const removed = store.custodyInvoices.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف سند عهدة "${target?.title ?? ''}"`);
   res.status(204).end();
 });
 
@@ -893,6 +1007,7 @@ api.post('/payment-methods', (req, res) => {
     is_active: body.is_active ?? true,
   };
   store.paymentMethods.insert(method);
+  logActivity(req, `تم إضافة طريقة دفع "${method.name}"`);
   res.status(201).json(method);
 });
 
@@ -904,6 +1019,7 @@ api.patch('/payment-methods/:id', (req, res) => {
 
   const updated = store.paymentMethods.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل طريقة دفع "${updated.name}"`);
   res.json(updated);
 });
 
@@ -941,5 +1057,6 @@ api.post('/invoices', (req, res) => {
     notes: body.notes,
   };
   store.invoices.insert(invoice);
+  logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س`);
   res.status(201).json(invoice);
 });

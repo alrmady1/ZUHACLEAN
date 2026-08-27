@@ -1,9 +1,23 @@
 const BASE = '/api';
 
+// نفس المفتاح الذي يحفظ به AuthProvider هوية المستخدم الحالي (انظر
+// src/client/lib/auth.tsx) — تُرسَل تلقائياً مع كل طلب تعديل/إضافة/حذف
+// عبر ترويسة X-Actor-Id، ليسجّلها الخادم في سجل العمليات (الإعدادات ←
+// سجل العمليات) دون حاجة لتمريرها يدوياً في كل استدعاء عبر التطبيق.
+const ACTOR_STORAGE_KEY = 'zaha-ops:userId';
+
+function currentActorId(): string | null {
+  return localStorage.getItem(ACTOR_STORAGE_KEY) ?? sessionStorage.getItem(ACTOR_STORAGE_KEY);
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const actorId = currentActorId();
+  const headers: Record<string, string> = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (actorId) headers['X-Actor-Id'] = actorId;
   const res = await fetch(`${BASE}${url}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
