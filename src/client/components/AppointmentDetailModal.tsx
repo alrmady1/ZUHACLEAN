@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
@@ -35,6 +35,7 @@ export default function AppointmentDetailModal({
   appointment,
   customer,
   allProfiles,
+  services,
   paymentMethods,
   onClose,
   onChanged,
@@ -42,6 +43,7 @@ export default function AppointmentDetailModal({
   appointment: Appointment;
   customer: Customer | undefined;
   allProfiles: Profile[];
+  services: Service[];
   paymentMethods: PaymentMethodOption[];
   onClose: () => void;
   onChanged: () => void;
@@ -60,6 +62,9 @@ export default function AppointmentDetailModal({
   const canDeletePhotos = user ? CAN_DELETE_PHOTOS_ROLES.includes(user.role) : false;
   const canDeleteAppointment = can('delete_appointments');
   const canEditTime = can('edit_appointments');
+  // نفس صلاحية تعديل موعد الزيارة — تعديل نوع الخدمة جزء طبيعي من تعديل
+  // الموعد نفسه، بلا صلاحية مستقلة جديدة.
+  const canEditServices = can('edit_appointments');
   const canUpdateStatus = can('update_appointment_status');
   const canAddPhotos = can('add_before_after_photos');
   const [busy, setBusy] = useState(false);
@@ -75,6 +80,12 @@ export default function AppointmentDetailModal({
   const [locationUrlInput, setLocationUrlInput] = useState(appointment.location_url ?? customer?.location_url ?? '');
   const [editingTime, setEditingTime] = useState(false);
   const [timeInput, setTimeInput] = useState(toDatetimeLocalValue(appointment.scheduled_at));
+  const [editingServices, setEditingServices] = useState(false);
+  const [editServiceIds, setEditServiceIds] = useState<string[]>([]);
+  const [editAmount, setEditAmount] = useState<number | ''>(appointment.amount);
+  const [editDuration, setEditDuration] = useState<number | ''>(appointment.expected_duration_minutes);
+  const [showEditServiceDropdown, setShowEditServiceDropdown] = useState(false);
+  const editServiceBoxRef = useRef<HTMLDivElement>(null);
   const beforeCameraInput = useRef<HTMLInputElement>(null);
   const beforeGalleryInput = useRef<HTMLInputElement>(null);
   const afterCameraInput = useRef<HTMLInputElement>(null);
@@ -96,6 +107,14 @@ export default function AppointmentDetailModal({
 
   useEffect(() => {
     api.get<LeaveRecord[]>('/leaves').then(setLeaves);
+  }, []);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (editServiceBoxRef.current && !editServiceBoxRef.current.contains(e.target as Node)) setShowEditServiceDropdown(false);
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
   }, []);
 
   const supervisor = allProfiles.find((p) => p.id === appointment.supervisor_id);
@@ -207,6 +226,53 @@ export default function AppointmentDetailModal({
       await api.patch(`/appointments/${appointment.id}`, { scheduled_at: newScheduledAt });
       onChanged();
       setEditingTime(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // service_id على الموعد يخزّن أول خدمة فقط حتى عند اختيار عدة خدمات
+  // عند الحجز (نفس تصرف NewAppointmentModal) — الاسم المركّب في
+  // service_name_snapshot ("خدمة أ، خدمة ب") هو المصدر الوحيد لمعرفة كل
+  // الخدمات المختارة أصلاً، فتُعاد مطابقتها بالاسم هنا لتمهيد التعديل.
+  function startEditingServices() {
+    const names = appointment.service_name_snapshot.split('،').map((n) => n.trim()).filter(Boolean);
+    const matched = services.filter((s) => names.includes(s.name));
+    setEditServiceIds(matched.length > 0 ? matched.map((s) => s.id) : [appointment.service_id].filter(Boolean));
+    setEditAmount(appointment.amount);
+    setEditDuration(appointment.expected_duration_minutes);
+    setEditingServices(true);
+  }
+
+  // اختيار/إلغاء خدمة يعيد حساب السعر والمدة تلقائياً كمجموع القيم
+  // الافتراضية للخدمات المختارة — يبقى قابلاً للتعديل يدوياً بعدها (نفس
+  // منطق NewAppointmentModal عند الحجز الأول).
+  function toggleEditService(id: string) {
+    setEditServiceIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const chosen = services.filter((s) => next.includes(s.id));
+      setEditAmount(chosen.reduce((sum, s) => sum + s.default_price, 0));
+      setEditDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
+      return next;
+    });
+  }
+
+  async function saveServices() {
+    if (editServiceIds.length === 0) {
+      window.alert(t('اختر خدمة واحدة على الأقل'));
+      return;
+    }
+    const chosen = services.filter((s) => editServiceIds.includes(s.id));
+    setBusy(true);
+    try {
+      await api.patch(`/appointments/${appointment.id}`, {
+        service_id: editServiceIds[0],
+        service_name_snapshot: chosen.map((s) => s.name).join('، '),
+        amount: Number(editAmount) || 0,
+        expected_duration_minutes: Number(editDuration) || 0,
+      });
+      onChanged();
+      setEditingServices(false);
     } finally {
       setBusy(false);
     }
@@ -425,9 +491,95 @@ export default function AppointmentDetailModal({
 
           {/* Service / schedule info */}
           <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4">
-            <div>
-              <div className="text-xs text-slate-400">{t('نوع الخدمة')}</div>
-              <div className="text-sm font-semibold text-slate-700">{appointment.service_name_snapshot}</div>
+            <div className={editingServices ? 'col-span-2 sm:col-span-4' : undefined}>
+              <div className="mb-0.5 flex items-center gap-1 text-xs text-slate-400">
+                {t('نوع الخدمة')}
+                {canEditServices && !editingServices && (
+                  <button
+                    type="button"
+                    onClick={startEditingServices}
+                    title={t('تعديل نوع الخدمة')}
+                    className="text-slate-400 hover:text-brand-600"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              {editingServices ? (
+                <div className="space-y-2">
+                  <div ref={editServiceBoxRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditServiceDropdown((v) => !v)}
+                      className="input flex items-center justify-between gap-2 text-start text-sm"
+                    >
+                      <span className="truncate text-slate-700">
+                        {services.filter((s) => editServiceIds.includes(s.id)).map((s) => s.name).join('، ') ||
+                          t('-- اختر نوعاً أو أكثر من الخدمة --')}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                    {showEditServiceDropdown && (
+                      <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                        {services.map((s) => {
+                          const checked = editServiceIds.includes(s.id);
+                          return (
+                            <label key={s.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300'}`}
+                              >
+                                {checked && <Check className="h-3 w-3" />}
+                              </span>
+                              <input type="checkbox" checked={checked} onChange={() => toggleEditService(s.id)} className="hidden" />
+                              <span className="flex-1 text-slate-700">{s.name}</span>
+                              <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                            </label>
+                          );
+                        })}
+                        {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">{t('لا توجد خدمات بعد')}</div>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-xs">
+                      <span className="mb-1 block font-medium text-slate-600">{t('السعر (ر.س)')}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="input text-sm"
+                      />
+                    </label>
+                    <label className="block text-xs">
+                      <span className="mb-1 block font-medium text-slate-600">{t('المدة (دقيقة)')}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={editDuration}
+                        onChange={(e) => setEditDuration(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="input text-sm"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={saveServices}
+                      className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" /> {busy ? t('جارِ الحفظ…') : t('حفظ')}
+                    </button>
+                    <button type="button" onClick={() => setEditingServices(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                      {t('إلغاء')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-slate-700">{appointment.service_name_snapshot}</div>
+              )}
             </div>
             <div className={editingTime ? 'col-span-2 sm:col-span-2' : undefined}>
               <div className="mb-0.5 flex items-center gap-1 text-xs text-slate-400">

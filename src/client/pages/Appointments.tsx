@@ -947,6 +947,7 @@ export default function Appointments() {
           appointment={appointments.find((a) => a.id === viewingAppt.id) ?? viewingAppt}
           customer={customers.find((c) => c.id === viewingAppt.customer_id)}
           allProfiles={allProfiles}
+          services={services}
           paymentMethods={paymentMethods}
           onClose={() => setViewingAppt(null)}
           onChanged={refresh}

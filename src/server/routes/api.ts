@@ -510,7 +510,19 @@ api.post('/appointments', (req, res) => {
 });
 
 api.patch('/appointments/:id', (req, res) => {
-  const updated = store.appointments.update(req.params.id, req.body ?? {});
+  const patch = { ...(req.body ?? {}) };
+  // تعديل السعر (مثلاً عند تغيير نوع الخدمة من تفاصيل الموعد) يجب أن
+  // يعيد حساب المتبقي وحالة الدفع فوراً بنفس صيغة تحصيل الدفعات أدناه،
+  // وإلا بقي "المتبقي" يعكس السعر القديم رغم تغيّر قيمة الخدمة نفسها.
+  if (typeof patch.amount === 'number') {
+    const appt = store.appointments.get(req.params.id);
+    if (appt) {
+      const remaining_amount = Math.max(patch.amount - appt.total_paid, 0);
+      patch.remaining_amount = remaining_amount;
+      patch.payment_status = remaining_amount === 0 ? 'paid' : appt.total_paid > 0 ? 'partial' : 'unpaid';
+    }
+  }
+  const updated = store.appointments.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
   res.json(updated);
 });
