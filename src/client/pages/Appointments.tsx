@@ -14,13 +14,16 @@ import {
   ChevronLeft,
   Wallet,
   Trash2,
+  CheckCircle2,
+  Printer,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption } from '../../shared/types.js';
-import { AppointmentStatusBadge, PaymentStatusBadge, APPT_STATUS_STYLE } from '../components/Badge.js';
+import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, Invoice } from '../../shared/types.js';
+import { AppointmentStatusBadge, PaymentStatusBadge, RatingStars, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
+import InvoiceDocument from '../components/InvoiceDocument.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -72,6 +75,11 @@ export default function Appointments() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [mainTab, setMainTab] = useState<'schedule' | 'completed'>('schedule');
+  const [completedSearch, setCompletedSearch] = useState('');
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [scope, setScope] = useState<ScopeFilter>('mine');
   const [view, setView] = useState<'table' | 'calendar'>('table');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'all'>('all');
@@ -93,6 +101,8 @@ export default function Appointments() {
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+    api.get<Rating[]>('/ratings').then(setRatings);
+    api.get<Invoice[]>('/invoices').then(setInvoices);
   }, []);
 
   const canSeeAllSchedules = can('view_all_supervisors_appointments');
@@ -125,6 +135,42 @@ export default function Appointments() {
     if (scope === 'mine') return appointments.filter((a) => a.supervisor_id === user?.id);
     return appointments.filter((a) => a.supervisor_id === scope);
   }, [appointments, scope, user, canSeeAllSchedules, allProfiles]);
+
+  // كل موعد له تقييم واحد على الأكثر (يمنعه الخادم، انظر POST
+  // /public/ratings) — وكل موعد له فاتورة واحدة على الأكثر عملياً (تُصدَر
+  // مرة واحدة عند التحصيل). تُستخدم داخل تبويب "المهام المكتملة".
+  const ratingByAppointment = useMemo(() => {
+    const map = new Map<string, Rating>();
+    for (const r of ratings) map.set(r.appointment_id, r);
+    return map;
+  }, [ratings]);
+
+  const invoiceByAppointment = useMemo(() => {
+    const map = new Map<string, Invoice>();
+    for (const inv of invoices) {
+      if (inv.appointment_id) map.set(inv.appointment_id, inv);
+    }
+    return map;
+  }, [invoices]);
+
+  // تبويب "المهام المكتملة" — فقط المواعيد المكتملة أو الملغاة، ضمن نفس
+  // نطاق المشرف المختار أعلاه (scoped)، الأحدث أولاً (عكس جدول المواعيد
+  // النشطة الذي يُرتَّب تصاعدياً بحسب موعد الزيارة القادم).
+  const completedList = useMemo(() => {
+    const q = completedSearch.trim().toLowerCase();
+    return scoped
+      .filter((a) => a.status === 'completed' || a.status === 'cancelled')
+      .filter((a) => {
+        if (!q) return true;
+        const customer = customers.find((c) => c.id === a.customer_id);
+        const haystack = [a.customer_name_snapshot, customer?.phone, a.service_name_snapshot, a.contract_number, a.address_snapshot]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      })
+      .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+  }, [scoped, completedSearch, customers]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -184,21 +230,38 @@ export default function Appointments() {
               <Plus className="h-4 w-4" /> {t('حجز موعد جديد')}
             </button>
           )}
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-            <button
-              onClick={() => setView('calendar')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'calendar' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-            >
-              <CalendarDays className="h-4 w-4" /> {t('التقويم')}
-            </button>
-            <button
-              onClick={() => setView('table')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
-            >
-              <Table2 className="h-4 w-4" /> {t('الجدول')}
-            </button>
-          </div>
+          {mainTab === 'schedule' && (
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+              <button
+                onClick={() => setView('calendar')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'calendar' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+              >
+                <CalendarDays className="h-4 w-4" /> {t('التقويم')}
+              </button>
+              <button
+                onClick={() => setView('table')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+              >
+                <Table2 className="h-4 w-4" /> {t('الجدول')}
+              </button>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+        <button
+          onClick={() => setMainTab('schedule')}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'schedule' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <CalendarDays className="h-4 w-4" /> {t('المواعيد')}
+        </button>
+        <button
+          onClick={() => setMainTab('completed')}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${mainTab === 'completed' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <CheckCircle2 className="h-4 w-4" /> {t('المهام المكتملة')}
+        </button>
       </div>
 
       {canSeeAllSchedules && user && (
@@ -243,6 +306,8 @@ export default function Appointments() {
         </div>
       )}
 
+      {mainTab === 'schedule' && (
+      <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'all')} className="input">
           <option value="all">{t('كل حالات المواعيد')}</option>
@@ -580,6 +645,159 @@ export default function Appointments() {
           )}
         </div>
       )}
+      </>
+      )}
+
+      {mainTab === 'completed' && (
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={completedSearch}
+              onChange={(e) => setCompletedSearch(e.target.value)}
+              placeholder={t('ابحث بالاسم، الجوال، الخدمة، العقد، العنوان...')}
+              className="input ps-9"
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table className="w-full text-start text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-xs text-slate-400">
+                  <th className="p-3 text-start font-medium">{t('اليوم والتاريخ والموعد')}</th>
+                  <th className="p-3 text-start font-medium">{t('العميل والجوال')}</th>
+                  <th className="p-3 text-start font-medium">{t('نوع الخدمة / العقد')}</th>
+                  <th className="p-3 text-start font-medium">{t('المشرف / الفريق')}</th>
+                  <th className="p-3 text-start font-medium">{t('السعر والدفع')}</th>
+                  <th className="p-3 text-start font-medium">{t('حالة الطلب')}</th>
+                  <th className="p-3 text-start font-medium">{t('التقييم')}</th>
+                  <th className="p-3 text-start font-medium">{t('إجراء')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completedList.map((a) => {
+                  const customer = customers.find((c) => c.id === a.customer_id);
+                  const supervisor = allProfiles.find((p) => p.id === a.supervisor_id);
+                  const rating = ratingByAppointment.get(a.id);
+                  const invoice = invoiceByAppointment.get(a.id);
+                  return (
+                    <tr
+                      key={a.id}
+                      onClick={() => setViewingAppt(a)}
+                      className="cursor-pointer border-b border-slate-50 align-top last:border-0 hover:bg-slate-50"
+                    >
+                      <td className="p-3">
+                        <div className="font-medium text-slate-700">
+                          {weekdayAr(a.scheduled_at)} {formatDateAr(a.scheduled_at)}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+                          <Clock className="h-3 w-3" /> {formatTimeAr(a.scheduled_at)}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium text-slate-700">{a.customer_name_snapshot ?? '—'}</div>
+                        {customer?.phone && (
+                          <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+                            <Phone className="h-3 w-3" /> {customer.phone}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="text-slate-700">{a.service_name_snapshot}</div>
+                        {a.contract_number && (
+                          <div className="mt-1 text-xs text-slate-400">
+                            {t('عقد')} {a.contract_number}
+                          </div>
+                        )}
+                        {a.address_snapshot && (
+                          <div className="mt-1 flex max-w-[220px] items-start gap-1 text-xs text-slate-400">
+                            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span className="truncate">{a.address_snapshot}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="text-slate-700">
+                          {supervisor ? `${supervisor.full_name} (${roleLabel(supervisor.role)})` : '—'}
+                        </div>
+                        {a.assignments.length > 0 && (
+                          <div className="mt-1 text-xs text-brand-600">
+                            {a.assignments.map((x) => x.technician_name).filter(Boolean).join('، ')}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium text-slate-700">{formatMoney(a.amount)}</div>
+                        <div className="mt-1">
+                          <PaymentStatusBadge status={a.payment_status} />
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <AppointmentStatusBadge status={a.status} />
+                      </td>
+                      <td className="p-3">
+                        {rating ? (
+                          <div className="space-y-1">
+                            <RatingStars value={rating.stars} />
+                            {rating.comment && <div className="max-w-[160px] truncate text-xs text-slate-400">"{rating.comment}"</div>}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">{t('لم يُقيَّم بعد')}</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingAppt(a);
+                            }}
+                            title={t('عرض التفاصيل')}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {invoice && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingInvoice(invoice);
+                              }}
+                              title={t('عرض / طباعة الفاتورة')}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canDeleteAppointment && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteAppointment(a);
+                              }}
+                              title={t('حذف الموعد نهائياً')}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {completedList.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-10 text-center text-slate-400">
+                      {t('لا توجد مهام مكتملة أو ملغاة ضمن هذا العرض')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {canBook && showNewAppt && (
         <NewAppointmentModal
@@ -611,6 +829,16 @@ export default function Appointments() {
           paymentMethods={paymentMethods}
           onClose={() => setViewingAppt(null)}
           onChanged={refresh}
+        />
+      )}
+
+      {viewingInvoice && (
+        <InvoiceDocument
+          invoice={viewingInvoice}
+          customer={customers.find((c) => c.id === viewingInvoice.customer_id)}
+          appointment={appointments.find((a) => a.id === viewingInvoice.appointment_id)}
+          paymentMethods={paymentMethods}
+          onClose={() => setViewingInvoice(null)}
         />
       )}
     </div>

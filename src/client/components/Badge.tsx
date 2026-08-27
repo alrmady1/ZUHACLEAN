@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react';
 import type {
   AppointmentStatus,
   PaymentStatus,
@@ -49,3 +50,27 @@ export const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => (
 export const ContractStatusBadge = ({ status }: { status: ContractStatus }) => (
   <Pill {...CONTRACT_STYLE[status]} />
 );
+
+// صف نجوم لعرض تقييم فردي واحد — rating.stars عدد صحيح من 1 إلى 5 دائماً
+// (يفرضه POST /public/ratings). مستخدَمة في صفحة العملاء وتبويب "المهام
+// المكتملة" داخل المواعيد.
+export function RatingStars({ value }: { value: number }) {
+  return (
+    <span className="flex items-center gap-0.5" dir="ltr">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} className={`h-3 w-3 ${n <= value ? 'fill-amber-400 text-amber-400' : 'fill-transparent text-slate-300'}`} />
+      ))}
+    </span>
+  );
+}
+
+// شارة متوسط تقييم عميل (نجمة + الرقم + عدد التقييمات) — لا تُعرض إن لم
+// يوجد أي تقييم بعد.
+export function RatingSummaryBadge({ avg, count }: { avg: number; count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {avg.toFixed(1)} ({count})
+    </span>
+  );
+}

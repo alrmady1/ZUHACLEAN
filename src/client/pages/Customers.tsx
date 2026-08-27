@@ -1,36 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams, Navigate } from 'react-router-dom';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle, Star } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment, Rating } from '../../shared/types.js';
-import { AppointmentStatusBadge } from '../components/Badge.js';
+import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
-
-// صف 5 نجوم ثابت — لعرض تقييم فردي واحد (rating.stars عدد صحيح دائماً).
-function StarRow({ value }: { value: number }) {
-  return (
-    <span className="flex items-center gap-0.5" dir="ltr">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star key={n} className={`h-3 w-3 ${n <= value ? 'fill-amber-400 text-amber-400' : 'fill-transparent text-slate-300'}`} />
-      ))}
-    </span>
-  );
-}
-
-// شارة متوسط التقييم — تظهر بجانب شارة "زيارات" (لا تُعرض إن لم يوجد أي
-// تقييم بعد لهذا العميل).
-function RatingSummaryBadge({ avg, count }: { avg: number; count: number }) {
-  if (count === 0) return null;
-  return (
-    <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {avg.toFixed(1)} ({count})
-    </span>
-  );
-}
 
 // صف زيارة واحدة في سجل العميل — تُستخدم في القائمة والمربعات ونافذة
 // تفاصيل العميل الثلاثة، مع عرض تقييمها (نجوم + رأي) أسفلها إن وُجد.
@@ -49,7 +27,7 @@ function VisitRow({ visit, rating }: { visit: Appointment; rating?: Rating }) {
       </div>
       {rating && (
         <div className="mt-2 flex items-start gap-1.5 border-t border-slate-200 pt-2">
-          <StarRow value={rating.stars} />
+          <RatingStars value={rating.stars} />
           {rating.comment && <span className="text-slate-500">"{rating.comment}"</span>}
           {!rating.comment && <span className="text-slate-400">{t('بدون تعليق')}</span>}
         </div>
