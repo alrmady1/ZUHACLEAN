@@ -449,6 +449,15 @@ function persist() {
   runBackupIfDue(db);
 }
 
+// على استضافة بلا خادم (Vercel) يُجمَّد تنفيذ الدالة بعد إرسال الاستجابة
+// مباشرة — لا يكفي مجرد ترتيب الكتابات (أعلاه)، فقد يُجمَّد التنفيذ قبل
+// أن تُكمل أي منها أصلاً. middleware في api.ts يستدعي هذه الدالة لتأخير
+// إرسال الاستجابة الفعلية حتى تكتمل كل كتابات persist() التي أطلقها هذا
+// الطلب — بلا حاجة لتحويل كل مسار وكل استدعاء store.* إلى async/await.
+export function pendingWrites(): Promise<void> {
+  return persistTail;
+}
+
 export const store = {
   id: () => randomUUID(),
 

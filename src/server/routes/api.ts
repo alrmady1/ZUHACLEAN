@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { store } from '../store/db.js';
+import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { uploadAppointmentPhoto, uploadLeavePhoto } from '../lib/storage.js';
@@ -25,6 +25,23 @@ import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 export const api = Router();
+
+// على Vercel (بلا خادم) يُجمَّد تنفيذ الدالة بعد إرسال الاستجابة مباشرة —
+// أي كتابة persist() لم تكتمل بعد قد تُفقَد بصمت. بدل تحويل كل مسار في
+// هذا الملف إلى async/await على كل استدعاء store.*، تعترض هذه الوسيطة
+// res.end() نفسها (النقطة المشتركة التي يمر منها json/send/end جميعاً في
+// Express) وتؤخّر إرسال الاستجابة فعلياً حتى تكتمل كل كتابات persist()
+// التي أطلقها هذا الطلب (pendingWrites، انظر src/server/store/db.ts).
+api.use((_req, res, next) => {
+  const originalEnd = res.end.bind(res);
+  res.end = ((...args: Parameters<typeof res.end>) => {
+    pendingWrites().finally(() => {
+      originalEnd(...args);
+    });
+    return res;
+  }) as typeof res.end;
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // سجل العمليات — الإعدادات ← سجل العمليات (مقيَّد للمدير العام ومدير
