@@ -426,14 +426,26 @@ export async function initStore(): Promise<void> {
   db = await load();
 }
 
-// Fire-and-forget: the in-memory `db` mutation already happened
-// synchronously before persist() is called, so every store method still
-// returns the correct value immediately without needing to become async
-// (which would ripple into an `await` at every call site in api.ts). The
-// only risk is losing the very last write if the process crashes in the
-// small window before this finishes — logged loudly if it ever fails.
+// Fire-and-forget from every call site: the in-memory `db` mutation already
+// happened synchronously before persist() is called, so every store method
+// still returns the correct value immediately without needing to become
+// async (which would ripple into an `await` at every call site in api.ts).
+//
+// The writes themselves are chained onto persistTail instead of fired
+// independently — a single request handler often mutates `db` and calls
+// persist() more than once (e.g. update a record, then logActivity() adds
+// a second write). Each save(db) reads the fully current `db` at the moment
+// it actually runs, so two independent in-flight network writes could
+// finish out of order and the *earlier* (now-stale) one would silently
+// overwrite the later, more complete one — this bit real users: an
+// activity-log entry from the second write kept vanishing because the
+// first write (the primary record) reliably completed after it. Chaining
+// guarantees writes commit to Postgres in the same order they were queued.
+let persistTail: Promise<void> = Promise.resolve();
 function persist() {
-  save(db).catch((err) => console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err));
+  persistTail = persistTail.then(() => save(db)).catch((err) => {
+    console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err);
+  });
   runBackupIfDue(db);
 }
 
