@@ -294,7 +294,7 @@ export default function OrderPage() {
                 style={{ borderColor: CREAM, backgroundColor: '#fff' }}
               >
                 {s.image_url ? (
-                  <img src={s.image_url} alt={s.title} className="h-36 w-full object-cover" />
+                  <img src={s.image_url} alt={s.title} className="h-[244px] w-full object-cover" />
                 ) : (
                   <div
                     className="flex h-11 w-11 items-center justify-center rounded-xl m-5 mb-0"
