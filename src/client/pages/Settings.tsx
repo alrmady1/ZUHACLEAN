@@ -28,10 +28,29 @@ import {
   GripVertical as DragHandleIcon,
   CalendarOff as DaysOffIcon,
   History as ActivityLogIcon,
+  Globe as LandingIcon,
+  Image as ImageIcon,
+  ArrowUp,
+  ArrowDown,
+  ExternalLink,
   AlertTriangle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Profile, Service, UserRole, PaymentMethodOption, ServiceCategory, ExpenseCategoryItem, LeaveRecord, LeaveType, Appointment, ActivityLogEntry } from '../../shared/types.js';
+import type {
+  Profile,
+  Service,
+  UserRole,
+  PaymentMethodOption,
+  ServiceCategory,
+  ExpenseCategoryItem,
+  LeaveRecord,
+  LeaveType,
+  Appointment,
+  ActivityLogEntry,
+  LandingPageSettings,
+  LandingService,
+} from '../../shared/types.js';
+import { DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, ACTIVITY_LOG_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -1949,6 +1968,336 @@ function DaysOffTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Landing page tab — الإعدادات ← الطلبات الخارجية: تحكم كامل بمحتوى صفحة
+// "اطلب الخدمة" العامة (OrderPage.tsx) بلا حاجة لتعديل الكود — الألوان
+// ونصوص الهيرو من إعدادات واحدة (LandingPageSettings)، وبطاقات الخدمات
+// المعروضة (LandingService، منفصلة عمداً عن دليل الخدمات التشغيلي) بصورة
+// ووصف قابلين للتعديل لكل بطاقة. خلف صلاحية edit_landing_page.
+// ---------------------------------------------------------------------------
+function LandingColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-slate-600">{label}</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-11 shrink-0 cursor-pointer rounded-lg border border-slate-200 p-0.5"
+        />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          dir="ltr"
+          className="input font-mono"
+        />
+      </div>
+    </label>
+  );
+}
+
+function LandingPageTab() {
+  const { t, tt } = useI18n();
+  const [settings, setSettings] = useState<LandingPageSettings>(DEFAULT_LANDING_SETTINGS);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [items, setItems] = useState<LandingService[] | null>(null);
+  const [editing, setEditing] = useState<LandingService | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  function refreshSettings() {
+    api.get<LandingPageSettings>('/landing-settings').then(setSettings);
+  }
+  function refreshItems() {
+    api.get<LandingService[]>('/landing-services').then(setItems);
+  }
+  useEffect(() => {
+    refreshSettings();
+    refreshItems();
+  }, []);
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    try {
+      await api.patch('/landing-settings', settings);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function handleDelete(s: LandingService) {
+    if (!window.confirm(tt(`حذف خدمة "${s.title}" من الصفحة الخارجية؟`, `Delete "${s.title}" from the external page?`))) return;
+    await api.del(`/landing-services/${s.id}`);
+    refreshItems();
+  }
+
+  async function toggleActive(s: LandingService) {
+    setItems((prev) => prev && prev.map((x) => (x.id === s.id ? { ...x, is_active: !x.is_active } : x)));
+    await api.patch(`/landing-services/${s.id}`, { is_active: !s.is_active });
+  }
+
+  async function move(index: number, dir: -1 | 1) {
+    if (!items) return;
+    const next = [...items];
+    const target = index + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setItems(next);
+    await api.patch('/landing-services/reorder', { order: next.map((s) => s.id) });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">{t('الهوية والألوان')}</h2>
+            <p className="text-sm text-slate-400">{t('تظهر هذه الألوان والنصوص مباشرة في صفحة "اطلب الخدمة" العامة')}</p>
+          </div>
+          <a
+            href="/order"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <ExternalLink className="h-4 w-4" /> {t('معاينة الصفحة')}
+          </a>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <LandingColorField
+            label={t('اللون الأساسي (الرأس والأزرار)')}
+            value={settings.colors.primary}
+            onChange={(v) => setSettings((s) => ({ ...s, colors: { ...s.colors, primary: v } }))}
+          />
+          <LandingColorField
+            label={t('اللون الثانوي')}
+            value={settings.colors.secondary}
+            onChange={(v) => setSettings((s) => ({ ...s, colors: { ...s.colors, secondary: v } }))}
+          />
+          <LandingColorField
+            label={t('لون الخلفية')}
+            value={settings.colors.background}
+            onChange={(v) => setSettings((s) => ({ ...s, colors: { ...s.colors, background: v } }))}
+          />
+          <LandingColorField
+            label={t('لون التمييز (أزرار الدعوة للتواصل)')}
+            value={settings.colors.accent}
+            onChange={(v) => setSettings((s) => ({ ...s, colors: { ...s.colors, accent: v } }))}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          <Field label={t('العنوان الرئيسي (الهيرو)')}>
+            <input
+              value={settings.hero_title}
+              onChange={(e) => setSettings((s) => ({ ...s, hero_title: e.target.value }))}
+              className="input"
+            />
+          </Field>
+          <Field label={t('الوصف أسفل العنوان الرئيسي')}>
+            <textarea
+              value={settings.hero_subtitle}
+              onChange={(e) => setSettings((s) => ({ ...s, hero_subtitle: e.target.value }))}
+              rows={2}
+              className="input resize-none"
+            />
+          </Field>
+          <Field label={t('الشعار المختصر (يظهر أعلى الصفحة بجانب الاسم)')}>
+            <input
+              value={settings.tagline}
+              onChange={(e) => setSettings((s) => ({ ...s, tagline: e.target.value }))}
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <button
+          onClick={saveSettings}
+          disabled={savingSettings}
+          className="mt-4 rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {savingSettings ? t('جارِ الحفظ…') : t('حفظ الألوان والنصوص')}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">{t('الخدمات المعروضة في الصفحة')}</h2>
+            <p className="text-sm text-slate-400">{t('صورة ووصف كل خدمة كما تظهر للعميل، بمعزل عن أسعار الخدمات الفعلية')}</p>
+          </div>
+          <button
+            onClick={() => {
+              setEditing(null);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> {t('إضافة خدمة')}
+          </button>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {(items ?? []).map((s, idx) => (
+            <div key={s.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="flex h-28 items-center justify-center bg-slate-50">
+                {s.image_url ? (
+                  <img src={s.image_url} alt={s.title} className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon className="h-8 w-8 text-slate-300" />
+                )}
+              </div>
+              <div className="p-3">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {s.is_active ? t('معروضة') : t('مخفية')}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button onClick={() => move(idx, -1)} disabled={idx === 0} title={t('تحريك لأعلى')} className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30">
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => move(idx, 1)} disabled={idx === (items?.length ?? 1) - 1} title={t('تحريك لأسفل')} className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30">
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-slate-800">{s.title}</div>
+                {s.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{s.description}</p>}
+                <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-2.5">
+                  <button onClick={() => handleDelete(s)} title={t('حذف')} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => toggleActive(s)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" title={s.is_active ? t('إخفاء من الصفحة') : t('إظهار في الصفحة')}>
+                    {s.is_active ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(s);
+                      setShowForm(true);
+                    }}
+                    className="mr-auto flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {items && items.length === 0 && (
+            <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
+              {t('لا توجد خدمات معروضة بعد')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showForm && (
+        <LandingServiceForm
+          editing={editing}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setShowForm(false);
+            setEditing(null);
+            refreshItems();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LandingServiceForm({
+  editing,
+  onClose,
+  onSaved,
+}: {
+  editing: LandingService | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const [title, setTitle] = useState(editing?.title ?? '');
+  const [description, setDescription] = useState(editing?.description ?? '');
+  const [imageUrl, setImageUrl] = useState(editing?.image_url ?? '');
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const { url } = await api.post<{ url: string }>('/landing-images', { data_url: dataUrl });
+      setImageUrl(url);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload = { title: title.trim(), description: description.trim() || undefined, image_url: imageUrl || undefined };
+      if (editing) {
+        await api.patch(`/landing-services/${editing.id}`, payload);
+      } else {
+        await api.post('/landing-services', payload);
+      }
+      onSaved();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={editing ? t('تعديل الخدمة') : t('إضافة خدمة جديدة')}
+      subtitle={t('كما ستظهر بالضبط في صفحة "اطلب الخدمة" العامة')}
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label={t('اسم الخدمة *')}>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={t('مثال: تنظيف شقق وفلل شامل')} className="input" />
+        </Field>
+        <Field label={t('وصف مختصر للخدمة')}>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="input resize-none" />
+        </Field>
+        <Field label={t('صورة الخدمة')} icon={<ImageIcon className="h-3.5 w-3.5 text-brand-500" />}>
+          <div className="flex items-center gap-3">
+            {imageUrl && <img src={imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />}
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-4 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50">
+              {uploading ? t('جارِ الرفع…') : t('اختر صورة')}
+              <input type="file" accept="image/*" onChange={handleImageChange} disabled={uploading} className="hidden" />
+            </label>
+          </div>
+        </Field>
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={submitting || uploading || !title.trim()}
+            className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? t('جارِ الحفظ…') : editing ? t('حفظ التعديلات') : t('إضافة الخدمة')}
+          </button>
+          <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-slate-600">
+            {t('إلغاء')}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -2161,10 +2510,11 @@ export default function Settings() {
   const canPaymentMethods = can('edit_payment_methods');
   const canExpenseCategories = can('edit_custody_expenses');
   const canDaysOff = can('edit_days_off');
+  const canLandingPage = can('edit_landing_page');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = user ? ACTIVITY_LOG_ACCESS_ROLES.includes(user.role) : false;
 
-  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'permissions' | 'activity_log';
+  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'landing_page' | 'permissions' | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
     // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
@@ -2174,6 +2524,7 @@ export default function Settings() {
     if (canPaymentMethods) return 'payment_methods';
     if (canExpenseCategories) return 'expense_categories';
     if (canDaysOff) return 'days_off';
+    if (canLandingPage) return 'landing_page';
     if (canPermissions) return 'permissions';
     return 'activity_log';
   });
@@ -2239,6 +2590,14 @@ export default function Settings() {
             <DaysOffIcon className="h-4 w-4" /> {t('الإجازات')}
           </button>
         )}
+        {canLandingPage && (
+          <button
+            onClick={() => setTab('landing_page')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'landing_page' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <LandingIcon className="h-4 w-4" /> {t('الطلبات الخارجية')}
+          </button>
+        )}
         {canPermissions && (
           <button
             onClick={() => setTab('permissions')}
@@ -2269,6 +2628,8 @@ export default function Settings() {
         <ExpenseCategoriesTab />
       ) : tab === 'days_off' && canDaysOff ? (
         <DaysOffTab />
+      ) : tab === 'landing_page' && canLandingPage ? (
+        <LandingPageTab />
       ) : tab === 'permissions' && canPermissions ? (
         <PermissionsTab />
       ) : canActivityLog ? (

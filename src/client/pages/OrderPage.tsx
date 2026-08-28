@@ -19,32 +19,29 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
-import { COMPANY_NAME, COMPANY_PHONE } from '../../shared/types.js';
-import type { Service } from '../../shared/types.js';
+import { COMPANY_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
+import type { LandingPageSettings, LandingService } from '../../shared/types.js';
 
 // صفحة عامة خارجية — بلا تسجيل دخول عمداً — لاستقبال طلبات العملاء من
-// خارج النظام (يُشارَك رابطها في وسائل التواصل وواتساب الأعمال)، مبنية
-// بهوية "زهى" البصرية (الألوان أدناه من ملف الهوية المعتمد). الاستمارة
-// السريعة تُرسِل إلى POST /public/leads (بلا حاجة لجلسة دخول)، وتظهر
-// الطلبات الواردة لفريق العمل من صفحة "طلبات العملاء" خلف صلاحية
-// view_leads_page (انظر src/client/pages/Leads.tsx).
-const NAVY = '#0F2A3D';
-const CREAM = '#E6DCCB';
-const OFFWHITE = '#F5F3EF';
-const GREEN = '#A4BE7A';
-
+// خارج النظام (يُشارَك رابطها في وسائل التواصل وواتساب الأعمال). الألوان
+// والنصوص وبطاقات الخدمات المعروضة أدناه كلها محتوى مُدار من الإعدادات ←
+// الطلبات الخارجية (خلف صلاحية edit_landing_page، انظر LandingPageTab في
+// src/client/pages/Settings.tsx) — لا قيمة هنا ثابتة فعلياً في الكود
+// نفسه، الثوابت المستوردة أعلاه هي فقط قيمة افتراضية أثناء أول تحميل قبل
+// وصول رد GET /landing-settings. الاستمارة السريعة تُرسِل إلى
+// POST /public/leads (بلا حاجة لجلسة دخول)، وتظهر الطلبات الواردة لفريق
+// العمل من صفحة "طلبات جديدة" خلف صلاحية view_leads_page (Leads.tsx).
 const WHATSAPP_INTRO = `مرحباً ${COMPANY_NAME}، أرغب في الاستفسار عن خدماتكم`;
 
-function serviceIcon(category?: string) {
-  const c = category ?? '';
-  if (c.includes('منازل')) return Home;
-  if (c.includes('مكاتب')) return Building2;
-  if (c.includes('حشرات')) return Bug;
-  if (c.includes('سباكة')) return Wrench;
-  if (c.includes('تكييف')) return Fan;
-  if (c.includes('كهرباء')) return Zap;
-  if (c.includes('مفروشات')) return Droplets;
-  if (c.includes('تشطيب')) return Hammer;
+function serviceIcon(title: string) {
+  if (title.includes('منازل') || title.includes('شقق') || title.includes('فلل')) return Home;
+  if (title.includes('مكاتب')) return Building2;
+  if (title.includes('حشرات')) return Bug;
+  if (title.includes('سباكة')) return Wrench;
+  if (title.includes('تكييف') || title.includes('مكيف')) return Fan;
+  if (title.includes('كهرباء')) return Zap;
+  if (title.includes('سجاد') || title.includes('كنب') || title.includes('موكيت')) return Droplets;
+  if (title.includes('تشطيب')) return Hammer;
   return Sparkles;
 }
 
@@ -53,7 +50,8 @@ function scrollToForm() {
 }
 
 export default function OrderPage() {
-  const [services, setServices] = useState<Service[]>([]);
+  const [settings, setSettings] = useState<LandingPageSettings>(DEFAULT_LANDING_SETTINGS);
+  const [services, setServices] = useState<LandingService[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('');
@@ -64,11 +62,14 @@ export default function OrderPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
     api
-      .get<Service[]>('/services')
+      .get<LandingService[]>('/landing-services')
       .then((list) => setServices(list.filter((s) => s.is_active)))
       .catch(() => {});
   }, []);
+
+  const { primary: NAVY, secondary: CREAM, background: OFFWHITE, accent: GREEN } = settings.colors;
 
   function pickService(n: string) {
     setServiceName(n);
@@ -107,7 +108,7 @@ export default function OrderPage() {
           <img src="/icon-192.png" alt={COMPANY_NAME} className="h-10 w-10 rounded-xl" />
           <div>
             <div className="text-lg font-extrabold text-white">{COMPANY_NAME}</div>
-            <div className="text-[11px] text-white/60">نظافة تستحق الثقة</div>
+            <div className="text-[11px] text-white/60">{settings.tagline}</div>
           </div>
         </div>
         <nav className="hidden items-center gap-6 text-sm font-semibold text-white/80 sm:flex">
@@ -145,13 +146,8 @@ export default function OrderPage() {
           >
             {COMPANY_NAME} للنظافة والخدمات
           </span>
-          <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">
-            نظافة تستحق الثقة
-          </h1>
-          <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">
-            حلول تنظيف وصيانة شاملة للمنازل والمكاتب والمرافق التجارية، بفريق مدرّب وأدوات
-            ومواد معتمدة — نصل إليك بموعد محدد ونلتزم به.
-          </p>
+          <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
+          <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">{settings.hero_subtitle}</p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
@@ -233,8 +229,8 @@ export default function OrderPage() {
                   <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className="input">
                     <option value="">اختر الخدمة (اختياري)</option>
                     {services.map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.name}
+                      <option key={s.id} value={s.title}>
+                        {s.title}
                       </option>
                     ))}
                   </select>
@@ -289,32 +285,38 @@ export default function OrderPage() {
           <p className="mt-2 text-sm text-slate-500">مجموعة متكاملة من خدمات التنظيف والصيانة تحت سقف واحد</p>
         </div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {(services.length > 0 ? services : []).map((s) => {
-            const Icon = serviceIcon(s.category);
+          {services.map((s) => {
+            const Icon = serviceIcon(s.title);
             return (
               <div
                 key={s.id}
-                className="flex flex-col rounded-2xl border p-5 transition hover:shadow-lg"
+                className="flex flex-col overflow-hidden rounded-2xl border transition hover:shadow-lg"
                 style={{ borderColor: CREAM, backgroundColor: '#fff' }}
               >
-                <div
-                  className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: CREAM, color: NAVY }}
-                >
-                  <Icon className="h-5 w-5" />
+                {s.image_url ? (
+                  <img src={s.image_url} alt={s.title} className="h-36 w-full object-cover" />
+                ) : (
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-xl m-5 mb-0"
+                    style={{ backgroundColor: CREAM, color: NAVY }}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                )}
+                <div className="flex flex-1 flex-col p-5">
+                  <h3 className="font-bold" style={{ color: NAVY }}>
+                    {s.title}
+                  </h3>
+                  {s.description && <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{s.description}</p>}
+                  <button
+                    type="button"
+                    onClick={() => pickService(s.title)}
+                    className="mt-4 self-start text-xs font-bold underline underline-offset-2"
+                    style={{ color: NAVY }}
+                  >
+                    اطلب هذه الخدمة ←
+                  </button>
                 </div>
-                <h3 className="font-bold" style={{ color: NAVY }}>
-                  {s.name}
-                </h3>
-                {s.description && <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{s.description}</p>}
-                <button
-                  type="button"
-                  onClick={() => pickService(s.name)}
-                  className="mt-4 self-start text-xs font-bold underline underline-offset-2"
-                  style={{ color: NAVY }}
-                >
-                  اطلب هذه الخدمة ←
-                </button>
               </div>
             );
           })}

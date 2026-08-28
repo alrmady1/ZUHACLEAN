@@ -1,28 +1,36 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Trash2, MessageCircle } from 'lucide-react';
+import { Trash2, MessageCircle, CalendarPlus, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
-import type { Lead, LeadStatus } from '../../shared/types.js';
+import type { Lead, LeadStatus, Customer, Service, Appointment } from '../../shared/types.js';
 import { LEAD_STATUS_LABELS_AR } from '../../shared/types.js';
 import { formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import NewAppointmentModal from '../components/NewAppointmentModal.js';
 
 const STATUS_BADGE: Record<LeadStatus, string> = {
   new: 'bg-amber-50 text-amber-600',
-  contacted: 'bg-blue-50 text-blue-600',
-  closed: 'bg-emerald-50 text-emerald-600',
+  replied: 'bg-blue-50 text-blue-600',
+  quote_sent: 'bg-violet-50 text-violet-600',
+  appointment_booked: 'bg-emerald-50 text-emerald-600',
 };
 
 // طلبات العملاء الواردة من صفحة "اطلب الخدمة" العامة (OrderPage.tsx، بلا
 // تسجيل دخول) — عميل محتمل لم يتحول بعد إلى عميل مسجَّل أو موعد فعلي.
-// التحويل الفعلي إلى عميل/موعد يبقى يدوياً من صفحتي العملاء والمواعيد؛
-// هذه الصفحة فقط للمتابعة وتحديث حالة كل طلب.
+// بعد التواصل معه، يمكن تحويله مباشرة إلى موعد فعلي بنفس نافذة حجز
+// الموعد المعتادة (NewAppointmentModal، مُعبَّأة مسبقاً ببياناته) — عندها
+// تتحدَّث حالته تلقائياً إلى "تم عمل موعد" وتُربَط برقم الموعد الناتج.
+// من يستلم الطلب يمكنه أيضاً تحديث الحالة يدوياً (تم الرد / تم إرسال عرض
+// سعر) قبل الوصول لمرحلة الحجز.
 export default function Leads() {
-  const { user, can } = useAuth();
+  const { user, can, allProfiles } = useAuth();
   const { t, tt } = useI18n();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [bookingFor, setBookingFor] = useState<Lead | null>(null);
 
   function refresh() {
     api.get<Lead[]>('/leads').then(setLeads);
@@ -30,7 +38,12 @@ export default function Leads() {
 
   useEffect(() => {
     refresh();
+    api.get<Customer[]>('/customers').then(setCustomers);
+    api.get<Service[]>('/services').then(setServices);
   }, []);
+
+  const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const technicians = allProfiles.filter((p) => p.role === 'technician');
 
   async function setStatus(lead: Lead, status: LeadStatus) {
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l)));
@@ -49,7 +62,7 @@ export default function Leads() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">{t('طلبات العملاء')}</h1>
+        <h1 className="text-xl font-bold text-slate-800">{t('طلبات جديدة')}</h1>
         <p className="text-sm text-slate-400">{t('طلبات واردة من صفحة "اطلب الخدمة" العامة قبل تحويلها إلى موعد')}</p>
       </div>
 
@@ -69,7 +82,10 @@ export default function Leads() {
           <tbody>
             {leads.map((l) => (
               <tr key={l.id} className="border-b border-slate-50 align-top last:border-0 hover:bg-slate-50">
-                <td className="p-3 font-medium text-slate-700">{l.name}</td>
+                <td className="p-3 font-medium text-slate-700">
+                  {l.name}
+                  {l.message && <div className="mt-0.5 max-w-[220px] truncate text-xs font-normal text-slate-400" title={l.message}>{l.message}</div>}
+                </td>
                 <td className="p-3 text-slate-600" dir="ltr">{l.phone}</td>
                 <td className="p-3 text-slate-600">{l.service_name || '—'}</td>
                 <td className="p-3 text-slate-600">{l.area || '—'}</td>
@@ -86,9 +102,21 @@ export default function Leads() {
                       </option>
                     ))}
                   </select>
+                  {l.status === 'appointment_booked' && l.linked_appointment_id && (
+                    <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-600">
+                      <CheckCircle2 className="h-3 w-3" /> {t('مرتبط بموعد')}
+                    </div>
+                  )}
                 </td>
                 <td className="p-3">
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setBookingFor(l)}
+                      title={t('تحديد موعد لهذا الطلب')}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
+                    >
+                      <CalendarPlus className="h-4 w-4" />
+                    </button>
                     <a
                       href={waLink(l.phone)}
                       target="_blank"
@@ -119,6 +147,35 @@ export default function Leads() {
           </tbody>
         </table>
       </div>
+
+      {bookingFor && (
+        <NewAppointmentModal
+          customers={customers}
+          services={services}
+          supervisors={supervisors}
+          technicians={technicians}
+          initialLead={{
+            name: bookingFor.name,
+            phone: bookingFor.phone,
+            area: bookingFor.area,
+            serviceName: bookingFor.service_name,
+            message: bookingFor.message,
+          }}
+          onClose={() => setBookingFor(null)}
+          onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
+          onCreated={async (appt?: Appointment) => {
+            const lead = bookingFor;
+            setBookingFor(null);
+            if (lead) {
+              await api.patch(`/leads/${lead.id}`, {
+                status: 'appointment_booked',
+                linked_appointment_id: appt?.id,
+              });
+            }
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

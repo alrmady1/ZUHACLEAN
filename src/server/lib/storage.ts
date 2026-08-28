@@ -86,3 +86,28 @@ export async function uploadLeavePhoto(leaveId: string, dataUrl: string): Promis
 
   return data.signedUrl;
 }
+
+// نفس منطق uploadAppointmentPhoto أعلاه، لصورة بطاقة خدمة في صفحة "اطلب
+// الخدمة" العامة (الإعدادات ← الطلبات الخارجية). الرابط الموقَّع يُخدَّم
+// مباشرة داخل <img> على صفحة عامة بلا تسجيل دخول — ذلك يعمل بلا مشكلة
+// لأن الرابط نفسه هو صلاحية الوصول (bearer-style)، لا حاجة لجعل الحاوية
+// عامة. لا يوجد appointmentId/leaveId هنا لأن الصورة قد تُرفَع قبل حفظ
+// بطاقة الخدمة نفسها (أثناء تعبئة نموذج إضافة خدمة جديدة).
+export async function uploadLandingImage(dataUrl: string): Promise<string> {
+  await ensureBucket();
+  const { buffer, contentType, ext } = parseDataUrl(dataUrl);
+  const path = `landing/${Date.now()}-${randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, buffer, {
+    contentType,
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const { data, error: signError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, TEN_YEARS_IN_SECONDS);
+  if (signError) throw signError;
+
+  return data.signedUrl;
+}

@@ -24,11 +24,23 @@ function Section({ icon, title, extra, children }: { icon: ReactNode; title: str
   );
 }
 
+// بيانات أولية اختيارية لتعبئة النموذج مسبقاً عند فتحه من صفحة "طلبات
+// جديدة" (تحويل طلب وارد إلى موعد فعلي، انظر Leads.tsx) — بلا أي تأثير
+// على الاستخدام المعتاد من صفحة المواعيد (لا يُمرَّر هذا الخيار هناك).
+export interface NewAppointmentInitialLead {
+  name: string;
+  phone: string;
+  area?: string;
+  serviceName?: string;
+  message?: string;
+}
+
 export default function NewAppointmentModal({
   customers,
   services,
   supervisors,
   technicians,
+  initialLead,
   onClose,
   onCreated,
   onCustomerCreated,
@@ -37,8 +49,9 @@ export default function NewAppointmentModal({
   services: Service[];
   supervisors: Profile[];
   technicians: Profile[];
+  initialLead?: NewAppointmentInitialLead;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (appointment?: Appointment) => void;
   onCustomerCreated?: (customer: Customer) => void;
 }) {
   const { t, tt } = useI18n();
@@ -46,21 +59,28 @@ export default function NewAppointmentModal({
   const canAssignTechnician = can('assign_appointment_technician');
   const today = new Date().toISOString().slice(0, 10);
 
+  // عميل حالي يطابق جوال الطلب الوارد (إن وُجد) — يُختار تلقائياً بدل فتح
+  // نموذج "عميل جديد" فارغ، حتى لا نُنشئ عملاء مكررين لعميل موجود أصلاً.
+  const matchedLeadCustomer = initialLead
+    ? customers.find((c) => c.phone.replace(/\D/g, '') === initialLead.phone.replace(/\D/g, ''))
+    : undefined;
+  const matchedLeadService = initialLead?.serviceName ? services.find((s) => s.name === initialLead.serviceName) : undefined;
+
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
-  const [customerId, setCustomerId] = useState<string>('');
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerId, setCustomerId] = useState<string>(matchedLeadCustomer?.id ?? '');
+  const [customerSearch, setCustomerSearch] = useState(matchedLeadCustomer?.name ?? initialLead?.name ?? '');
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const customerBoxRef = useRef<HTMLDivElement>(null);
-  const [address, setAddress] = useState('');
-  const [locationUrl, setLocationUrl] = useState('');
-  const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0);
+  const [address, setAddress] = useState(matchedLeadCustomer?.address ?? initialLead?.area ?? '');
+  const [locationUrl, setLocationUrl] = useState(matchedLeadCustomer?.location_url ?? '');
+  const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0 || (!!initialLead && !matchedLeadCustomer));
   const [addingCustomer, setAddingCustomer] = useState(false);
 
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(matchedLeadService ? [matchedLeadService.id] : []);
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
-  const [amount, setAmount] = useState<number | ''>(0);
-  const [duration, setDuration] = useState<number | ''>(120);
+  const [amount, setAmount] = useState<number | ''>(matchedLeadService?.default_price ?? 0);
+  const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? 120);
 
   const [date, setDate] = useState(today);
   const [time, setTime] = useState('10:00');
@@ -193,7 +213,7 @@ export default function NewAppointmentModal({
     setSubmitting(true);
     const scheduledAt = new Date(`${date}T${time}`).toISOString();
     try {
-      await api.post('/appointments', {
+      const created = await api.post<Appointment>('/appointments', {
         customer_id: customerId,
         service_id: selectedServiceIds[0],
         service_name_snapshot: selectedServices.map((s) => s.name).join('، '),
@@ -209,7 +229,7 @@ export default function NewAppointmentModal({
           ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((tech) => tech.id === technicianId)?.full_name }]
           : [],
       });
-      onCreated();
+      onCreated(created);
       onClose();
     } finally {
       setSubmitting(false);
@@ -221,7 +241,9 @@ export default function NewAppointmentModal({
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">{t('إضافة حجز موعد جديد')}</h2>
+            <h2 className="text-lg font-bold text-slate-800">
+              {initialLead ? tt(`تحديد موعد لطلب ${initialLead.name}`, `Book appointment for ${initialLead.name}'s request`) : t('إضافة حجز موعد جديد')}
+            </h2>
             <p className="mt-0.5 text-xs text-slate-400">{t('تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ')}</p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
@@ -331,10 +353,10 @@ export default function NewAppointmentModal({
             {showAddCustomer && (
               <div className="space-y-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 p-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="new_customer_name" placeholder={t('الاسم')} required={showAddCustomer} className="input" />
-                  <input name="new_customer_phone" placeholder={t('الجوال')} required={showAddCustomer} className="input" />
+                  <input name="new_customer_name" defaultValue={initialLead?.name} placeholder={t('الاسم')} required={showAddCustomer} className="input" />
+                  <input name="new_customer_phone" defaultValue={initialLead?.phone} placeholder={t('الجوال')} required={showAddCustomer} className="input" />
                 </div>
-                <input name="new_customer_address" placeholder={t('العنوان')} required={showAddCustomer} className="input" />
+                <input name="new_customer_address" defaultValue={initialLead?.area} placeholder={t('العنوان')} required={showAddCustomer} className="input" />
                 <div className="grid grid-cols-2 gap-2">
                   <input name="new_customer_district" placeholder={t('الحي (اختياري)')} className="input" />
                   <input name="new_customer_city" placeholder={t('المدينة (اختياري)')} className="input" />
@@ -572,6 +594,7 @@ export default function NewAppointmentModal({
             <textarea
               name="notes"
               rows={3}
+              defaultValue={initialLead?.message}
               placeholder={t('مثال: يرجى التركيز على تعقيم المطبخ والحمام الرئيسي وتجهيز مواد خاصة...')}
               className="input resize-none"
             />

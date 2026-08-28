@@ -30,8 +30,10 @@ import type {
   ActivityLogEntry,
   Quote,
   Lead,
+  LandingPageSettings,
+  LandingService,
 } from '../../shared/types.js';
-import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
+import { DEFAULT_PERMISSIONS, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -84,6 +86,12 @@ interface DbShape {
   // طلبات عملاء واردة من صفحة "اطلب الخدمة" العامة — انظر Lead في
   // src/shared/types.ts.
   leads: Lead[];
+  // إعدادات نصوص وألوان صفحة "اطلب الخدمة" العامة — سجل واحد فقط، انظر
+  // LandingPageSettings في src/shared/types.ts.
+  landingSettings: LandingPageSettings;
+  // بطاقات الخدمات التسويقية المعروضة في نفس الصفحة — انظر LandingService
+  // في src/shared/types.ts.
+  landingServices: LandingService[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -356,6 +364,19 @@ function seed(): DbShape {
     activityLog: [],
     quotes: [],
     leads: [],
+    landingSettings: DEFAULT_LANDING_SETTINGS,
+    // نقطة بداية معقولة: نفس الخدمات النشطة من دليل الخدمات التشغيلي
+    // أعلاه، بلا صور بعد (يُضاف لها لاحقاً من الإعدادات ← الطلبات
+    // الخارجية) — أفضل من صفحة فارغة عند أول تشغيل.
+    landingServices: services
+      .filter((s) => s.is_active)
+      .map((s) => ({
+        id: `landing-${s.id}`,
+        title: s.name,
+        description: s.description,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      })),
   };
 }
 
@@ -390,6 +411,28 @@ async function load(): Promise<DbShape> {
     if (!parsed.activityLog) parsed.activityLog = [];
     if (!parsed.quotes) parsed.quotes = [];
     if (!parsed.leads) parsed.leads = [];
+    if (!parsed.landingSettings) parsed.landingSettings = DEFAULT_LANDING_SETTINGS;
+    if (!parsed.landingServices) {
+      parsed.landingServices = parsed.services
+        .filter((s) => s.is_active)
+        .map((s) => ({
+          id: `landing-${s.id}`,
+          title: s.name,
+          description: s.description,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        }));
+    }
+    // ترقية سجلات leads القديمة (قبل توسيع الحالات) — "contacted"/"closed"
+    // لم تعودا موجودتين في LeadStatus، تُطابَقان لأقرب حالة جديدة مكافئة.
+    // (لا حاجة لحفظ فوري هنا — تُكتَب تلقائياً مع أول persist() تالٍ لأي
+    // عملية أخرى، كبقية عمليات الترقية أعلاه.)
+    parsed.leads = parsed.leads.map((l) => {
+      const legacy = l.status as string;
+      if (legacy === 'contacted') return { ...l, status: 'replied' as const };
+      if (legacy === 'closed') return { ...l, status: 'appointment_booked' as const };
+      return l;
+    });
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -707,6 +750,42 @@ export const store = {
       db.leads.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  landingSettings: {
+    get: () => db.landingSettings,
+    set: (next: LandingPageSettings) => { db.landingSettings = next; persist(); return next; },
+  },
+  landingServices: {
+    // ترتيب العرض الفعلي في الصفحة العامة — نفس ترتيب المصفوفة المخزَّنة
+    // (وليس الأحدث أولاً)، قابل لإعادة الترتيب عبر reorder أدناه.
+    list: () => db.landingServices,
+    get: (id: string) => db.landingServices.find((s) => s.id === id),
+    insert: (s: LandingService) => { db.landingServices.push(s); persist(); return s; },
+    update: (id: string, patch: Partial<LandingService>) => {
+      const idx = db.landingServices.findIndex((s) => s.id === id);
+      if (idx === -1) return undefined;
+      db.landingServices[idx] = { ...db.landingServices[idx], ...patch };
+      persist();
+      return db.landingServices[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.landingServices.findIndex((s) => s.id === id);
+      if (idx === -1) return false;
+      db.landingServices.splice(idx, 1);
+      persist();
+      return true;
+    },
+    // إعادة ترتيب من صفحة الإعدادات (أزرار تحريك لأعلى/لأسفل) — order هي
+    // كامل قائمة المعرّفات بالترتيب الجديد. أي معرّف غائب عنها (حالة سباق
+    // نادرة: أُضيف عنصر جديد أثناء إعادة الترتيب) يُذيَّل تلقائياً بدل أن يُفقَد.
+    reorder: (order: string[]) => {
+      const byId = new Map(db.landingServices.map((s) => [s.id, s]));
+      const next = order.map((id) => byId.get(id)).filter((s): s is LandingService => !!s);
+      for (const s of db.landingServices) if (!order.includes(s.id)) next.push(s);
+      db.landingServices = next;
+      persist();
+      return next;
     },
   },
   customerRatings: {

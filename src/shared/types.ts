@@ -80,7 +80,8 @@ export type PermissionKey =
   | 'view_quotes_page'
   | 'create_quotes'
   | 'view_print_quotes'
-  | 'view_leads_page';
+  | 'view_leads_page'
+  | 'edit_landing_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -119,6 +120,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   create_quotes: 'عمل عرض سعر جديد',
   view_print_quotes: 'استعراض وطباعة عرض سعر',
   view_leads_page: 'الاطلاع على طلبات العملاء الواردة',
+  edit_landing_page: 'التحكم بصفحة الطلبات الخارجية',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -172,6 +174,10 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // طلبات واردة من صفحة "اطلب الخدمة" العامة (غير المسجَّلة دخولها) —
   // نفس فئة من يتابع المواعيد والعملاء يومياً.
   view_leads_page: NOT_TECHNICIAN,
+  // محتوى وتصميم صفحة "اطلب الخدمة" العامة (الألوان، النصوص، الخدمات
+  // المعروضة وصورها) — نفس فئة من يتحكم بدليل الخدمات وأسعارها
+  // (edit_services)، وليس أي مشرف.
+  edit_landing_page: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -335,14 +341,17 @@ export interface CustomerRating {
 // طلب وارد من صفحة "اطلب الخدمة" العامة (src/client/pages/OrderPage.tsx) —
 // عميل محتمل لم يتحوّل بعد إلى عميل مسجَّل أو موعد فعلي، يملأ استمارة
 // سريعة من الموقع الخارجي بلا تسجيل دخول (انظر POST /public/leads في
-// src/server/routes/api.ts). يظهر لفريق العمل في صفحة "طلبات العملاء"
-// (Leads.tsx) ليتابعوه ويحوّلوه يدوياً إلى عميل/موعد عند التواصل.
-export type LeadStatus = 'new' | 'contacted' | 'closed';
+// src/server/routes/api.ts). يظهر لفريق العمل في صفحة "طلبات جديدة"
+// (Leads.tsx) ليتابعوه، ويمكنه تحويله مباشرة إلى موعد فعلي بنفس نافذة حجز
+// الموعد المعتادة (NewAppointmentModal) — عندها تتحدَّث حالته تلقائياً إلى
+// appointment_booked وتُربَط بمعرّف الموعد الناتج (linked_appointment_id).
+export type LeadStatus = 'new' | 'replied' | 'quote_sent' | 'appointment_booked';
 
 export const LEAD_STATUS_LABELS_AR: Record<LeadStatus, string> = {
-  new: 'جديد',
-  contacted: 'تم التواصل',
-  closed: 'مغلق',
+  new: 'طلب جديد',
+  replied: 'تم الرد',
+  quote_sent: 'تم إرسال عرض سعر',
+  appointment_booked: 'تم عمل موعد',
 };
 
 export interface Lead {
@@ -353,6 +362,57 @@ export interface Lead {
   service_name?: string;
   message?: string;
   status: LeadStatus;
+  // مُعبَّأ تلقائياً عند تحويل الطلب إلى موعد فعلي من صفحة "طلبات جديدة"
+  // (زر "تحديد موعد") — رابط مرجعي فقط، لا يمنع حذف الموعد لاحقاً.
+  linked_appointment_id?: string;
+  created_at: string;
+}
+
+// ألوان الهوية البصرية المعتمدة لصفحة "اطلب الخدمة" العامة — قابلة للتعديل
+// من الإعدادات ← الطلبات الخارجية (خلف صلاحية edit_landing_page).
+export interface LandingColors {
+  primary: string;
+  secondary: string;
+  background: string;
+  accent: string;
+}
+
+export const DEFAULT_LANDING_COLORS: LandingColors = {
+  primary: '#0F2A3D',
+  secondary: '#E6DCCB',
+  background: '#F5F3EF',
+  accent: '#A4BE7A',
+};
+
+// إعدادات نصوص وألوان صفحة "اطلب الخدمة" العامة — سجل واحد فقط (وليس
+// قائمة)، يُقرأ عبر GET /landing-settings العامة (بلا تسجيل دخول، تستخدمه
+// الصفحة نفسها) ويُعدَّل عبر PATCH /landing-settings خلف edit_landing_page.
+export interface LandingPageSettings {
+  colors: LandingColors;
+  hero_title: string;
+  hero_subtitle: string;
+  tagline: string;
+}
+
+export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
+  colors: DEFAULT_LANDING_COLORS,
+  hero_title: 'نظافة تستحق الثقة',
+  hero_subtitle:
+    'حلول تنظيف وصيانة شاملة للمنازل والمكاتب والمرافق التجارية، بفريق مدرّب وأدوات ومواد معتمدة — نصل إليك بموعد محدد ونلتزم به.',
+  tagline: 'نظافة تستحق الثقة',
+};
+
+// بطاقة خدمة تسويقية معروضة في صفحة "اطلب الخدمة" العامة — منفصلة عمداً عن
+// دليل الخدمات التشغيلي (Service، المستخدَم في التسعير والمواعيد والعقود)،
+// حتى يمكن التحكم بمحتوى الصفحة التسويقية (صورة ونص كل خدمة، وأيها معروض)
+// دون التأثير على أسعار أو مدد الخدمات الفعلية. تُدار من الإعدادات ←
+// الطلبات الخارجية.
+export interface LandingService {
+  id: string;
+  title: string;
+  description?: string;
+  image_url?: string;
+  is_active: boolean;
   created_at: string;
 }
 

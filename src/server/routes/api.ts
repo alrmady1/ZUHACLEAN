@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { uploadAppointmentPhoto, uploadLeavePhoto } from '../lib/storage.js';
+import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds } from '../lib/push.js';
 import type {
   Appointment,
@@ -23,8 +23,10 @@ import type {
   Quote,
   Lead,
   LeadStatus,
+  LandingPageSettings,
+  LandingService,
 } from '../../shared/types.js';
-import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR, LEAD_STATUS_LABELS_AR } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 export const api = Router();
@@ -1161,11 +1163,16 @@ api.get('/leads', (_req, res) => res.json(store.leads.list()));
 
 api.patch('/leads/:id', (req, res) => {
   const status = req.body?.status as LeadStatus | undefined;
-  if (status && !['new', 'contacted', 'closed'].includes(status)) {
+  if (status && !['new', 'replied', 'quote_sent', 'appointment_booked'].includes(status)) {
     return res.status(400).json({ error: 'حالة غير صحيحة' });
   }
-  const updated = store.leads.update(req.params.id, status ? { status } : {});
+  const linkedAppointmentId = req.body?.linked_appointment_id;
+  const patch: Partial<Lead> = {};
+  if (status) patch.status = status;
+  if (typeof linkedAppointmentId === 'string') patch.linked_appointment_id = linkedAppointmentId;
+  const updated = store.leads.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  if (status) logActivity(req, `تم تحديث حالة طلب العميل "${updated.name}" إلى "${LEAD_STATUS_LABELS_AR[status]}"`);
   res.json(updated);
 });
 
@@ -1175,4 +1182,90 @@ api.delete('/leads/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف طلب العميل "${target?.name ?? ''}"`);
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// إعدادات صفحة "اطلب الخدمة" العامة (الإعدادات ← الطلبات الخارجية، خلف
+// صلاحية edit_landing_page) — ألوان الهوية، نصوص الهيرو، وقائمة بطاقات
+// الخدمات التسويقية المعروضة (منفصلة عمداً عن دليل الخدمات التشغيلي).
+// نقطتا GET هنا عامتان (بلا حماية) لأن OrderPage.tsx نفسها تستدعيهما بلا
+// تسجيل دخول.
+// ---------------------------------------------------------------------------
+api.get('/landing-settings', (_req, res) => res.json(store.landingSettings.get()));
+
+api.patch('/landing-settings', (req, res) => {
+  const body = req.body ?? {};
+  const current = store.landingSettings.get();
+  const next: LandingPageSettings = {
+    colors: { ...current.colors, ...(body.colors ?? {}) },
+    hero_title: typeof body.hero_title === 'string' && body.hero_title.trim() ? body.hero_title.trim() : current.hero_title,
+    hero_subtitle: typeof body.hero_subtitle === 'string' ? body.hero_subtitle.trim() : current.hero_subtitle,
+    tagline: typeof body.tagline === 'string' && body.tagline.trim() ? body.tagline.trim() : current.tagline,
+  };
+  store.landingSettings.set(next);
+  logActivity(req, 'تم تعديل إعدادات صفحة الطلبات الخارجية (الألوان/النصوص)');
+  res.json(next);
+});
+
+api.get('/landing-services', (_req, res) => res.json(store.landingServices.list()));
+
+// مسار حرفي مسجَّل قبل '/landing-services/:id' عمداً — وإلا لطابقه إكسبرس
+// كأنه :id بقيمة "reorder" ولن يصل الطلب لهذا المسار إطلاقاً.
+api.patch('/landing-services/reorder', (req, res) => {
+  const order = req.body?.order;
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order (مصفوفة معرّفات) مطلوبة' });
+  const next = store.landingServices.reorder(order);
+  res.json(next);
+});
+
+api.post('/landing-services', (req, res) => {
+  const body = req.body ?? {};
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  if (!title) return res.status(400).json({ error: 'اسم الخدمة مطلوب' });
+  const item: LandingService = {
+    id: store.id(),
+    title: title.slice(0, 200),
+    description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 500) : undefined,
+    image_url: typeof body.image_url === 'string' && body.image_url ? body.image_url : undefined,
+    is_active: body.is_active !== false,
+    created_at: new Date().toISOString(),
+  };
+  store.landingServices.insert(item);
+  logActivity(req, `تم إضافة خدمة "${item.title}" لصفحة الطلبات الخارجية`);
+  res.status(201).json(item);
+});
+
+api.patch('/landing-services/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<LandingService> = {};
+  if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim().slice(0, 200);
+  if ('description' in body) patch.description = typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 500) : undefined;
+  if ('image_url' in body) patch.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : undefined;
+  if (typeof body.is_active === 'boolean') patch.is_active = body.is_active;
+  const updated = store.landingServices.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل خدمة "${updated.title}" في صفحة الطلبات الخارجية`);
+  res.json(updated);
+});
+
+api.delete('/landing-services/:id', (req, res) => {
+  const target = store.landingServices.get(req.params.id);
+  const removed = store.landingServices.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف خدمة "${target?.title ?? ''}" من صفحة الطلبات الخارجية`);
+  res.status(204).end();
+});
+
+// رفع صورة بطاقة خدمة — مستقل عن معرّف الخدمة لأن الصورة قد تُرفَع أثناء
+// تعبئة نموذج "إضافة خدمة جديدة" قبل وجود معرّف أصلاً (انظر
+// uploadLandingImage في src/server/lib/storage.ts).
+api.post('/landing-images', async (req, res) => {
+  const dataUrl = req.body?.data_url;
+  if (typeof dataUrl !== 'string' || !dataUrl) return res.status(400).json({ error: 'data_url مطلوب' });
+  try {
+    const url = await uploadLandingImage(dataUrl);
+    res.status(201).json({ url });
+  } catch {
+    res.status(500).json({ error: 'تعذّر رفع الصورة' });
+  }
 });
