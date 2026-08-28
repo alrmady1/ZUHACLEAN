@@ -198,7 +198,7 @@ export default function OrderPage() {
               <form onSubmit={submit} className="space-y-4">
                 <div className="text-center">
                   <h2 className="text-lg font-bold" style={{ color: NAVY }}>
-                    استمارة طلب سريعة
+                    اطلب الخدمة الآن
                   </h2>
                   <p className="mt-1 text-xs text-slate-400">عبّئ بياناتك وسنتواصل معك خلال دقائق</p>
                 </div>
