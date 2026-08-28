@@ -29,6 +29,7 @@ import type {
   CustomerRating,
   ActivityLogEntry,
   Quote,
+  Lead,
 } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -80,6 +81,9 @@ interface DbShape {
   // عروض الأسعار — انظر Quote في src/shared/types.ts وتبويب "عرض سعر"
   // داخل صفحة العقود.
   quotes: Quote[];
+  // طلبات عملاء واردة من صفحة "اطلب الخدمة" العامة — انظر Lead في
+  // src/shared/types.ts.
+  leads: Lead[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -351,6 +355,7 @@ function seed(): DbShape {
     customerRatings: [],
     activityLog: [],
     quotes: [],
+    leads: [],
   };
 }
 
@@ -384,6 +389,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.customerRatings) parsed.customerRatings = [];
     if (!parsed.activityLog) parsed.activityLog = [];
     if (!parsed.quotes) parsed.quotes = [];
+    if (!parsed.leads) parsed.leads = [];
     // رمز الدولة 966 لم يعد مطلوباً (كل العملاء داخل المملكة حالياً) —
     // تطبيع أي رقم قديم بصيغة دولية إلى الصيغة المحلية (0...) وحفظه فوراً
     // حتى لا يتكرر التحويل (والكتابة) في كل تحميل تالٍ بلا داعٍ.
@@ -679,6 +685,26 @@ export const store = {
       const idx = db.quotes.findIndex((q) => q.id === id);
       if (idx === -1) return false;
       db.quotes.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  leads: {
+    // الأحدث أولاً — أكثر ما يهم فريق المتابعة هو آخر طلب وارد.
+    list: () => [...db.leads].reverse(),
+    get: (id: string) => db.leads.find((l) => l.id === id),
+    insert: (l: Lead) => { db.leads.push(l); persist(); return l; },
+    update: (id: string, patch: Partial<Lead>) => {
+      const idx = db.leads.findIndex((l) => l.id === id);
+      if (idx === -1) return undefined;
+      db.leads[idx] = { ...db.leads[idx], ...patch };
+      persist();
+      return db.leads[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.leads.findIndex((l) => l.id === id);
+      if (idx === -1) return false;
+      db.leads.splice(idx, 1);
       persist();
       return true;
     },

@@ -7,6 +7,7 @@ import {
   Wallet,
   Receipt,
   Tag,
+  Inbox,
   Users,
   Smartphone,
   Settings as SettingsIcon,
@@ -34,6 +35,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  // طلبات واردة من صفحة "اطلب الخدمة" العامة (OrderPage.tsx) — عملاء
+  // محتملون لم يتحولوا بعد إلى موعد فعلي.
+  { to: '/leads', label: 'طلبات العملاء', icon: Inbox, permissionKey: 'view_leads_page' },
   { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, permissionKey: 'view_sales_invoices' },
   // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".
   { to: '/quotes', label: 'عرض سعر', icon: Tag, permissionKey: 'view_quotes_page' },

@@ -79,7 +79,8 @@ export type PermissionKey =
   | 'view_completed_tasks_page'
   | 'view_quotes_page'
   | 'create_quotes'
-  | 'view_print_quotes';
+  | 'view_print_quotes'
+  | 'view_leads_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -117,6 +118,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_quotes_page: 'الاطلاع على صفحة عروض الأسعار',
   create_quotes: 'عمل عرض سعر جديد',
   view_print_quotes: 'استعراض وطباعة عرض سعر',
+  view_leads_page: 'الاطلاع على طلبات العملاء الواردة',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -167,6 +169,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   view_quotes_page: GM_ADMIN_ADMINSUP,
   create_quotes: GM_ADMIN_ADMINSUP,
   view_print_quotes: GM_ADMIN_ADMINSUP,
+  // طلبات واردة من صفحة "اطلب الخدمة" العامة (غير المسجَّلة دخولها) —
+  // نفس فئة من يتابع المواعيد والعملاء يومياً.
+  view_leads_page: NOT_TECHNICIAN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -325,6 +330,30 @@ export interface CustomerRating {
   notes?: string;
   created_at: string;
   updated_at?: string;
+}
+
+// طلب وارد من صفحة "اطلب الخدمة" العامة (src/client/pages/OrderPage.tsx) —
+// عميل محتمل لم يتحوّل بعد إلى عميل مسجَّل أو موعد فعلي، يملأ استمارة
+// سريعة من الموقع الخارجي بلا تسجيل دخول (انظر POST /public/leads في
+// src/server/routes/api.ts). يظهر لفريق العمل في صفحة "طلبات العملاء"
+// (Leads.tsx) ليتابعوه ويحوّلوه يدوياً إلى عميل/موعد عند التواصل.
+export type LeadStatus = 'new' | 'contacted' | 'closed';
+
+export const LEAD_STATUS_LABELS_AR: Record<LeadStatus, string> = {
+  new: 'جديد',
+  contacted: 'تم التواصل',
+  closed: 'مغلق',
+};
+
+export interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  area?: string;
+  service_name?: string;
+  message?: string;
+  status: LeadStatus;
+  created_at: string;
 }
 
 export interface Customer {

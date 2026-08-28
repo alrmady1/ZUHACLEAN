@@ -21,6 +21,8 @@ import type {
   Rating,
   CustomerRating,
   Quote,
+  Lead,
+  LeadStatus,
 } from '../../shared/types.js';
 import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
@@ -1123,5 +1125,54 @@ api.delete('/quotes/:id', (req, res) => {
   const removed = store.quotes.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف عرض سعر "${target?.quote_number ?? ''}"`);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// طلبات العملاء الواردة — عميل محتمل يملأ استمارة سريعة من صفحة "اطلب
+// الخدمة" العامة (src/client/pages/OrderPage.tsx) بلا تسجيل دخول، فتُحفَظ
+// هنا ليتابعها فريق العمل من صفحة "طلبات العملاء" (Leads.tsx، خلف صلاحية
+// view_leads_page). نفس نمط /public/ratings أعلاه: نقطة POST عامة غير
+// محمية + نقاط GET/PATCH/DELETE للاستخدام الداخلي فقط.
+// ---------------------------------------------------------------------------
+api.post('/public/leads', (req, res) => {
+  const body = req.body ?? {};
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'الاسم ورقم الجوال مطلوبان' });
+  }
+  const lead: Lead = {
+    id: store.id(),
+    name: name.slice(0, 200),
+    phone: normalizeSaudiPhone(phone),
+    area: typeof body.area === 'string' && body.area.trim() ? body.area.trim().slice(0, 200) : undefined,
+    service_name: typeof body.service_name === 'string' && body.service_name.trim() ? body.service_name.trim().slice(0, 200) : undefined,
+    message: typeof body.message === 'string' && body.message.trim() ? body.message.trim().slice(0, 1000) : undefined,
+    status: 'new',
+    created_at: new Date().toISOString(),
+  };
+  store.leads.insert(lead);
+  logActivity(req, `طلب جديد من العميل "${lead.name}"${lead.service_name ? ` (${lead.service_name})` : ''} عبر صفحة اطلب الخدمة`);
+  res.status(201).json(lead);
+});
+
+api.get('/leads', (_req, res) => res.json(store.leads.list()));
+
+api.patch('/leads/:id', (req, res) => {
+  const status = req.body?.status as LeadStatus | undefined;
+  if (status && !['new', 'contacted', 'closed'].includes(status)) {
+    return res.status(400).json({ error: 'حالة غير صحيحة' });
+  }
+  const updated = store.leads.update(req.params.id, status ? { status } : {});
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/leads/:id', (req, res) => {
+  const target = store.leads.get(req.params.id);
+  const removed = store.leads.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف طلب العميل "${target?.name ?? ''}"`);
   res.status(204).end();
 });

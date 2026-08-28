@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard.js';
 import Appointments from './pages/Appointments.js';
 import Contracts from './pages/Contracts.js';
 import Quotes from './pages/Quotes.js';
+import Leads from './pages/Leads.js';
+import OrderPage from './pages/OrderPage.js';
 import Expenses from './pages/Expenses.js';
 import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
@@ -28,11 +30,13 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/rate/:appointmentId" element={<RatePage />} />
+      <Route path="/order" element={<OrderPage />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/quotes" element={<Quotes />} />
+        <Route path="/leads" element={<Leads />} />
         <Route path="/expenses" element={<Expenses />} />
         {/* العهد أصبحت تبويباً داخل صفحة المصروفات */}
         <Route path="/custody" element={<Navigate to="/expenses" replace />} />
