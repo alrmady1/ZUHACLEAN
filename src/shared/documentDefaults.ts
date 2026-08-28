@@ -48,6 +48,6 @@ export const DEFAULT_CONTRACT_CLAUSES: Omit<ContractClause, 'id'>[] = [
 // رسالة أسفل عرض السعر — قابلة للتحرير من داخل نافذة إنشاء العرض قبل
 // الحفظ (انظر NewQuoteFlow.tsx)، وتُحفَظ نصاً حراً مستقلاً مع كل عرض.
 export const DEFAULT_QUOTE_PAYMENT_NOTE =
-  `يتم تحويل الدفعة الأولى على حساب الشركة - شركة ${COMPANY_NAME} - البنك الأهلي - SA294587439839847`;
+  `يتم تحويل الدفعة الأولى على حساب الشركة - شركة ${COMPANY_NAME} - البنك الأهلي - SA42 1000 0023 1000 0089 8800`;
 
 export const QUOTE_VALIDITY_DAYS = 15;
