@@ -15,6 +15,8 @@ import QuoteDocument from '../components/QuoteDocument.js';
 export default function Quotes() {
   const { user, can } = useAuth();
   const { t, tt } = useI18n();
+  const canCreateQuote = can('create_quotes');
+  const canViewPrintQuote = can('view_print_quotes');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -47,12 +49,14 @@ export default function Quotes() {
           <h1 className="text-xl font-bold text-slate-800">{t('عروض الأسعار')}</h1>
           <p className="text-sm text-slate-400">{t('إنشاء عرض سعر لعميل قبل الالتزام بموعد أو عقد')}</p>
         </div>
-        <button
-          onClick={() => setShowNewQuote(true)}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> {t('إنشاء عرض سعر')}
-        </button>
+        {canCreateQuote && (
+          <button
+            onClick={() => setShowNewQuote(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> {t('إنشاء عرض سعر')}
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
@@ -71,8 +75,8 @@ export default function Quotes() {
             {quotes.map((q) => (
               <tr
                 key={q.id}
-                onClick={() => setViewingQuote(q)}
-                className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50"
+                onClick={() => canViewPrintQuote && setViewingQuote(q)}
+                className={`border-b border-slate-50 last:border-0 hover:bg-slate-50 ${canViewPrintQuote ? 'cursor-pointer' : ''}`}
               >
                 <td className="p-3 font-medium text-slate-700">{q.quote_number}</td>
                 <td className="p-3 text-slate-600">{q.customer_name_snapshot}</td>
@@ -81,16 +85,18 @@ export default function Quotes() {
                 <td className="p-3 text-slate-600">{formatMoney(q.total)}</td>
                 <td className="p-3">
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewingQuote(q);
-                      }}
-                      title={t('عرض / طباعة')}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    {canViewPrintQuote && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingQuote(q);
+                        }}
+                        title={t('عرض / طباعة')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -116,7 +122,7 @@ export default function Quotes() {
         </table>
       </div>
 
-      {showNewQuote && (
+      {canCreateQuote && showNewQuote && (
         <NewQuoteFlow
           customers={customers}
           services={services}
@@ -130,6 +136,10 @@ export default function Quotes() {
         />
       )}
 
+      {/* لا تُقيَّد بـ view_print_quotes عمداً — من أنشأ عرضاً للتو (بصلاحية
+          create_quotes) يجب أن يرى مستنده فوراً للطباعة/الإرسال، حتى لو لم
+          يملك صلاحية استعراض عروض الآخرين القائمة في الجدول (المقيَّدة
+          أعلاه بزر العين والنقر على الصف). */}
       {viewingQuote && <QuoteDocument quote={viewingQuote} onClose={() => setViewingQuote(null)} />}
     </div>
   );

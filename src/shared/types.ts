@@ -77,7 +77,9 @@ export type PermissionKey =
   | 'edit_days_off'
   | 'assign_appointment_technician'
   | 'view_completed_tasks_page'
-  | 'view_quotes_page';
+  | 'view_quotes_page'
+  | 'create_quotes'
+  | 'view_print_quotes';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -113,6 +115,8 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   assign_appointment_technician: 'اضافة وتعديل الفني للموعد',
   view_completed_tasks_page: 'الاطلاع على صفحة المهام المكتملة',
   view_quotes_page: 'الاطلاع على صفحة عروض الأسعار',
+  create_quotes: 'عمل عرض سعر جديد',
+  view_print_quotes: 'استعراض وطباعة عرض سعر',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -161,6 +165,8 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // نفس افتراضي "الاطلاع على صفحة العقود" — كانت عروض الأسعار تبويباً
   // داخل تلك الصفحة قبل أن تصير صفحة مستقلة (Quotes.tsx).
   view_quotes_page: GM_ADMIN_ADMINSUP,
+  create_quotes: GM_ADMIN_ADMINSUP,
+  view_print_quotes: GM_ADMIN_ADMINSUP,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
