@@ -3,7 +3,7 @@ import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage } from '../lib/storage.js';
-import { sendPushToProfiles, appointmentNotifyProfileIds } from '../lib/push.js';
+import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds } from '../lib/push.js';
 import type {
   Appointment,
   Contract,
@@ -1157,6 +1157,16 @@ api.post('/public/leads', (req, res) => {
   store.leads.insert(lead);
   logActivity(req, `طلب جديد من العميل "${lead.name}"${lead.service_name ? ` (${lead.service_name})` : ''} عبر صفحة اطلب الخدمة`);
   res.status(201).json(lead);
+
+  // تنبيه فوري (Web Push) للمدير العام ومدير النظام والمشرفين الإداريين
+  // بوصول طلب خارجي جديد — لا يُنتظر (لا يُبطئ استجابة صفحة "اطلب
+  // الخدمة" العامة، ويُهمَل بصمت لو لم يُضبط VAPID بعد).
+  sendPushToProfiles(leadNotifyProfileIds(), {
+    title: 'طلب خارجي جديد',
+    body: `${lead.name}${lead.service_name ? ` — ${lead.service_name}` : ''}`,
+    url: '/leads',
+    tag: `lead-${lead.id}`,
+  }).catch((err) => console.error('❌ فشل إرسال تنبيه الطلب الجديد:', err));
 });
 
 api.get('/leads', (_req, res) => res.json(store.leads.list()));

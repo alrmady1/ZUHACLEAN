@@ -61,3 +61,15 @@ export function appointmentNotifyProfileIds(supervisorId: string | undefined, te
   }
   return [...ids];
 }
+
+// المدير العام ومدير النظام والمشرفين الإداريين — يُستخدم لتنبيه من
+// يتابع صفحة "طلبات جديدة" (Leads.tsx) بوصول طلب خارجي من صفحة "اطلب
+// الخدمة" العامة (انظر POST /public/leads في api.ts)، ليتعاملوا معه
+// بسرعة قبل أن يفقد العميل الاهتمام. لا يشمل المشرفين الميدانيين ولا
+// الفنيين عمداً — نفس فئة GM_ADMIN_ADMINSUP في src/shared/types.ts.
+export function leadNotifyProfileIds(): string[] {
+  return store.profiles
+    .list()
+    .filter((p) => p.role === 'general_manager' || p.role === 'admin' || p.role === 'admin_supervisor')
+    .map((p) => p.id);
+}
