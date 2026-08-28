@@ -126,9 +126,12 @@ export default function OrderPage() {
         </a>
       </header>
 
-      {/* ============================== الهيرو ============================== */}
+      {/* ================== الهيرو + استمارة الطلب السريع ================== */}
+      {/* النص أولاً في DOM ثم بطاقة الاستمارة ثانياً — داخل flex-row عادي
+          مع اتجاه الصفحة rtl، فأول عنصر في الشجرة (النص) يظهر يميناً
+          وثانيها (الاستمارة) يساراً، مطابقةً للتصميم المرجعي المطلوب. */}
       <section
-        className="relative overflow-hidden px-5 py-16 text-center sm:px-10 sm:py-24"
+        className="relative overflow-hidden px-5 py-16 sm:px-10 sm:py-20"
         style={{ backgroundColor: NAVY }}
       >
         <div
@@ -139,68 +142,65 @@ export default function OrderPage() {
           className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full opacity-10"
           style={{ backgroundColor: CREAM }}
         />
-        <div className="relative mx-auto max-w-2xl">
-          <span
-            className="mb-4 inline-block rounded-full px-4 py-1.5 text-xs font-bold"
-            style={{ backgroundColor: CREAM, color: NAVY }}
-          >
-            {COMPANY_NAME} للنظافة والخدمات
-          </span>
-          <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
-          <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">{settings.hero_subtitle}</p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={scrollToForm}
-              className="rounded-xl px-6 py-3 text-sm font-bold transition hover:opacity-90"
-              style={{ backgroundColor: GREEN, color: NAVY }}
+        <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-10 lg:flex-row lg:items-center lg:gap-14">
+          <div className="flex-1 text-center lg:text-right">
+            <span
+              className="mb-4 inline-block rounded-full px-4 py-1.5 text-xs font-bold"
+              style={{ backgroundColor: CREAM, color: NAVY }}
             >
-              اطلب الخدمة الآن
-            </button>
-            <a
-              href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 rounded-xl border border-white/30 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10"
-            >
-              <MessageCircle className="h-4 w-4" /> تواصل عبر واتساب
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* ========================= استمارة الطلب السريع ========================= */}
-      <section id="order-form" className="relative -mt-10 px-5 sm:px-10">
-        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-2xl sm:p-8">
-          {done ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <CheckCircle2 className="h-14 w-14" style={{ color: GREEN }} />
-              <h2 className="text-xl font-bold" style={{ color: NAVY }}>
-                تم استلام طلبك بنجاح!
-              </h2>
-              <p className="max-w-sm text-sm text-slate-500">
-                شكراً لتواصلك مع {COMPANY_NAME}، سيتواصل معك فريقنا في أقرب وقت لتأكيد التفاصيل
-                وتحديد الموعد المناسب.
-              </p>
+              {COMPANY_NAME} للنظافة والخدمات
+            </span>
+            <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
+            <p className="mt-5 text-sm leading-relaxed text-white/70 sm:text-base lg:max-w-lg">{settings.hero_subtitle}</p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+              <button
+                type="button"
+                onClick={scrollToForm}
+                className="rounded-xl px-6 py-3 text-sm font-bold transition hover:opacity-90 lg:hidden"
+                style={{ backgroundColor: GREEN, color: NAVY }}
+              >
+                اطلب الخدمة الآن
+              </button>
               <a
                 href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
-                style={{ backgroundColor: NAVY }}
+                className="flex items-center gap-2 rounded-xl border border-white/30 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10"
               >
-                <MessageCircle className="h-4 w-4" /> أو تواصل معنا مباشرة عبر واتساب
+                <MessageCircle className="h-4 w-4" /> تواصل عبر واتساب
               </a>
             </div>
-          ) : (
-            <form onSubmit={submit} className="space-y-4">
-              <div className="text-center">
-                <h2 className="text-lg font-bold" style={{ color: NAVY }}>
-                  استمارة طلب سريعة
+          </div>
+
+          <div id="order-form" className="w-full shrink-0 rounded-2xl bg-white p-6 shadow-2xl sm:p-8 lg:w-[420px]">
+            {done ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <CheckCircle2 className="h-14 w-14" style={{ color: GREEN }} />
+                <h2 className="text-xl font-bold" style={{ color: NAVY }}>
+                  تم استلام طلبك بنجاح!
                 </h2>
-                <p className="mt-1 text-xs text-slate-400">عبّئ بياناتك وسنتواصل معك خلال دقائق</p>
+                <p className="max-w-sm text-sm text-slate-500">
+                  شكراً لتواصلك مع {COMPANY_NAME}، سيتواصل معك فريقنا في أقرب وقت لتأكيد التفاصيل
+                  وتحديد الموعد المناسب.
+                </p>
+                <a
+                  href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
+                  style={{ backgroundColor: NAVY }}
+                >
+                  <MessageCircle className="h-4 w-4" /> أو تواصل معنا مباشرة عبر واتساب
+                </a>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+            ) : (
+              <form onSubmit={submit} className="space-y-4">
+                <div className="text-center">
+                  <h2 className="text-lg font-bold" style={{ color: NAVY }}>
+                    استمارة طلب سريعة
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-400">عبّئ بياناتك وسنتواصل معك خلال دقائق</p>
+                </div>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">الاسم الكامل</span>
                   <input
@@ -222,8 +222,6 @@ export default function OrderPage() {
                     className="input"
                   />
                 </label>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">الخدمة المطلوبة</span>
                   <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className="input">
@@ -244,35 +242,35 @@ export default function OrderPage() {
                     className="input"
                   />
                 </label>
-              </div>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">ملاحظات إضافية (اختياري)</span>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={3}
-                  maxLength={1000}
-                  placeholder="اكتب أي تفاصيل تساعدنا على خدمتك بشكل أفضل"
-                  className="input resize-none"
-                />
-              </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">ملاحظات إضافية (اختياري)</span>
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={3}
+                    maxLength={1000}
+                    placeholder="اكتب أي تفاصيل تساعدنا على خدمتك بشكل أفضل"
+                    className="input resize-none"
+                  />
+                </label>
 
-              {submitError && (
-                <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                  <AlertCircle className="h-4 w-4 shrink-0" /> {submitError}
-                </div>
-              )}
+                {submitError && (
+                  <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                    <AlertCircle className="h-4 w-4 shrink-0" /> {submitError}
+                  </div>
+                )}
 
-              <button
-                type="submit"
-                disabled={submitting || !name.trim() || !phone.trim()}
-                className="w-full rounded-xl py-3 text-sm font-bold text-white transition disabled:opacity-50"
-                style={{ backgroundColor: NAVY }}
-              >
-                {submitting ? 'جارِ الإرسال…' : 'إرسال الطلب'}
-              </button>
-            </form>
-          )}
+                <button
+                  type="submit"
+                  disabled={submitting || !name.trim() || !phone.trim()}
+                  className="w-full rounded-xl py-3 text-sm font-bold text-white transition disabled:opacity-50"
+                  style={{ backgroundColor: NAVY }}
+                >
+                  {submitting ? 'جارِ الإرسال…' : 'إرسال الطلب'}
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </section>
 
