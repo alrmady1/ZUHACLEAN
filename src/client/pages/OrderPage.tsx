@@ -146,9 +146,9 @@ export default function OrderPage() {
           <div className="flex-1 text-center lg:text-right">
             <div className="mb-6 flex justify-center lg:justify-start">
               <img
-                src="/icon-inverted-512.png"
+                src="/icon-mono-cream-512.png"
                 alt={COMPANY_NAME}
-                className="h-40 w-40 rounded-2xl shadow-lg sm:h-48 sm:w-48"
+                className="h-40 w-40 drop-shadow-lg sm:h-48 sm:w-48"
               />
             </div>
             <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
@@ -202,56 +202,62 @@ export default function OrderPage() {
                   </h2>
                   <p className="mt-1 text-xs text-slate-400">عبّئ بياناتك وسنتواصل معك خلال دقائق</p>
                 </div>
+                <div className="flex flex-col gap-2 text-slate-500 sm:flex-row">
+                  <label className="flex-1 text-sm">
+                    <span className="sr-only">الاسم الكامل</span>
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      placeholder="الاسم الكامل"
+                      className="input text-slate-500 placeholder:text-slate-500"
+                    />
+                  </label>
+                  <label className="flex-1 text-sm">
+                    <span className="sr-only">رقم الجوال</span>
+                    <input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      dir="ltr"
+                      placeholder="رقم الجوال"
+                      className="input text-slate-500 placeholder:text-slate-500"
+                    />
+                  </label>
+                  <label className="flex-1 text-sm">
+                    <span className="sr-only">الخدمة المطلوبة</span>
+                    <select
+                      value={serviceName}
+                      onChange={(e) => setServiceName(e.target.value)}
+                      className="input text-slate-500"
+                    >
+                      <option value="">الخدمة المطلوبة</option>
+                      {services.map((s) => (
+                        <option key={s.id} value={s.title}>
+                          {s.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">الاسم الكامل</span>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="اسمك الكريم"
-                    className="input"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">رقم الجوال</span>
-                  <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    dir="ltr"
-                    placeholder="05xxxxxxxx"
-                    className="input"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">الخدمة المطلوبة</span>
-                  <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className="input">
-                    <option value="">اختر الخدمة (اختياري)</option>
-                    {services.map((s) => (
-                      <option key={s.id} value={s.title}>
-                        {s.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">المنطقة / الحي</span>
+                  <span className="sr-only">المنطقة / الحي</span>
                   <input
                     value={area}
                     onChange={(e) => setArea(e.target.value)}
-                    placeholder="مثال: حي الملقا، الرياض"
-                    className="input"
+                    placeholder="المنطقة / الحي (مثال: حي الملقا، الرياض)"
+                    className="input text-slate-500 placeholder:text-slate-500"
                   />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">ملاحظات إضافية (اختياري)</span>
+                  <span className="sr-only">ملاحظات إضافية (اختياري)</span>
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     rows={3}
                     maxLength={1000}
-                    placeholder="اكتب أي تفاصيل تساعدنا على خدمتك بشكل أفضل"
-                    className="input resize-none"
+                    placeholder="ملاحظات إضافية (اختياري) — اكتب أي تفاصيل تساعدنا على خدمتك بشكل أفضل"
+                    className="input resize-none text-slate-500 placeholder:text-slate-500"
                   />
                 </label>
 
