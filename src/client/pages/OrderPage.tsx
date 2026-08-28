@@ -146,9 +146,9 @@ export default function OrderPage() {
           <div className="flex-1 text-center lg:text-right">
             <div className="mb-6 flex justify-center lg:justify-start">
               <img
-                src="/icon-mono-cream-512.png"
+                src="/icon-512.png"
                 alt={COMPANY_NAME}
-                className="h-40 w-40 drop-shadow-lg sm:h-48 sm:w-48"
+                className="h-40 w-40 rounded-2xl shadow-lg sm:h-48 sm:w-48"
               />
             </div>
             <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
@@ -204,12 +204,12 @@ export default function OrderPage() {
                 </div>
                 <div className="flex flex-col gap-2 text-slate-500 sm:flex-row">
                   <label className="flex-1 text-sm">
-                    <span className="sr-only">الاسم الكامل</span>
+                    <span className="sr-only">الاسم</span>
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
-                      placeholder="الاسم الكامل"
+                      placeholder="الاسم"
                       className="input text-slate-500 placeholder:text-slate-500"
                     />
                   </label>
