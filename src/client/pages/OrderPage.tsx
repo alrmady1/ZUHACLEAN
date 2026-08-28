@@ -144,12 +144,13 @@ export default function OrderPage() {
         />
         <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-10 lg:flex-row lg:items-center lg:gap-14">
           <div className="flex-1 text-center lg:text-right">
-            <span
-              className="mb-4 inline-block rounded-full px-4 py-1.5 text-xs font-bold"
-              style={{ backgroundColor: CREAM, color: NAVY }}
-            >
-              {COMPANY_NAME} للنظافة والخدمات
-            </span>
+            <div className="mb-6 flex justify-center lg:justify-start">
+              <img
+                src="/icon-inverted-512.png"
+                alt={COMPANY_NAME}
+                className="h-20 w-20 rounded-2xl shadow-lg sm:h-24 sm:w-24"
+              />
+            </div>
             <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
             <p className="mt-5 text-sm leading-relaxed text-white/70 sm:text-base lg:max-w-lg">{settings.hero_subtitle}</p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
