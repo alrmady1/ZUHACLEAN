@@ -284,7 +284,7 @@ export default function OrderPage() {
           </h2>
           <p className="mt-2 text-sm text-slate-500">مجموعة متكاملة من خدمات التنظيف والصيانة تحت سقف واحد</p>
         </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2">
           {services.map((s) => {
             const Icon = serviceIcon(s.title);
             return (
