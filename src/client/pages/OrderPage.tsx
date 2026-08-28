@@ -148,7 +148,7 @@ export default function OrderPage() {
               <img
                 src="/icon-inverted-512.png"
                 alt={COMPANY_NAME}
-                className="h-20 w-20 rounded-2xl shadow-lg sm:h-24 sm:w-24"
+                className="h-40 w-40 rounded-2xl shadow-lg sm:h-48 sm:w-48"
               />
             </div>
             <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
