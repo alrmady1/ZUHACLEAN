@@ -146,7 +146,7 @@ export default function OrderPage() {
           <div className="flex-1 text-center lg:text-right">
             <div className="mb-6 flex justify-center lg:justify-start">
               <img
-                src="/icon-512.png"
+                src="/icon-inverted-512.png"
                 alt={COMPANY_NAME}
                 className="h-40 w-40 rounded-2xl shadow-lg sm:h-48 sm:w-48"
               />
