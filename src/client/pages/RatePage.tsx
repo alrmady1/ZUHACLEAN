@@ -64,7 +64,7 @@ export default function RatePage() {
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600">
             <Sparkles className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">زهى الأعمال</h1>
+          <h1 className="text-xl font-bold text-slate-800">زهى</h1>
           <p className="mt-1 text-sm text-slate-400">لأعمال الصيانة والتنظيف</p>
         </div>
 

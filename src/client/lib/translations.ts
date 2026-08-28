@@ -3,7 +3,7 @@
 // الأصلي كما يظهر في الكود، والقيمة ترجمته الإنجليزية. يُستخدم عبر
 // useI18n().t('النص العربي').
 export const AR_TO_EN: Record<string, string> = {
-  "زهى الأعمال | نظام التشغيل والصيانة": "ZUHA Business | Operations and Maintenance System",
+  "زهى | نظام التشغيل والصيانة": "Zaha | Operations and Maintenance System",
   "تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء": "The end date must be after the start date",
   "الإجازات السنوية": "Annual Leaves",
   "فترة محددة بتاريخين — لا يمكن إسناد موعد جديد لصاحبها خلالها إطلاقاً.": "A period defined by two dates — no new appointment can be assigned to its owner during it.",
@@ -242,7 +242,7 @@ export const AR_TO_EN: Record<string, string> = {
   "بوابة الفني": "Technician Portal",
   "الإعدادات": "Settings",
   "جارِ التحميل…": "Loading…",
-  "زهى الأعمال": "Business Excellence",
+  "زهى": "Zaha",
   "نظام التشغيل والصيانة": "Operation and Maintenance System",
   "إغلاق القائمة": "Close Menu",
   "عميل": "Customer",
@@ -428,7 +428,7 @@ export const AR_TO_EN: Record<string, string> = {
   "جارِ تسجيل الدخول…": "Loginning…",
   "تسجيل الدخول": "Login",
   "تعذر تسجيل الدخول": "Unable to log in",
-  "مرحباً بك في زهى الأعمال": "Welcome to Zaha Business",
+  "مرحباً بك في زهى": "Welcome to Zaha",
   "اسم المستخدم": "Username",
   "كلمة المرور": "Password",
   "آخر 7 أيام": "Last 7 days",

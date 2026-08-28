@@ -42,7 +42,7 @@ export default function Login() {
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600">
             <Sparkles className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">{t('مرحباً بك في زهى الأعمال')}</h1>
+          <h1 className="text-xl font-bold text-slate-800">{t('مرحباً بك في زهى')}</h1>
           <p className="mt-1 text-sm text-slate-400">{t('لأعمال الصيانة والتنظيف')}</p>
         </div>
 

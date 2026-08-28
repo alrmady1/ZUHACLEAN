@@ -6,6 +6,7 @@ import {
   FileSignature,
   Wallet,
   Receipt,
+  Tag,
   Users,
   Smartphone,
   Settings as SettingsIcon,
@@ -33,10 +34,12 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/customers', label: 'العملاء', icon: Users, permissionKey: 'view_customer_history' },
   { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, permissionKey: 'view_sales_invoices' },
+  // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".
+  { to: '/quotes', label: 'عرض سعر', icon: Tag, permissionKey: 'view_quotes_page' },
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, permissionKey: 'view_expenses_page' },
+  { to: '/customers', label: 'العملاء', icon: Users, permissionKey: 'view_customer_history' },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
   // المشرف الإداري يرى الإعدادات أيضاً افتراضياً — يفتح له تلقائياً على
   // تبويب "ربط الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية
@@ -95,7 +98,7 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-brand-400" />
             <div>
-              <div className="text-lg font-bold text-white">{t('زهى الأعمال')}</div>
+              <div className="text-lg font-bold text-white">{t('زهى')}</div>
               <div className="text-xs text-slate-400">{t('نظام التشغيل والصيانة')}</div>
             </div>
           </div>

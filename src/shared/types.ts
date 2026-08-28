@@ -76,7 +76,8 @@ export type PermissionKey =
   | 'edit_appointment_team'
   | 'edit_days_off'
   | 'assign_appointment_technician'
-  | 'view_completed_tasks_page';
+  | 'view_completed_tasks_page'
+  | 'view_quotes_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -111,6 +112,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   edit_days_off: 'تعديل الإجازات',
   assign_appointment_technician: 'اضافة وتعديل الفني للموعد',
   view_completed_tasks_page: 'الاطلاع على صفحة المهام المكتملة',
+  view_quotes_page: 'الاطلاع على صفحة عروض الأسعار',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -156,6 +158,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // مخفية عن الفني الميداني تحديداً — تبويب "المهام المكتملة" داخل صفحة
   // المواعيد (انظر Appointments.tsx).
   view_completed_tasks_page: NOT_TECHNICIAN,
+  // نفس افتراضي "الاطلاع على صفحة العقود" — كانت عروض الأسعار تبويباً
+  // داخل تلك الصفحة قبل أن تصير صفحة مستقلة (Quotes.tsx).
+  view_quotes_page: GM_ADMIN_ADMINSUP,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -552,7 +557,7 @@ export interface Quote {
 
 // The seller identity ZATCA (Saudi Zakat, Tax and Customs Authority) prints
 // on simplified tax invoices and encodes into the compliance QR code.
-export const COMPANY_NAME = 'زهى الأعمال';
+export const COMPANY_NAME = 'زهى';
 export const COMPANY_VAT_NUMBER = '314739292200003';
 export const COMPANY_PHONE = '0582464181';
 // لم يزوّدنا صاحب العمل برقم السجل التجاري بعد — يبقى فارغاً عمداً حتى

@@ -27,7 +27,7 @@ async function refreshBadge() {
 }
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'زهى الأعمال', body: '' };
+  let data = { title: 'زهى', body: '' };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {

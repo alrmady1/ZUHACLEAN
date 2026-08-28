@@ -4,6 +4,7 @@ import Login from './pages/Login.js';
 import Dashboard from './pages/Dashboard.js';
 import Appointments from './pages/Appointments.js';
 import Contracts from './pages/Contracts.js';
+import Quotes from './pages/Quotes.js';
 import Expenses from './pages/Expenses.js';
 import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/appointments" element={<Appointments />} />
         <Route path="/contracts" element={<Contracts />} />
+        <Route path="/quotes" element={<Quotes />} />
         <Route path="/expenses" element={<Expenses />} />
         {/* العهد أصبحت تبويباً داخل صفحة المصروفات */}
         <Route path="/custody" element={<Navigate to="/expenses" replace />} />
