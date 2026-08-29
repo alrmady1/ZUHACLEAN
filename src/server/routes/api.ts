@@ -72,9 +72,22 @@ function logActivity(req: Request, action: string): void {
   });
 }
 
-// مقيَّدة في الواجهة فقط (ACTIVITY_LOG_ACCESS_ROLES) — لا تحقق صلاحيات من
-// جهة الخادم، مطابقةً لبقية نقاط التحكم في هذا الملف.
+// مقيَّدة في الواجهة فقط (view_activity_log الديناميكية للاطلاع،
+// ACTIVITY_LOG_DELETE_ROLES الثابتة للحذف) — لا تحقق صلاحيات من جهة
+// الخادم، مطابقةً لبقية نقاط التحكم في هذا الملف.
 api.get('/activity-log', (_req, res) => res.json(store.activityLog.list()));
+
+// حذف جماعي لسطور من سجل العمليات (تحديد سطر أو الكل ثم زر حذف من
+// ActivityLogTab) — محصور بالمدير العام في الواجهة فقط.
+api.delete('/activity-log', (req, res) => {
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
+    return res.status(400).json({ error: 'ids (مصفوفة معرّفات نصية) مطلوبة' });
+  }
+  const removed = store.activityLog.removeMany(ids);
+  if (removed > 0) logActivity(req, `تم حذف ${removed} من سجلات العمليات`);
+  res.json({ removed });
+});
 
 // ---------------------------------------------------------------------------
 // Permissions — صفحة الإعدادات ← الصلاحيات (المدير العام ومدير النظام،

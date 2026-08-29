@@ -81,7 +81,8 @@ export type PermissionKey =
   | 'create_quotes'
   | 'view_print_quotes'
   | 'view_leads_page'
-  | 'edit_landing_page';
+  | 'edit_landing_page'
+  | 'view_activity_log';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -121,6 +122,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_print_quotes: 'استعراض وطباعة عرض سعر',
   view_leads_page: 'الاطلاع على طلبات العملاء الواردة',
   edit_landing_page: 'التحكم بصفحة الطلبات الخارجية',
+  view_activity_log: 'الاطلاع على سجل العمليات',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -178,6 +180,11 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // المعروضة وصورها) — نفس فئة من يتحكم بدليل الخدمات وأسعارها
   // (edit_services)، وليس أي مشرف.
   edit_landing_page: GM_ADMIN,
+  // كانت مقيَّدة بثابت غير قابل للتعديل (ACTIVITY_LOG_ACCESS_ROLES)
+  // يشمل المدير العام ومدير النظام معاً — صارت صلاحية ديناميكية، لكن
+  // افتراضها الآن المدير العام فقط بطلب صريح؛ يمكن منحها لمدير النظام
+  // أو غيره لاحقاً من هذه الصفحة نفسها متى رغب المدير العام في ذلك.
+  view_activity_log: ['general_manager'],
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -287,8 +294,8 @@ export interface PushSubscriptionRecord {
   created_at: string;
 }
 
-// سجل عملية واحدة — صفحة الإعدادات ← سجل العمليات (المدير العام ومدير
-// النظام فقط، انظر ACTIVITY_LOG_ACCESS_ROLES أدناه). actor_id/actor_name
+// سجل عملية واحدة — صفحة الإعدادات ← سجل العمليات (خلف صلاحية ديناميكية
+// view_activity_log، انظر PermissionKey أدناه). actor_id/actor_name
 // يُرسَلان تلقائياً من العميل مع كل طلب POST/PATCH/DELETE عبر ترويسة
 // X-Actor-Id (انظر src/client/lib/api.ts)، لا حاجة لتمريرهما يدوياً في كل
 // استدعاء — الخادم يقرأها ويلتقط اسم الملف الشخصي وقت التسجيل نفسه
@@ -301,11 +308,12 @@ export interface ActivityLogEntry {
   created_at: string;
 }
 
-// مطابقة تماماً لـ PERMISSIONS_ACCESS_ROLES — صفحة سجل العمليات مقيَّدة
-// دائماً بنفس الدورين، بلا استثناء وبلا إمكانية تعديل من صفحة الصلاحيات
-// نفسها (لا صلاحية ديناميكية لها عمداً، حساسية البيانات هنا أعلى من أي
-// صفحة أخرى).
-export const ACTIVITY_LOG_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
+// من يملك حق حذف سطور من سجل العمليات (تحديد سطر أو الكل ثم زر حذف،
+// انظر ActivityLogTab في Settings.tsx) — المدير العام فقط، ثابتة عمداً
+// وغير قابلة للتعديل من صفحة الصلاحيات (بخلاف الاطلاع على السجل نفسه،
+// الذي صار صلاحية ديناميكية view_activity_log) — حذف سجل تدقيق فعلي
+// أخطر من مجرد الاطلاع عليه، فيبقى محصوراً بأعلى مستوى إدارة دون استثناء.
+export const ACTIVITY_LOG_DELETE_ROLES: UserRole[] = ['general_manager'];
 
 // تقييم عميل لموعد مكتمل — يُرسَل رابطها للعميل عبر واتساب بعد اكتمال
 // الخدمة وإصدار الفاتورة (انظر زر "تقييم العميل" في AppointmentDetailModal

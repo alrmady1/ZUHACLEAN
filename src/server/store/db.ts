@@ -719,6 +719,16 @@ export const store = {
       persist();
       return e;
     },
+    // حذف جماعي (تحديد سطر أو الكل من ActivityLogTab) — يرجع عدد
+    // السطور المحذوفة فعلياً (معرّفات غير موجودة تُتجاهل بصمت).
+    removeMany: (ids: string[]) => {
+      const idSet = new Set(ids);
+      const before = db.activityLog.length;
+      db.activityLog = db.activityLog.filter((e) => !idSet.has(e.id));
+      const removed = before - db.activityLog.length;
+      if (removed > 0) persist();
+      return removed;
+    },
   },
   quotes: {
     list: () => [...db.quotes].reverse(),

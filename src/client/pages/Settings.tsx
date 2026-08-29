@@ -51,7 +51,7 @@ import type {
   LandingService,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, ACTIVITY_LOG_ACCESS_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, ACTIVITY_LOG_DELETE_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -2446,18 +2446,28 @@ function PermissionsTab() {
   );
 }
 
-// سجل العمليات — الإعدادات ← سجل العمليات (المدير العام ومدير النظام
-// فقط، ACTIVITY_LOG_ACCESS_ROLES). كل عملية تعديل/إضافة/حذف مؤثرة في
-// التطبيق تُسجَّل تلقائياً من الخادم (انظر logActivity في
-// src/server/routes/api.ts) مع من قام بها ووقتها — هذه الصفحة تعرضها
-// فقط، الأحدث أولاً (الخادم يرجعها بهذا الترتيب أصلاً).
+// سجل العمليات — الإعدادات ← سجل العمليات (خلف صلاحية ديناميكية
+// view_activity_log). كل عملية تعديل/إضافة/حذف مؤثرة في التطبيق تُسجَّل
+// تلقائياً من الخادم (انظر logActivity في src/server/routes/api.ts) مع
+// من قام بها ووقتها — هذه الصفحة تعرضها فقط، الأحدث أولاً (الخادم
+// يرجعها بهذا الترتيب أصلاً). حذف سطور منه (تحديد سطر أو الكل ثم زر
+// حذف) محصور بالمدير العام فقط (ACTIVITY_LOG_DELETE_ROLES، ثابتة وغير
+// قابلة للتعديل من صفحة الصلاحيات، بخلاف صلاحية الاطلاع نفسها).
 function ActivityLogTab() {
   const { t, tt } = useI18n();
+  const { user } = useAuth();
+  const canDelete = user ? ACTIVITY_LOG_DELETE_ROLES.includes(user.role) : false;
   const [entries, setEntries] = useState<ActivityLogEntry[] | null>(null);
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  function refresh() {
+    api.get<ActivityLogEntry[]>('/activity-log').then(setEntries);
+  }
 
   useEffect(() => {
-    api.get<ActivityLogEntry[]>('/activity-log').then(setEntries);
+    refresh();
   }, []);
 
   if (!entries) {
@@ -2469,28 +2479,109 @@ function ActivityLogTab() {
     ? entries.filter((e) => [e.action, e.actor_name].filter(Boolean).join(' ').toLowerCase().includes(q))
     : entries;
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every((e) => selected.has(e.id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllFiltered() {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        // إلغاء تحديد الصفوف الظاهرة حالياً فقط (يحافظ على أي تحديد سابق
+        // من بحث مختلف لا يظهر ضمن النتائج الحالية).
+        const next = new Set(prev);
+        for (const e of filtered) next.delete(e.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const e of filtered) next.add(e.id);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    if (
+      !window.confirm(
+        tt(
+          `حذف ${selected.size} من سجلات العمليات نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+          `Permanently delete ${selected.size} activity log ${selected.size === 1 ? 'entry' : 'entries'}? This cannot be undone.`,
+        ),
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      await api.del('/activity-log', { ids: [...selected] });
+      setSelected(new Set());
+      refresh();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
-        {t('سجل كامل بكل عملية إضافة أو تعديل أو حذف مؤثرة في النظام، مع من قام بها ووقتها — لا يمكن التعديل عليه أو حذف عناصره.')}
+        {canDelete
+          ? t('سجل كامل بكل عملية إضافة أو تعديل أو حذف مؤثرة في النظام، مع من قام بها ووقتها. يمكن للمدير العام وحده حذف سطور منه بتحديدها.')
+          : t('سجل كامل بكل عملية إضافة أو تعديل أو حذف مؤثرة في النظام، مع من قام بها ووقتها — لا يمكن التعديل عليه، وحذف عناصره محصور بالمدير العام.')}
       </div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('ابحث بنوع العملية أو اسم المستخدم...')}
-          className="input ps-9"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('ابحث بنوع العملية أو اسم المستخدم...')}
+            className="input ps-9"
+          />
+        </div>
+        {canDelete && (
+          <button
+            onClick={deleteSelected}
+            disabled={selected.size === 0 || deleting}
+            className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4" /> {deleting ? t('جارِ الحذف…') : t('حذف المحدد')} {selected.size > 0 && `(${selected.size})`}
+          </button>
+        )}
       </div>
+      {canDelete && filtered.length > 0 && (
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-slate-500">
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            onChange={toggleAllFiltered}
+            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+          />
+          {t('تحديد الكل')}
+        </label>
+      )}
       <div className="max-h-[70vh] space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3">
         {filtered.map((e) => (
-          <div key={e.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
-            <div className="font-medium text-slate-700">{e.action}</div>
-            <div className="mt-0.5 text-xs text-slate-400">
-              {tt(`بواسطة ${e.actor_name ?? 'مستخدم غير معروف'}`, `by ${e.actor_name ?? 'Unknown user'}`)}
-              {' — '}
-              {formatDateAr(e.created_at)} {t('الساعة')} {formatTimeAr(e.created_at)}
+          <div key={e.id} className="flex items-start gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+            {canDelete && (
+              <input
+                type="checkbox"
+                checked={selected.has(e.id)}
+                onChange={() => toggleOne(e.id)}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-slate-700">{e.action}</div>
+              <div className="mt-0.5 text-xs text-slate-400">
+                {tt(`بواسطة ${e.actor_name ?? 'مستخدم غير معروف'}`, `by ${e.actor_name ?? 'Unknown user'}`)}
+                {' — '}
+                {formatDateAr(e.created_at)} {t('الساعة')} {formatTimeAr(e.created_at)}
+              </div>
             </div>
           </div>
         ))}
@@ -2512,7 +2603,7 @@ export default function Settings() {
   const canDaysOff = can('edit_days_off');
   const canLandingPage = can('edit_landing_page');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
-  const canActivityLog = user ? ACTIVITY_LOG_ACCESS_ROLES.includes(user.role) : false;
+  const canActivityLog = can('view_activity_log');
 
   type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'landing_page' | 'permissions' | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
