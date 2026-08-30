@@ -717,7 +717,8 @@ api.post('/appointments/:id/photos', async (req, res) => {
     const url = await uploadAppointmentPhoto(appt.id, stage, data_url);
     appt.photos.push({ id: store.id(), stage, data_url: url, taken_at: new Date().toISOString() });
     store.appointments.update(appt.id, { photos: appt.photos });
-    logActivity(req, `تم إضافة صورة ${stage === 'before' ? 'قبل' : 'بعد'} العمل لموعد "${appt.customer_name_snapshot ?? ''}"`);
+    const stageLabel = stage === 'before' ? 'قبل العمل' : stage === 'after' ? 'بعد العمل' : 'الموقع الحالي';
+    logActivity(req, `تم إضافة صورة ${stageLabel} لموعد "${appt.customer_name_snapshot ?? ''}"`);
     res.status(201).json(appt);
   } catch (err) {
     console.error('❌ فشل رفع الصورة إلى Supabase Storage:', err);

@@ -581,7 +581,10 @@ export interface AppointmentAssignment {
 
 export interface AppointmentPhoto {
   id: string;
-  stage: 'before' | 'after';
+  // 'site' = صور الموقع الحالي — تُستخدم فقط لمواعيد "زيارة عميل"
+  // (kind: 'visit')، بديلاً عن قبل/بعد التي لا معنى لها قبل تنفيذ خدمة
+  // فعلية أصلاً.
+  stage: 'before' | 'after' | 'site';
   data_url: string;
   taken_at: string;
 }
