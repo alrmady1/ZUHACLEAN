@@ -27,6 +27,7 @@ import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
+import DayClock from '../components/DayClock.js';
 import { weekdayAr, formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -159,7 +160,7 @@ export default function Appointments() {
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [ratingCustomerAppt, setRatingCustomerAppt] = useState<Appointment | null>(null);
   const [scope, setScope] = useState<ScopeFilter>('mine');
-  const [view, setView] = useState<'table' | 'calendar'>('table');
+  const [view, setView] = useState<'table' | 'calendar' | 'clock'>('table');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'all'>('all');
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
@@ -348,6 +349,12 @@ export default function Appointments() {
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'table' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
               >
                 <Table2 className="h-4 w-4" /> {t('الجدول')}
+              </button>
+              <button
+                onClick={() => setView('clock')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${view === 'clock' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+              >
+                <Clock className="h-4 w-4" /> {t('الساعة')}
               </button>
             </div>
           )}
@@ -591,7 +598,7 @@ export default function Appointments() {
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : view === 'calendar' ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             {/* هذه المجموعة (أسهم التنقّل + أزرار شهر/أسبوع/يوم) تبقى دائماً على
@@ -756,6 +763,8 @@ export default function Appointments() {
             </div>
           )}
         </div>
+      ) : (
+        <DayClock appointments={filtered} onSelectAppointment={setViewingAppt} />
       )}
       </>
       )}

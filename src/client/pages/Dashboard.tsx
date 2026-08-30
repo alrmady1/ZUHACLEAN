@@ -14,9 +14,11 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Service, Invoice } from '../../shared/types.js';
+import type { Appointment, Customer, Service, Invoice, PaymentMethodOption } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
+import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
+import DayClock from '../components/DayClock.js';
 import StatCard from '../components/StatCard.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -46,7 +48,9 @@ export default function Dashboard() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [showNewAppt, setShowNewAppt] = useState(false);
+  const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [newApptAlert, setNewApptAlert] = useState<Appointment | null>(null);
   // null = لم نحمّل القائمة بعد؛ أول تحميل يسجّل المعرّفات الحالية بصمت
   // (بدون تنبيه)، وأي معرّف يظهر بعدها يُعتبر موعداً جديداً فعلاً.
@@ -71,6 +75,7 @@ export default function Dashboard() {
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
     api.get<Invoice[]>('/invoices').then(setInvoices);
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     const interval = setInterval(refreshAppointments, NEW_APPOINTMENT_POLL_MS);
     return () => clearInterval(interval);
   }, []);
@@ -154,6 +159,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <DayClock appointments={appointments} onSelectAppointment={setViewingAppt} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
@@ -335,6 +342,18 @@ export default function Dashboard() {
           onClose={() => setShowNewAppt(false)}
           onCreated={refreshAppointments}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
+        />
+      )}
+
+      {viewingAppt && (
+        <AppointmentDetailModal
+          appointment={appointments.find((a) => a.id === viewingAppt.id) ?? viewingAppt}
+          customer={customers.find((c) => c.id === viewingAppt.customer_id)}
+          allProfiles={allProfiles}
+          services={services}
+          paymentMethods={paymentMethods}
+          onClose={() => setViewingAppt(null)}
+          onChanged={refreshAppointments}
         />
       )}
     </div>
