@@ -764,7 +764,7 @@ export default function Appointments() {
           )}
         </div>
       ) : (
-        <DayClock appointments={filtered} onSelectAppointment={setViewingAppt} />
+        <DayClock appointments={filtered} customers={customers} onSelectAppointment={setViewingAppt} />
       )}
       </>
       )}

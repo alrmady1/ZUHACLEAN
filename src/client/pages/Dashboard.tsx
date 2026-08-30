@@ -160,7 +160,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <DayClock appointments={appointments} onSelectAppointment={setViewingAppt} />
+      <DayClock appointments={appointments} customers={customers} onSelectAppointment={setViewingAppt} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

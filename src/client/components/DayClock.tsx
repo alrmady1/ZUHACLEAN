@@ -1,8 +1,16 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
-import type { Appointment } from '../../shared/types.js';
-import { weekdayAr, formatDateAr, formatTimeAr } from '../lib/date.js';
+import type { Appointment, Customer } from '../../shared/types.js';
+import { weekdayAr, formatTimeAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
+
+// تاريخ ميلادي صراحةً بغضّ النظر عن التقويم الافتراضي — بعض المتصفحات
+// (خاصة على الجوال) تعرض التقويم الهجري افتراضياً مع locale "ar-SA" ما
+// لم يُفرَض التقويم الميلادي (gregory) صراحةً هكذا.
+function formatGregorianDate(d: Date, lang: 'ar' | 'en'): string {
+  const locale = lang === 'en' ? 'en-US' : 'ar-SA';
+  return d.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' });
+}
 
 // ألوان قطاعات الساعة — دورية حسب ترتيب مواعيد اليوم (وليست ثابتة لكل
 // عميل أو خدمة)، بألوان هادئة تُقرأ بوضوح فوق قرص أبيض.
@@ -46,12 +54,15 @@ const R = SIZE / 2 - 10;
 
 export default function DayClock({
   appointments,
+  customers,
   onSelectAppointment,
 }: {
   appointments: Appointment[];
+  // لإظهار اسم حي العميل بجانب اسمه في قائمة مواعيد اليوم أسفل الساعة.
+  customers: Customer[];
   onSelectAppointment: (appt: Appointment) => void;
 }) {
-  const { t, tt } = useI18n();
+  const { t, tt, lang } = useI18n();
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -172,7 +183,9 @@ export default function DayClock({
 
       {dayAppointments.length > 0 ? (
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {dayAppointments.map((a, i) => (
+          {dayAppointments.map((a, i) => {
+            const district = customers.find((c) => c.id === a.customer_id)?.district;
+            return (
             <button
               key={a.id}
               onClick={() => onSelectAppointment(a)}
@@ -180,8 +193,10 @@ export default function DayClock({
             >
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: WEDGE_COLORS[i % WEDGE_COLORS.length] }} />
               {formatTimeAr(a.scheduled_at)} — {a.customer_name_snapshot ?? t('عميل')}
+              {district ? ` - ${district}` : ''}
             </button>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="mt-4 text-center text-sm text-slate-400">{t('لا توجد مواعيد في هذا اليوم')}</div>
@@ -197,7 +212,7 @@ export default function DayClock({
         </button>
         <div className="min-w-[140px] text-center">
           <div className="text-lg font-bold text-slate-800">{weekdayAr(selectedDate.toISOString())}</div>
-          <div className="text-sm text-slate-400">{formatDateAr(selectedDate.toISOString())}</div>
+          <div className="text-sm text-slate-400">{formatGregorianDate(selectedDate, lang)}</div>
         </div>
         <button
           onClick={() => shiftDay(1)}
