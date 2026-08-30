@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service } from '../../shared/types.js';
-import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome } from '../../shared/types.js';
+import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
@@ -96,6 +96,12 @@ export default function AppointmentDetailModal({
   // صغيرة تفتح عند الضغط على الزر لاختيار أيهما.
   const [photoMenu, setPhotoMenu] = useState<'before' | 'after' | null>(null);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  // نتيجة زيارة المعاينة (Appointment.kind === 'visit') — نوع التنظيف
+  // المطلوب والسعر يُرفعان مرة واحدة فقط، مع النتيجة النهائية للزيارة
+  // (انظر قسم "نتيجة الزيارة" أدناه).
+  const [visitServiceType, setVisitServiceType] = useState(appointment.visit_service_type ?? '');
+  const [visitAmount, setVisitAmount] = useState<number | ''>(appointment.amount || '');
+  const [submittingVisit, setSubmittingVisit] = useState<VisitOutcome | null>(null);
 
   // Look up whether this appointment already has an invoice, so a
   // "reprint" option can be offered once the work is completed and paid.
@@ -286,6 +292,24 @@ export default function AppointmentDetailModal({
       onChanged();
     } finally {
       setBusy(false);
+    }
+  }
+
+  // رفع نتيجة زيارة المعاينة — نوع التنظيف المطلوب والسعر ثم اختيار
+  // إحدى الحالتين، دفعة واحدة (لا يمكن تعديلها بعد الرفع). يحوِّل الخادم
+  // حالة الموعد تلقائياً إلى "مكتملة" ويرسل تنبيهاً فورياً للإدارة.
+  async function submitVisitOutcome(outcome: VisitOutcome) {
+    if (!visitServiceType.trim() || visitAmount === '') return;
+    setSubmittingVisit(outcome);
+    try {
+      await api.patch(`/appointments/${appointment.id}`, {
+        visit_service_type: visitServiceType.trim(),
+        amount: Number(visitAmount) || 0,
+        visit_outcome: outcome,
+      });
+      onChanged();
+    } finally {
+      setSubmittingVisit(null);
     }
   }
 
@@ -488,6 +512,78 @@ export default function AppointmentDetailModal({
               ))}
             </div>
           </div>
+
+          {/* نتيجة زيارة المعاينة — تظهر فقط على المواعيد من نوع "زيارة
+              عميل"، وتستبدل قسم الخدمة/السعر العادي (لا خدمة أو سعر محدد
+              حتى ترفع النتيجة). بعد الرفع تتحول إلى ملخّص للقراءة فقط. */}
+          {appointment.kind === 'visit' &&
+            (appointment.visit_outcome ? (
+              <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                <div className="mb-2 text-sm font-semibold text-violet-800">{t('نتيجة الزيارة')}</div>
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <div className="text-xs text-violet-500">{t('نوع التنظيف المطلوب')}</div>
+                    <div className="font-medium text-violet-900">{appointment.visit_service_type}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-violet-500">{t('السعر')}</div>
+                    <div className="font-medium text-violet-900">{formatMoney(appointment.amount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-violet-500">{t('الحالة')}</div>
+                    <div className="font-medium text-violet-900">{t(VISIT_OUTCOME_LABELS_AR[appointment.visit_outcome])}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                <div className="mb-3 text-sm font-semibold text-violet-800">{t('رفع نتيجة المعاينة')}</div>
+                {canUpdateStatus ? (
+                  <div className="space-y-3">
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-violet-700">{t('نوع التنظيف المطلوب')}</span>
+                      <input
+                        value={visitServiceType}
+                        onChange={(e) => setVisitServiceType(e.target.value)}
+                        placeholder={t('مثال: تنظيف شقة شامل بعد التشطيب')}
+                        className="input"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-violet-700">{t('السعر (SAR)')}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={visitAmount}
+                        onChange={(e) => setVisitAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="input"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!visitServiceType.trim() || visitAmount === '' || !!submittingVisit}
+                        onClick={() => submitVisitOutcome('price_given')}
+                        className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {submittingVisit === 'price_given' ? t('جارِ الحفظ…') : t(VISIT_OUTCOME_LABELS_AR.price_given)}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!visitServiceType.trim() || visitAmount === '' || !!submittingVisit}
+                        onClick={() => submitVisitOutcome('approved_pending_schedule')}
+                        className="rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                      >
+                        {submittingVisit === 'approved_pending_schedule' ? t('جارِ الحفظ…') : t(VISIT_OUTCOME_LABELS_AR.approved_pending_schedule)}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-violet-500">{t('لا تملك صلاحية رفع نتيجة الزيارة.')}</p>
+                )}
+              </div>
+            ))}
 
           {/* Service / schedule info */}
           <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4">

@@ -82,7 +82,8 @@ export type PermissionKey =
   | 'view_print_quotes'
   | 'view_leads_page'
   | 'edit_landing_page'
-  | 'view_activity_log';
+  | 'view_activity_log'
+  | 'create_customer_visits';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -123,6 +124,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_leads_page: 'الاطلاع على طلبات العملاء الواردة',
   edit_landing_page: 'التحكم بصفحة الطلبات الخارجية',
   view_activity_log: 'الاطلاع على سجل العمليات',
+  create_customer_visits: 'إضافة زيارة للعميل',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -185,6 +187,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // افتراضها الآن المدير العام فقط بطلب صريح؛ يمكن منحها لمدير النظام
   // أو غيره لاحقاً من هذه الصفحة نفسها متى رغب المدير العام في ذلك.
   view_activity_log: ['general_manager'],
+  // نفس فئة إضافة موعد عادي (create_appointments) — يشمل المشرف عمداً،
+  // فالمقصود أن يستطيع إضافة زيارة معاينة لعميله بنفسه دون حاجة لإداري.
+  create_customer_visits: NOT_TECHNICIAN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -199,6 +204,23 @@ export type AppointmentStatus =
   | 'completed'
   | 'delayed'
   | 'cancelled';
+
+// "زيارة عميل" — معاينة أولية قبل حجز خدمة فعلية، وليست خدمة بحد ذاتها:
+// لا سعر أو نوع خدمة محدد عند الحجز، فقط عميل + موعد معاينة يشغل جدول
+// المشرف كأي موعد عادي (بنفس فحص التعارض والتوفر). كِلا النوعين
+// appointment/kind يتشاركان نفس سجل Appointment وجدول المواعيد نفسه —
+// visit فقط تحمل حقولاً إضافية تُعبَّأ بعد انتهاء المعاينة (انظر أدناه).
+export type AppointmentKind = 'service' | 'visit';
+
+// نتيجة زيارة العميل بعد رفع المشرف لنوع التنظيف المطلوب والسعر — انظر
+// visit_outcome في Appointment أدناه وقسم "نتيجة الزيارة" في
+// AppointmentDetailModal.tsx.
+export type VisitOutcome = 'price_given' | 'approved_pending_schedule';
+
+export const VISIT_OUTCOME_LABELS_AR: Record<VisitOutcome, string> = {
+  price_given: 'تم إعطاء السعر للعميل',
+  approved_pending_schedule: 'تمت الموافقة، بانتظار الجدولة',
+};
 
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 // A free-form key referencing a PaymentMethodOption.id below — kept as
@@ -600,6 +622,15 @@ export interface Appointment {
   // تلقائياً من العقود المتكررة (لا "مضيف" واحد لها).
   created_by?: string;
   created_by_name?: string;
+  // غائب = 'service' (موعد خدمة عادي، كل السجلات القديمة). 'visit' =
+  // زيارة معاينة عميل قبل تحديد الخدمة والسعر — انظر AppointmentKind.
+  kind?: AppointmentKind;
+  // نوع التنظيف/الصيانة المطلوب كما حدَّده المشرف بعد المعاينة الميدانية
+  // (نص حر، وليس اختياراً من دليل الخدمات — القرار النهائي على الخدمة
+  // الفعلية يُتَّخذ لاحقاً عند تحويل الزيارة إلى عرض سعر أو موعد فعلي).
+  visit_service_type?: string;
+  visit_outcome?: VisitOutcome;
+  visit_outcome_at?: string;
 }
 
 export const VAT_RATE = 0.15;

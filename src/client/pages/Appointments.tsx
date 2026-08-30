@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, CustomerRating, Invoice } from '../../shared/types.js';
+import { VISIT_OUTCOME_LABELS_AR } from '../../shared/types.js';
 import { AppointmentStatusBadge, PaymentStatusBadge, RatingStars, APPT_STATUS_STYLE } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
@@ -164,6 +165,7 @@ export default function Appointments() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [search, setSearch] = useState('');
   const [showNewAppt, setShowNewAppt] = useState(false);
+  const [showNewVisit, setShowNewVisit] = useState(false);
   const [payingAppt, setPayingAppt] = useState<Appointment | null>(null);
   const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
@@ -185,6 +187,7 @@ export default function Appointments() {
 
   const canSeeAllSchedules = can('view_all_supervisors_appointments');
   const canBook = can('create_appointments');
+  const canBookVisit = can('create_customer_visits');
   const canDeleteAppointment = can('delete_appointments');
   const canViewCompletedTab = can('view_completed_tasks_page');
 
@@ -322,6 +325,14 @@ export default function Appointments() {
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               <Plus className="h-4 w-4" /> {t('حجز موعد جديد')}
+            </button>
+          )}
+          {canBookVisit && (
+            <button
+              onClick={() => setShowNewVisit(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+            >
+              <Plus className="h-4 w-4" /> {t('زيارة عميل')}
             </button>
           )}
           {mainTab === 'schedule' && (
@@ -475,6 +486,11 @@ export default function Appointments() {
                       </div>
                     </td>
                     <td className="p-3">
+                      {a.kind === 'visit' && (
+                        <span className="mb-1 inline-block rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                          {t('زيارة معاينة')}
+                        </span>
+                      )}
                       <div className="font-medium text-slate-700">{a.customer_name_snapshot ?? '—'}</div>
                       {customer?.phone && (
                         <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
@@ -793,6 +809,11 @@ export default function Appointments() {
                         </div>
                       </td>
                       <td className="p-3">
+                        {a.kind === 'visit' && (
+                          <span className="mb-1 inline-block rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                            {t('زيارة معاينة')}
+                          </span>
+                        )}
                         <div className="font-medium text-slate-700">{a.customer_name_snapshot ?? '—'}</div>
                         {customer?.phone && (
                           <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
@@ -801,7 +822,10 @@ export default function Appointments() {
                         )}
                       </td>
                       <td className="p-3">
-                        <div className="text-slate-700">{a.service_name_snapshot}</div>
+                        <div className="text-slate-700">{a.visit_service_type || a.service_name_snapshot}</div>
+                        {a.kind === 'visit' && a.visit_outcome && (
+                          <div className="mt-1 text-xs font-medium text-violet-600">{t(VISIT_OUTCOME_LABELS_AR[a.visit_outcome])}</div>
+                        )}
                         {a.contract_number && (
                           <div className="mt-1 text-xs text-slate-400">
                             {t('عقد')} {a.contract_number}
@@ -825,10 +849,16 @@ export default function Appointments() {
                         )}
                       </td>
                       <td className="p-3">
-                        <div className="font-medium text-slate-700">{formatMoney(a.amount)}</div>
-                        <div className="mt-1">
-                          <PaymentStatusBadge status={a.payment_status} />
-                        </div>
+                        {a.kind === 'visit' ? (
+                          <div className="font-medium text-slate-700">{a.amount > 0 ? formatMoney(a.amount) : '—'}</div>
+                        ) : (
+                          <>
+                            <div className="font-medium text-slate-700">{formatMoney(a.amount)}</div>
+                            <div className="mt-1">
+                              <PaymentStatusBadge status={a.payment_status} />
+                            </div>
+                          </>
+                        )}
                       </td>
                       <td className="p-3">
                         <AppointmentStatusBadge status={a.status} />
@@ -927,6 +957,19 @@ export default function Appointments() {
           supervisors={supervisors}
           technicians={technicians}
           onClose={() => setShowNewAppt(false)}
+          onCreated={refresh}
+          onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
+        />
+      )}
+
+      {canBookVisit && showNewVisit && (
+        <NewAppointmentModal
+          mode="visit"
+          customers={customers}
+          services={services}
+          supervisors={supervisors}
+          technicians={technicians}
+          onClose={() => setShowNewVisit(false)}
           onCreated={refresh}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
         />

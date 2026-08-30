@@ -25,8 +25,17 @@ import type {
   LeadStatus,
   LandingPageSettings,
   LandingService,
+  VisitOutcome,
 } from '../../shared/types.js';
-import { VAT_RATE, CUSTODY_CATEGORY_NAME, DEFAULT_PERMISSIONS, PERMISSION_LABELS_AR, LEAVE_TYPE_LABELS_AR, LEAD_STATUS_LABELS_AR } from '../../shared/types.js';
+import {
+  VAT_RATE,
+  CUSTODY_CATEGORY_NAME,
+  DEFAULT_PERMISSIONS,
+  PERMISSION_LABELS_AR,
+  LEAVE_TYPE_LABELS_AR,
+  LEAD_STATUS_LABELS_AR,
+  VISIT_OUTCOME_LABELS_AR,
+} from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 export const api = Router();
@@ -577,9 +586,17 @@ api.post('/appointments', (req, res) => {
     created_at: new Date().toISOString(),
     created_by: body.created_by || undefined,
     created_by_name: body.created_by ? store.profiles.list().find((p) => p.id === body.created_by)?.full_name : undefined,
+    // زيارة معاينة (لا خدمة أو سعر محدد بعد) بدل موعد خدمة عادي — انظر
+    // AppointmentKind في shared/types.ts. غائب/'service' لا يغيّر شيئاً.
+    kind: body.kind === 'visit' ? 'visit' : undefined,
   };
   store.appointments.insert(appointment);
-  logActivity(req, `تم إضافة موعد للعميل "${appointment.customer_name_snapshot ?? ''}"`);
+  logActivity(
+    req,
+    appointment.kind === 'visit'
+      ? `تم تحديد زيارة معاينة للعميل "${appointment.customer_name_snapshot ?? ''}"`
+      : `تم إضافة موعد للعميل "${appointment.customer_name_snapshot ?? ''}"`,
+  );
   res.status(201).json(appointment);
 
   // تنبيه فوري (Web Push) لكل من له علاقة بالموعد: المشرف والفني
@@ -591,7 +608,7 @@ api.post('/appointments', (req, res) => {
     new Date(appointment.scheduled_at),
   );
   sendPushToProfiles(notifyIds, {
-    title: 'موعد جديد',
+    title: appointment.kind === 'visit' ? 'زيارة معاينة جديدة' : 'موعد جديد',
     body: `${appointment.customer_name_snapshot ?? 'عميل'} — ${when}`,
     url: '/appointments',
     tag: `appointment-${appointment.id}`,
@@ -612,6 +629,9 @@ const APPT_STATUS_LABEL_AR: Record<string, string> = {
 // الموجودة في الطلب بترتيب أولوية، بدل رسالة عامة واحدة لا تفيد قارئ
 // السجل بشيء.
 function describeAppointmentPatch(patch: Record<string, unknown>, customerName: string): string {
+  if (typeof patch.visit_outcome === 'string') {
+    return `تمت زيارة العميل "${customerName}" — ${VISIT_OUTCOME_LABELS_AR[patch.visit_outcome as VisitOutcome] ?? patch.visit_outcome}`;
+  }
   if (typeof patch.status === 'string') {
     return `تم تحديث حالة موعد "${customerName}" إلى: ${APPT_STATUS_LABEL_AR[patch.status] ?? patch.status}`;
   }
@@ -643,10 +663,29 @@ api.patch('/appointments/:id', (req, res) => {
       patch.payment_status = remaining_amount === 0 ? 'paid' : appt.total_paid > 0 ? 'partial' : 'unpaid';
     }
   }
+  // رفع نتيجة زيارة معاينة (نوع التنظيف المطلوب + السعر ثم الحالة) —
+  // ينهي الزيارة نفسها فوراً (لا مراحل لاحقة عليها كموعد خدمة عادي).
+  const isVisitOutcome = typeof patch.visit_outcome === 'string';
+  if (isVisitOutcome) {
+    patch.visit_outcome_at = new Date().toISOString();
+    if (!patch.status) patch.status = 'completed';
+  }
   const updated = store.appointments.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
   logActivity(req, describeAppointmentPatch(patch, updated.customer_name_snapshot ?? ''));
   res.json(updated);
+
+  // تنبيه فوري للإدارة (المدير العام، مدير النظام، المشرفين الإداريين)
+  // بانتهاء زيارة المعاينة ونتيجتها — لا يُنتظر، ويُهمَل بصمت لو لم يُضبط
+  // VAPID بعد.
+  if (isVisitOutcome) {
+    sendPushToProfiles(leadNotifyProfileIds(), {
+      title: 'اكتملت زيارة معاينة',
+      body: `${updated.customer_name_snapshot ?? 'عميل'} — ${VISIT_OUTCOME_LABELS_AR[patch.visit_outcome as VisitOutcome] ?? patch.visit_outcome}`,
+      url: '/appointments',
+      tag: `visit-${updated.id}`,
+    }).catch((err) => console.error('❌ فشل إرسال تنبيه اكتمال الزيارة:', err));
+  }
 });
 
 // حذف الموعد بالكامل — للمدير العام فقط (مقيَّد في الواجهة عبر

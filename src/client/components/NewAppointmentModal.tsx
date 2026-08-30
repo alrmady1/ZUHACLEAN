@@ -41,6 +41,7 @@ export default function NewAppointmentModal({
   supervisors,
   technicians,
   initialLead,
+  mode = 'service',
   onClose,
   onCreated,
   onCustomerCreated,
@@ -50,6 +51,11 @@ export default function NewAppointmentModal({
   supervisors: Profile[];
   technicians: Profile[];
   initialLead?: NewAppointmentInitialLead;
+  // 'visit' = زيارة معاينة عميل (لا خدمة أو سعر محدد بعد، انظر
+  // AppointmentKind في shared/types.ts) — تُخفي قسم اختيار الخدمة
+  // والسعر، وتحفظ الموعد بـ kind: 'visit'. باقي النموذج (العميل، المشرف،
+  // الوقت، فحص التعارض والتوفر) يعمل بلا أي فرق عن موعد الخدمة العادي.
+  mode?: 'service' | 'visit';
   onClose: () => void;
   onCreated: (appointment?: Appointment) => void;
   onCustomerCreated?: (customer: Customer) => void;
@@ -57,6 +63,7 @@ export default function NewAppointmentModal({
   const { t, tt } = useI18n();
   const { can, user } = useAuth();
   const canAssignTechnician = can('assign_appointment_technician');
+  const isVisit = mode === 'visit';
   const today = new Date().toISOString().slice(0, 10);
 
   // عميل حالي يطابق جوال الطلب الوارد (إن وُجد) — يُختار تلقائياً بدل فتح
@@ -80,7 +87,9 @@ export default function NewAppointmentModal({
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
   const [amount, setAmount] = useState<number | ''>(matchedLeadService?.default_price ?? 0);
-  const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? 120);
+  // مدة زيارة المعاينة افتراضياً أقصر بكثير من موعد خدمة فعلي (30 دقيقة
+  // بدل 120) — قابلة للتعديل بالطبع لو احتاج المشرف وقتاً أطول.
+  const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120));
 
   const [date, setDate] = useState(today);
   const [time, setTime] = useState('10:00');
@@ -215,16 +224,17 @@ export default function NewAppointmentModal({
     try {
       const created = await api.post<Appointment>('/appointments', {
         customer_id: customerId,
-        service_id: selectedServiceIds[0],
-        service_name_snapshot: selectedServices.map((s) => s.name).join('، '),
+        service_id: isVisit ? '' : selectedServiceIds[0],
+        service_name_snapshot: isVisit ? tt('زيارة معاينة', 'Site visit') : selectedServices.map((s) => s.name).join('، '),
         scheduled_at: scheduledAt,
-        expected_duration_minutes: Number(duration) || 120,
-        amount: Number(amount) || 0,
+        expected_duration_minutes: Number(duration) || (isVisit ? 30 : 120),
+        amount: isVisit ? 0 : Number(amount) || 0,
         supervisor_id: supervisorId || undefined,
         address_snapshot: address,
         location_url: locationUrl || undefined,
         notes: form.get('notes') || undefined,
         created_by: user?.id,
+        kind: isVisit ? 'visit' : undefined,
         assignments: technicianId
           ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((tech) => tech.id === technicianId)?.full_name }]
           : [],
@@ -242,9 +252,15 @@ export default function NewAppointmentModal({
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {initialLead ? tt(`تحديد موعد لطلب ${initialLead.name}`, `Book appointment for ${initialLead.name}'s request`) : t('إضافة حجز موعد جديد')}
+              {initialLead
+                ? tt(`تحديد موعد لطلب ${initialLead.name}`, `Book appointment for ${initialLead.name}'s request`)
+                : isVisit
+                  ? t('إضافة زيارة عميل جديدة')
+                  : t('إضافة حجز موعد جديد')}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-400">{t('تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ')}</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {isVisit ? t('تحديد العميل والمشرف ووقت زيارة المعاينة') : t('تحديد العميل، الخدمة، الفريق الميداني ووقت التنفيذ')}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -425,59 +441,10 @@ export default function NewAppointmentModal({
             )}
           </Section>
 
-          <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title={t('نوع الخدمة المطلوبة *')}>
-            <div ref={serviceBoxRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowServiceDropdown((v) => !v)}
-                className="input flex items-center justify-between gap-2 text-start"
-              >
-                <span className={`truncate ${selectedServices.length ? 'text-slate-700' : 'text-slate-400'}`}>
-                  {selectedServices.length > 0
-                    ? selectedServices.map((s) => s.name).join('، ')
-                    : t('-- اختر نوعاً أو أكثر من الخدمة --')}
-                </span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-              </button>
-              {showServiceDropdown && (
-                <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-                  {services.map((s) => {
-                    const checked = selectedServiceIds.includes(s.id);
-                    return (
-                      <label
-                        key={s.id}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50"
-                      >
-                        <span
-                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300'}`}
-                        >
-                          {checked && <Check className="h-3 w-3" />}
-                        </span>
-                        <input type="checkbox" checked={checked} onChange={() => toggleService(s.id)} className="hidden" />
-                        <span className="flex-1 text-slate-700">{s.name}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
-                      </label>
-                    );
-                  })}
-                  {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">{t('لا توجد خدمات بعد')}</div>}
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          {isVisit ? (
+            <Section icon={<Clock className="h-3.5 w-3.5 text-brand-500" />} title={t('مدة المعاينة المتوقعة *')}>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">{t('سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *')}</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="input"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">{t('المدة المتوقعة (بالدقائق) *')}</span>
+                <span className="mb-1 block font-medium text-slate-600">{t('بالدقائق')}</span>
                 <input
                   type="number"
                   min={1}
@@ -487,8 +454,76 @@ export default function NewAppointmentModal({
                   className="input"
                 />
               </label>
-            </div>
-          </Section>
+              <p className="text-xs text-slate-400">
+                {t('لا حاجة لتحديد الخدمة أو السعر الآن — يحدّدهما المشرف بعد المعاينة الميدانية.')}
+              </p>
+            </Section>
+          ) : (
+            <Section icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />} title={t('نوع الخدمة المطلوبة *')}>
+              <div ref={serviceBoxRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowServiceDropdown((v) => !v)}
+                  className="input flex items-center justify-between gap-2 text-start"
+                >
+                  <span className={`truncate ${selectedServices.length ? 'text-slate-700' : 'text-slate-400'}`}>
+                    {selectedServices.length > 0
+                      ? selectedServices.map((s) => s.name).join('، ')
+                      : t('-- اختر نوعاً أو أكثر من الخدمة --')}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                </button>
+                {showServiceDropdown && (
+                  <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                    {services.map((s) => {
+                      const checked = selectedServiceIds.includes(s.id);
+                      return (
+                        <label
+                          key={s.id}
+                          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50"
+                        >
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300'}`}
+                          >
+                            {checked && <Check className="h-3 w-3" />}
+                          </span>
+                          <input type="checkbox" checked={checked} onChange={() => toggleService(s.id)} className="hidden" />
+                          <span className="flex-1 text-slate-700">{s.name}</span>
+                          <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                        </label>
+                      );
+                    })}
+                    {services.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">{t('لا توجد خدمات بعد')}</div>}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    required
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="input"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المدة المتوقعة (بالدقائق) *')}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="input"
+                  />
+                </label>
+              </div>
+            </Section>
+          )}
 
           <Section icon={<Clock className="h-3.5 w-3.5 text-brand-500" />} title={t('موعد وتوقيت الزيارة *')}>
             <div className="grid grid-cols-2 gap-3">
@@ -604,10 +639,10 @@ export default function NewAppointmentModal({
         <div className="mt-5 flex items-center gap-3">
           <button
             type="submit"
-            disabled={submitting || !customerId || selectedServiceIds.length === 0 || !!conflict || leaveConflicts.length > 0}
+            disabled={submitting || !customerId || (!isVisit && selectedServiceIds.length === 0) || !!conflict || leaveConflicts.length > 0}
             className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            {submitting ? t('جارِ الحفظ…') : t('تأكيد وحجز الموعد')}
+            {submitting ? t('جارِ الحفظ…') : isVisit ? t('تأكيد الزيارة') : t('تأكيد وحجز الموعد')}
           </button>
           <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-slate-600">
             {t('إلغاء')}
