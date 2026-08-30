@@ -602,8 +602,14 @@ api.post('/appointments', (req, res) => {
   // تنبيه فوري (Web Push) لكل من له علاقة بالموعد: المشرف والفني
   // المُسنَدان، بالإضافة إلى المدير العام ومدير النظام دائماً لكل موعد —
   // لا يُنتظر (لا يُبطئ الاستجابة، ويُهمَل بصمت لو لم يُضبط VAPID بعد).
+  // زيارة المعاينة تحديداً تصل أيضاً للمشرفين الإداريين (بجانب المشرف
+  // الميداني المُسنَد ومدير النظام)، بطلب صريح — appointmentNotifyProfileIds
+  // وحدها لا تشملهم.
   const technicianIds = appointment.assignments.map((a) => a.technician_id);
-  const notifyIds = appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds);
+  const notifyIds =
+    appointment.kind === 'visit'
+      ? [...new Set([...appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds), ...leadNotifyProfileIds()])]
+      : appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds);
   const when = new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(
     new Date(appointment.scheduled_at),
   );
