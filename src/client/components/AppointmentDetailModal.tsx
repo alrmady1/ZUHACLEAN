@@ -1106,7 +1106,9 @@ export default function AppointmentDetailModal({
             </div>
           )}
 
-          {/* Payments */}
+          {/* Payments — لا معنى لها في زيارة معاينة (لا سعر نهائي أو
+              دفعة فعلية قبل تحويلها لموعد خدمة حقيقي). */}
+          {appointment.kind !== 'visit' && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -1198,6 +1200,7 @@ export default function AppointmentDetailModal({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
