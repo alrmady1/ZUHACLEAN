@@ -144,7 +144,6 @@ export default function InvoiceDocument({
 
           <div className="flex flex-col items-center gap-1.5 border-t border-dashed border-slate-200 pt-4">
             {qrDataUrl && <img src={qrDataUrl} alt={t('رمز الفاتورة الضريبية (متوافق مع هيئة الزكاة والضريبة)')} className="h-36 w-36" />}
-            <div className="text-[11px] text-slate-400">{t('رمز الاستجابة السريعة متوافق مع متطلبات هيئة الزكاة والضريبة والجمارك')}</div>
           </div>
         </div>
       </div>
