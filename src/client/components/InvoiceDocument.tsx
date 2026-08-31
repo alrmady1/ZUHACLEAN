@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { X, Printer } from 'lucide-react';
 import type { Invoice, Customer, Appointment, PaymentMethodOption } from '../../shared/types.js';
@@ -28,6 +28,15 @@ export default function InvoiceDocument({
 }) {
   const { t } = useI18n();
   const [qrDataUrl, setQrDataUrl] = useState('');
+  // ارتفاع الشعار يُطابق ارتفاع كتلة نص بيانات الشركة (الاسم إلى الرقم
+  // الضريبي) بالبكسل الفعلي — أدق وأثبت من الاعتماد على stretch في
+  // flexbox مع عنصر <img> (يتصرف بحساب حجمه الجوهري قبل التمدد، فيكبر
+  // بدل أن يتقيّد بارتفاع النص المجاور).
+  const companyBlockRef = useRef<HTMLDivElement>(null);
+  const [logoSize, setLogoSize] = useState<number | null>(null);
+  useEffect(() => {
+    if (companyBlockRef.current) setLogoSize(companyBlockRef.current.offsetHeight);
+  }, []);
 
   useEffect(() => {
     const payload = buildZatcaQrPayload({
@@ -64,9 +73,14 @@ export default function InvoiceDocument({
 
         <div className="invoice-print-area overflow-y-auto p-6">
           <div className="mb-5 flex items-start justify-between border-b border-dashed border-slate-200 pb-4">
-            <div className="flex items-center gap-2.5">
-              <img src="/invoice-logo.png" alt={COMPANY_LEGAL_NAME} className="h-10 w-10 shrink-0 rounded-lg" />
-              <div>
+            <div className="flex items-start gap-2.5">
+              <img
+                src="/invoice-logo.png"
+                alt={COMPANY_LEGAL_NAME}
+                className="shrink-0 rounded-lg"
+                style={logoSize ? { height: logoSize, width: logoSize } : { height: 56, width: 56 }}
+              />
+              <div ref={companyBlockRef}>
                 <div className="text-lg font-bold text-slate-800">{COMPANY_LEGAL_NAME}</div>
                 <div className="text-xs text-slate-400">{t('لأعمال الصيانة والتنظيف')}</div>
                 <div className="mt-1 text-xs text-slate-400">{t('الرقم الضريبي:')} {COMPANY_VAT_NUMBER}</div>
