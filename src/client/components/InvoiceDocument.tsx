@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { X, Printer } from 'lucide-react';
 import type { Invoice, Customer, Appointment, PaymentMethodOption } from '../../shared/types.js';
-import { COMPANY_NAME, COMPANY_VAT_NUMBER } from '../../shared/types.js';
+import { COMPANY_LEGAL_NAME, COMPANY_VAT_NUMBER } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { buildZatcaQrPayload } from '../lib/zatca.js';
 import { useI18n } from '../lib/i18n.js';
@@ -31,7 +31,7 @@ export default function InvoiceDocument({
 
   useEffect(() => {
     const payload = buildZatcaQrPayload({
-      sellerName: COMPANY_NAME,
+      sellerName: COMPANY_LEGAL_NAME,
       vatNumber: COMPANY_VAT_NUMBER,
       timestamp: invoice.created_at ?? `${invoice.issue_date}T00:00:00Z`,
       totalWithVat: invoice.total,
@@ -65,7 +65,7 @@ export default function InvoiceDocument({
         <div className="invoice-print-area overflow-y-auto p-6">
           <div className="mb-5 flex items-start justify-between border-b border-dashed border-slate-200 pb-4">
             <div>
-              <div className="text-lg font-bold text-slate-800">{COMPANY_NAME}</div>
+              <div className="text-lg font-bold text-slate-800">{COMPANY_LEGAL_NAME}</div>
               <div className="text-xs text-slate-400">{t('لأعمال الصيانة والتنظيف')}</div>
               <div className="mt-1 text-xs text-slate-400">{t('الرقم الضريبي:')} {COMPANY_VAT_NUMBER}</div>
             </div>

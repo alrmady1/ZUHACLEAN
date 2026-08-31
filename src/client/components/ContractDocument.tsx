@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Printer, Pencil, Check, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Contract, Customer, ContractClause } from '../../shared/types.js';
-import { COMPANY_NAME } from '../../shared/types.js';
+import { COMPANY_LEGAL_NAME } from '../../shared/types.js';
 import { DEFAULT_CONTRACT_CLAUSES } from '../../shared/documentDefaults.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
@@ -161,7 +161,7 @@ export default function ContractDocument({
             <div className="mb-5 grid grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-1 text-xs font-semibold text-brand-600">{t('الطرف الأول (مقدّم الخدمة)')}</div>
-                <div className="font-medium text-slate-700">{COMPANY_NAME}</div>
+                <div className="font-medium text-slate-700">{COMPANY_LEGAL_NAME}</div>
               </div>
               <div className="rounded-xl border border-slate-200 p-3">
                 <div className="mb-1 text-xs font-semibold text-brand-600">{t('الطرف الثاني (العميل)')}</div>
@@ -210,7 +210,7 @@ export default function ContractDocument({
             <div className="grid grid-cols-2 gap-8 border-t border-dashed border-slate-200 pt-6 text-sm">
               <div className="text-center">
                 <div className="mb-8 font-medium text-slate-600">{tt('توقيع الطرف الأول', 'First Party Signature')}</div>
-                <div className="border-t border-slate-300 pt-1 text-xs text-slate-400">{COMPANY_NAME}</div>
+                <div className="border-t border-slate-300 pt-1 text-xs text-slate-400">{COMPANY_LEGAL_NAME}</div>
               </div>
               <div className="text-center">
                 <div className="mb-8 font-medium text-slate-600">{tt('توقيع الطرف الثاني', 'Second Party Signature')}</div>

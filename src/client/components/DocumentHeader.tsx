@@ -1,4 +1,4 @@
-import { COMPANY_NAME, COMPANY_VAT_NUMBER, COMPANY_PHONE, COMPANY_CR_NUMBER } from '../../shared/types.js';
+import { COMPANY_LEGAL_NAME, COMPANY_VAT_NUMBER, COMPANY_PHONE, COMPANY_CR_NUMBER } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 
 // رأس مشترك للمستندات الرسمية المطبوعة (عقد، عرض سعر) — الشعار بالوسط
@@ -9,8 +9,8 @@ export default function DocumentHeader() {
   const { t } = useI18n();
   return (
     <div className="mb-5 flex flex-col items-center gap-1.5 border-b border-dashed border-slate-200 pb-4 text-center">
-      <img src="/icon-512.png" alt={COMPANY_NAME} className="h-16 w-16 rounded-2xl" />
-      <div className="text-lg font-bold text-slate-800">{COMPANY_NAME}</div>
+      <img src="/icon-512.png" alt={COMPANY_LEGAL_NAME} className="h-16 w-16 rounded-2xl" />
+      <div className="text-lg font-bold text-slate-800">{COMPANY_LEGAL_NAME}</div>
       <div className="text-xs text-slate-400">{t('لأعمال الصيانة والتنظيف')}</div>
       <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400" dir="ltr">
         <span>{COMPANY_PHONE}</span>

@@ -4,7 +4,7 @@
 // (انظر ContractDocument.tsx) — لا تُستخدم القيم هنا مباشرة أبداً، بل
 // تُنسخ إلى العقد نفسه في أول مرة يُفتح مستنده الرسمي، لتصبح مستقلة عنها.
 import type { ContractClause } from './types.js';
-import { COMPANY_NAME } from './types.js';
+import { COMPANY_LEGAL_NAME } from './types.js';
 
 export const DEFAULT_CONTRACT_CLAUSES: Omit<ContractClause, 'id'>[] = [
   {
@@ -48,6 +48,6 @@ export const DEFAULT_CONTRACT_CLAUSES: Omit<ContractClause, 'id'>[] = [
 // رسالة أسفل عرض السعر — قابلة للتحرير من داخل نافذة إنشاء العرض قبل
 // الحفظ (انظر NewQuoteFlow.tsx)، وتُحفَظ نصاً حراً مستقلاً مع كل عرض.
 export const DEFAULT_QUOTE_PAYMENT_NOTE =
-  `يتم تحويل الدفعة الأولى على حساب الشركة - شركة ${COMPANY_NAME} - البنك الأهلي - SA42 1000 0023 1000 0089 8800`;
+  `يتم تحويل الدفعة الأولى على حساب الشركة - ${COMPANY_LEGAL_NAME} - البنك الأهلي - SA42 1000 0023 1000 0089 8800`;
 
 export const QUOTE_VALIDITY_DAYS = 15;

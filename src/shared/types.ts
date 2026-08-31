@@ -692,9 +692,15 @@ export interface Quote {
   created_by_name?: string;
 }
 
-// The seller identity ZATCA (Saudi Zakat, Tax and Customs Authority) prints
-// on simplified tax invoices and encodes into the compliance QR code.
+// الاسم التجاري المختصر — يظهر في هوية التطبيق نفسه وصفحة "اطلب الخدمة"
+// العامة (branding خفيف، غير رسمي).
 export const COMPANY_NAME = 'زهى';
+// الاسم القانوني الكامل للشركة — هو من يظهر في رأس المستندات الرسمية
+// (الفاتورة الضريبية، العقد، عرض السعر) وهو "seller identity" الذي
+// تطبعه/تُشفّره هيئة الزكاة والضريبة والجمارك (ZATCA) في رمز الاستجابة
+// السريعة على الفاتورة الضريبية المبسَّطة — يجب أن يطابق الاسم المسجَّل
+// رسمياً، وليس الاسم التجاري المختصر أعلاه.
+export const COMPANY_LEGAL_NAME = 'شركة زهى الاعمال';
 export const COMPANY_VAT_NUMBER = '314739292200003';
 export const COMPANY_PHONE = '0582464181';
 // لم يزوّدنا صاحب العمل برقم السجل التجاري بعد — يبقى فارغاً عمداً حتى
