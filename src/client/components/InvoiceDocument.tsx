@@ -64,10 +64,13 @@ export default function InvoiceDocument({
 
         <div className="invoice-print-area overflow-y-auto p-6">
           <div className="mb-5 flex items-start justify-between border-b border-dashed border-slate-200 pb-4">
-            <div>
-              <div className="text-lg font-bold text-slate-800">{COMPANY_LEGAL_NAME}</div>
-              <div className="text-xs text-slate-400">{t('لأعمال الصيانة والتنظيف')}</div>
-              <div className="mt-1 text-xs text-slate-400">{t('الرقم الضريبي:')} {COMPANY_VAT_NUMBER}</div>
+            <div className="flex items-center gap-2.5">
+              <img src="/invoice-logo.png" alt={COMPANY_LEGAL_NAME} className="h-10 w-10 shrink-0 rounded-lg" />
+              <div>
+                <div className="text-lg font-bold text-slate-800">{COMPANY_LEGAL_NAME}</div>
+                <div className="text-xs text-slate-400">{t('لأعمال الصيانة والتنظيف')}</div>
+                <div className="mt-1 text-xs text-slate-400">{t('الرقم الضريبي:')} {COMPANY_VAT_NUMBER}</div>
+              </div>
             </div>
             <div className="text-end">
               <div className="text-sm font-bold text-brand-700">{t('فاتورة ضريبية مبسطة')}</div>
