@@ -217,6 +217,37 @@ api.patch('/profiles/:id', (req, res) => {
   res.json(toSafeProfile(updated));
 });
 
+// تفعيل/إيقاف مشاركة الموقع — بمبادرة الموظف نفسه فقط (زر "مشاركة
+// موقعي" في القائمة الجانبية). عملية نادرة الحدوث (وليست تحديث موقع
+// متكرر)، فتُسجَّل في سجل العمليات بخلاف نقطة تحديث الإحداثيات أدناه.
+api.patch('/profiles/:id/location-sharing', (req, res) => {
+  const enabled = !!req.body?.enabled;
+  const updated = store.profiles.update(req.params.id, { location_sharing_enabled: enabled });
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `${enabled ? 'تم تفعيل' : 'تم إيقاف'} مشاركة الموقع لـ "${updated.full_name}"`);
+  res.json(toSafeProfile(updated));
+});
+
+// تحديث دوري لإحداثيات الموظف من جهازه (كل دقيقة تقريباً طالما مشاركة
+// الموقع مفعّلة، انظر Layout.tsx) — بلا سجل عمليات عمداً، فهذا تحديث
+// تقني متكرر وليس "عملية" يهتم بها من يراجع سجل التدقيق.
+api.patch('/profiles/:id/location', (req, res) => {
+  const { lat, lng, accuracy } = req.body ?? {};
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return res.status(400).json({ error: 'lat و lng (أرقام) مطلوبان' });
+  }
+  const updated = store.profiles.update(req.params.id, {
+    last_location: {
+      lat,
+      lng,
+      accuracy: typeof accuracy === 'number' ? accuracy : undefined,
+      updated_at: new Date().toISOString(),
+    },
+  });
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(toSafeProfile(updated));
+});
+
 api.delete('/profiles/:id', (req, res) => {
   const target = store.profiles.get(req.params.id);
   if (!target) return res.status(404).json({ error: 'not found' });

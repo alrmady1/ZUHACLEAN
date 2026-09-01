@@ -83,7 +83,8 @@ export type PermissionKey =
   | 'view_leads_page'
   | 'edit_landing_page'
   | 'view_activity_log'
-  | 'create_customer_visits';
+  | 'create_customer_visits'
+  | 'view_employee_tracking';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -125,6 +126,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   edit_landing_page: 'التحكم بصفحة الطلبات الخارجية',
   view_activity_log: 'الاطلاع على سجل العمليات',
   create_customer_visits: 'إضافة زيارة للعميل',
+  view_employee_tracking: 'تتبع مواقع الموظفين',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -190,6 +192,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // نفس فئة إضافة موعد عادي (create_appointments) — يشمل المشرف عمداً،
   // فالمقصود أن يستطيع إضافة زيارة معاينة لعميله بنفسه دون حاجة لإداري.
   create_customer_visits: NOT_TECHNICIAN,
+  // "في حساب المدير" بطلب صريح — المدير العام فقط افتراضياً، قابلة
+  // للتوسيع لاحقاً (لمدير النظام مثلاً) من صفحة الصلاحيات نفسها.
+  view_employee_tracking: ['general_manager'],
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -271,6 +276,22 @@ export interface Profile {
   username?: string;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
+  // تتبع الموقع — تفعيل بمبادرة الموظف نفسه فقط (زر "مشاركة موقعي" في
+  // القائمة الجانبية، انظر Layout.tsx)، أبداً بلا علمه أو من جهة الإدارة.
+  // غائب/false = لا مشاركة إطلاقاً، ولا يُقرأ last_location في هذه الحالة.
+  location_sharing_enabled?: boolean;
+  // آخر موقع مُبلَّغ عنه — يُحدَّث دورياً من جهاز الموظف نفسه طالما
+  // location_sharing_enabled فعّال (انظر PATCH /profiles/:id/location في
+  // api.ts). يبقى القديم ظاهراً بعد إيقاف المشاركة (بدل حذفه) مع توضيح
+  // "توقفت المشاركة" في صفحة التتبع، حتى تُعرف آخر نقطة معروفة.
+  last_location?: EmployeeLocation;
+}
+
+export interface EmployeeLocation {
+  lat: number;
+  lng: number;
+  accuracy?: number;
   updated_at: string;
 }
 

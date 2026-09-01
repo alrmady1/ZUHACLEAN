@@ -13,6 +13,7 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Sparkles,
+  MapPin,
   X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
@@ -20,6 +21,13 @@ import type { UserRole, PermissionKey } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
 import { ensurePushSubscribed } from '../lib/push.js';
+import { api } from '../lib/api.js';
+import { startLocationSharing, stopLocationSharing } from '../lib/locationSharing.js';
+
+// من يملك جدوى فعلية من مشاركة موقعه — الفريق الميداني فقط، وليس
+// الإدارة (هم من يطّلع على الموقع، لا من يشاركه). زر "مشاركة موقعي"
+// أدناه يظهر فقط لهذه الأدوار.
+const LOCATION_SHARING_ROLES: UserRole[] = ['supervisor', 'admin_supervisor', 'technician'];
 
 interface NavItem {
   to: string;
@@ -44,6 +52,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },
   { to: '/expenses', label: 'المصروفات', icon: Wallet, permissionKey: 'view_expenses_page' },
   { to: '/customers', label: 'العملاء', icon: Users, permissionKey: 'view_customer_history' },
+  // في حساب المدير — يعرض آخر موقع أبلغ عنه كل موظف مفعِّل لمشاركة
+  // موقعه بنفسه (زر "مشاركة موقعي" أسفل هذه القائمة).
+  { to: '/tracking', label: 'تتبع الموظفين', icon: MapPin, permissionKey: 'view_employee_tracking' },
   { to: '/technician', label: 'بوابة الفني', icon: Smartphone, roles: ['general_manager', 'admin', 'technician'] },
   // المشرف الإداري يرى الإعدادات أيضاً افتراضياً — يفتح له تلقائياً على
   // تبويب "ربط الفنيين بالمشرفين" فقط (انظر Settings.tsx)، وليس بقية
@@ -52,10 +63,11 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export default function Layout() {
-  const { user, loading, logout, can } = useAuth();
-  const { t, roleLabel } = useI18n();
+  const { user, loading, logout, can, refreshProfiles } = useAuth();
+  const { t, tt, roleLabel } = useI18n();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [locationToggleBusy, setLocationToggleBusy] = useState(false);
 
   // The nav is an overlay, not a docked sidebar: it opens only via the
   // hamburger button and closes itself the moment the route changes
@@ -69,6 +81,31 @@ export default function Layout() {
   useEffect(() => {
     if (user) ensurePushSubscribed(user.id).catch(() => {});
   }, [user?.id]);
+
+  // يبدأ/يوقف إرسال نبضات الموقع مع كل تغيّر في حالة التفعيل نفسها —
+  // يعمل طالما التطبيق مفتوحاً في المتصفح بغض النظر عن الصفحة الحالية،
+  // ويتوقف تلقائياً بمجرد تسجيل الخروج (user يصبح null).
+  useEffect(() => {
+    if (user?.location_sharing_enabled) {
+      startLocationSharing(user.id);
+    } else {
+      stopLocationSharing();
+    }
+    return () => stopLocationSharing();
+  }, [user?.id, user?.location_sharing_enabled]);
+
+  const canShareLocation = user ? LOCATION_SHARING_ROLES.includes(user.role) : false;
+
+  async function toggleLocationSharing() {
+    if (!user || locationToggleBusy) return;
+    setLocationToggleBusy(true);
+    try {
+      await api.patch(`/profiles/${user.id}/location-sharing`, { enabled: !user.location_sharing_enabled });
+      await refreshProfiles();
+    } finally {
+      setLocationToggleBusy(false);
+    }
+  }
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center text-slate-500">{t('جارِ التحميل…')}</div>;
@@ -143,6 +180,28 @@ export default function Layout() {
               <div className="text-xs text-slate-400">{roleLabel(user.role)}</div>
             </div>
           </div>
+          {canShareLocation && (
+            <label className="mb-2 flex cursor-pointer items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2.5">
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-slate-300" />
+                <span>
+                  <span className="block text-sm font-medium text-white">{t('مشاركة موقعي')}</span>
+                  <span className="block text-[11px] text-slate-400">{tt('يظهر موقعك للإدارة أثناء التفعيل', 'Your location is visible to management while enabled')}</span>
+                </span>
+              </span>
+              <span className="relative inline-block h-6 w-11 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={!!user.location_sharing_enabled}
+                  disabled={locationToggleBusy}
+                  onChange={toggleLocationSharing}
+                  className="peer sr-only"
+                />
+                <span className="absolute inset-0 rounded-full bg-slate-600 transition-colors peer-checked:bg-emerald-500" />
+                <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
+              </span>
+            </label>
+          )}
           <button
             onClick={logout}
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10"
