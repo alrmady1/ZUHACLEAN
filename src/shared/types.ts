@@ -248,6 +248,12 @@ export interface ExpenseCategoryItem {
 // vocabulary in this app — renaming this category in Settings also renames
 // the trigger.
 export const CUSTODY_CATEGORY_NAME = 'مصاريف عهدة';
+// اسم فئة مصروفات "سلفية" — مطابق تماماً لـ CUSTODY_CATEGORY_NAME أعلاه:
+// يُطابَق بالاسم (نفس نمط الأصناف المُدارة الأخرى)، ويُظهر نفس منتقي
+// "الموظف" في نموذج إضافة مصروف عام (انظر Expenses.tsx) — لكن بخلاف
+// العهدة، تبقى السلفية ضمن قائمة المصروفات الرئيسية العامة بلا تبويب أو
+// تسوية رصيد منفصلة (لا يوجد "سداد سلفية" مقابلها حالياً).
+export const ADVANCE_CATEGORY_NAME = 'سلفية';
 
 export interface Profile {
   id: string;
@@ -545,8 +551,9 @@ export interface Expense {
   recorded_by_name?: string;
   supervisor_id?: string;
   supervisor_name?: string;
-  // Only set when category === CUSTODY_CATEGORY_NAME: which employee the
-  // cash custody/advance was handed to.
+  // Set when category === CUSTODY_CATEGORY_NAME (عهدة) or ADVANCE_CATEGORY_NAME
+  // (سلفية): which employee the cash was handed to. The name "custody_holder"
+  // predates the سلفية reuse — kept as-is to avoid a schema migration.
   custody_holder_id?: string;
   custody_holder_name?: string;
   payment_method: PaymentMethod;

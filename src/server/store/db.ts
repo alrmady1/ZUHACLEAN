@@ -328,6 +328,7 @@ function seed(): DbShape {
     { id: 'ec-vehicles', name: 'مركبات', is_active: true },
     { id: 'ec-salaries', name: 'رواتب', is_active: true },
     { id: 'ec-custody', name: 'مصاريف عهدة', is_active: true },
+    { id: 'ec-advance', name: 'سلفية', is_active: true },
     { id: 'ec-materials', name: 'مواد التشغيل والنظافة', is_active: true },
     { id: 'ec-iqama', name: 'إقامات', is_active: true },
     { id: 'ec-rent', name: 'إيجار', is_active: true },
@@ -401,6 +402,11 @@ async function load(): Promise<DbShape> {
       );
     }
     if (!parsed.expenseCategories) parsed.expenseCategories = seed().expenseCategories;
+    // فئة "سلفية" أُضيفت بعد أن كانت قواعد بيانات كثيرة قد زُرعت أصلاً —
+    // تُضاف هنا لمن لا يملكها بعد، بدل الاعتماد فقط على seed() أعلاه.
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'سلفية')) {
+      parsed.expenseCategories.push({ id: 'ec-advance', name: 'سلفية', is_active: true });
+    }
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];

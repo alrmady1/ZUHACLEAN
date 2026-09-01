@@ -30,6 +30,7 @@ import type {
 import {
   VAT_RATE,
   CUSTODY_CATEGORY_NAME,
+  ADVANCE_CATEGORY_NAME,
   DEFAULT_PERMISSIONS,
   PERMISSION_LABELS_AR,
   LEAVE_TYPE_LABELS_AR,
@@ -942,6 +943,10 @@ api.get('/expenses', (_req, res) => res.json(store.expenses.list()));
 api.post('/expenses', (req, res) => {
   const body = req.body ?? {};
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
+  const isAdvance = body.category === ADVANCE_CATEGORY_NAME;
+  // كلا الصنفين (عهدة وسلفية) يحملان "موظفاً معنياً" بنفس الحقلين —
+  // انظر التعليق على custody_holder_id في shared/types.ts.
+  const linksEmployee = isCustody || isAdvance;
   const expense = store.expenses.insert({
     id: store.id(),
     title: body.title,
@@ -957,8 +962,8 @@ api.post('/expenses', (req, res) => {
     recorded_by_name: body.recorded_by_name,
     supervisor_id: body.supervisor_id,
     supervisor_name: body.supervisor_name,
-    custody_holder_id: isCustody ? body.custody_holder_id || undefined : undefined,
-    custody_holder_name: isCustody && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
+    custody_holder_id: linksEmployee ? body.custody_holder_id || undefined : undefined,
+    custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
     payment_method: body.payment_method ?? 'cash',
     notes: body.notes,
     created_at: new Date().toISOString(),
@@ -967,7 +972,9 @@ api.post('/expenses', (req, res) => {
     req,
     isCustody
       ? `تم إضافة عهدة "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
-      : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+      : isAdvance
+        ? `تم إضافة سلفية "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
+        : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
 });
@@ -979,7 +986,15 @@ api.delete('/expenses/:id', (req, res) => {
   const removed = store.expenses.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   const isCustody = target?.category === CUSTODY_CATEGORY_NAME;
-  logActivity(req, isCustody ? `تم حذف عهدة "${target?.custody_holder_name ?? ''}"` : `تم حذف مصروف "${target?.title ?? ''}"`);
+  const isAdvance = target?.category === ADVANCE_CATEGORY_NAME;
+  logActivity(
+    req,
+    isCustody
+      ? `تم حذف عهدة "${target?.custody_holder_name ?? ''}"`
+      : isAdvance
+        ? `تم حذف سلفية "${target?.custody_holder_name ?? ''}"`
+        : `تم حذف مصروف "${target?.title ?? ''}"`,
+  );
   res.status(204).end();
 });
 

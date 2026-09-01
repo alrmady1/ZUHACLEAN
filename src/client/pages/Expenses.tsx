@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -161,15 +161,17 @@ function OverviewStat({ label, value, tone }: { label: string; value: string; to
 }
 
 function GeneralExpensesTab() {
-  const { user, can } = useAuth();
-  const { t } = useI18n();
+  const { user, can, allProfiles } = useAuth();
+  const { t, roleLabel } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
+  const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const isAdvance = category === ADVANCE_CATEGORY_NAME;
 
   // Custody grants are recorded and listed from the العهد tab now, not
   // here — keep the general form and table focused on non-custody spending.
@@ -225,9 +227,11 @@ function GeneralExpensesTab() {
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
+        custody_holder_id: isAdvance ? advanceEmployeeId || undefined : undefined,
       });
       setShowForm(false);
       setSubCategory('');
+      setAdvanceEmployeeId('');
       refresh();
     } finally {
       setSubmitting(false);
@@ -284,6 +288,7 @@ function GeneralExpensesTab() {
                       {e.category}
                       {e.sub_category ? ` — ${e.sub_category}` : ''}
                     </span>
+                    {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
                   </td>
                   <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
                   <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
@@ -328,6 +333,7 @@ function GeneralExpensesTab() {
                   onChange={(e) => {
                     setCategory(e.target.value);
                     setSubCategory('');
+                    setAdvanceEmployeeId('');
                   }}
                 >
                   {mainCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
@@ -346,6 +352,24 @@ function GeneralExpensesTab() {
                     {subCategories.map((c) => (
                       <option key={c.id} value={c.name}>
                         {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {isAdvance && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
+                  <select
+                    required
+                    className="input"
+                    value={advanceEmployeeId}
+                    onChange={(e) => setAdvanceEmployeeId(e.target.value)}
+                  >
+                    <option value="">{t('اختر موظف')}</option>
+                    {allProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name} — {roleLabel(p.role)}
                       </option>
                     ))}
                   </select>
