@@ -94,13 +94,18 @@ export default function Layout() {
     return () => stopLocationSharing();
   }, [user?.id, user?.location_sharing_enabled]);
 
-  const canShareLocation = user ? LOCATION_SHARING_ROLES.includes(user.role) : false;
+  // لا زر تحكم دائم في الواجهة — طلب واحد بشكل نافذة نظام (مثل طلب
+  // الموقع في تطبيقات آندرويد/آيفون) يظهر أول مرة فقط لكل موظف معنيّ لم
+  // يُقرِّر بعد (location_sharing_enabled لا تزال undefined). القرار
+  // (سماح أو رفض) يُحفَظ ولا يُعاد السؤال بعده.
+  const awaitingLocationDecision =
+    !!user && LOCATION_SHARING_ROLES.includes(user.role) && user.location_sharing_enabled === undefined;
 
-  async function toggleLocationSharing() {
+  async function respondToLocationPrompt(allow: boolean) {
     if (!user || locationToggleBusy) return;
     setLocationToggleBusy(true);
     try {
-      await api.patch(`/profiles/${user.id}/location-sharing`, { enabled: !user.location_sharing_enabled });
+      await api.patch(`/profiles/${user.id}/location-sharing`, { enabled: allow });
       await refreshProfiles();
     } finally {
       setLocationToggleBusy(false);
@@ -180,28 +185,6 @@ export default function Layout() {
               <div className="text-xs text-slate-400">{roleLabel(user.role)}</div>
             </div>
           </div>
-          {canShareLocation && (
-            <label className="mb-2 flex cursor-pointer items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2.5">
-              <span className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-slate-300" />
-                <span>
-                  <span className="block text-sm font-medium text-white">{t('مشاركة موقعي')}</span>
-                  <span className="block text-[11px] text-slate-400">{tt('يظهر موقعك للإدارة أثناء التفعيل', 'Your location is visible to management while enabled')}</span>
-                </span>
-              </span>
-              <span className="relative inline-block h-6 w-11 shrink-0">
-                <input
-                  type="checkbox"
-                  checked={!!user.location_sharing_enabled}
-                  disabled={locationToggleBusy}
-                  onChange={toggleLocationSharing}
-                  className="peer sr-only"
-                />
-                <span className="absolute inset-0 rounded-full bg-slate-600 transition-colors peer-checked:bg-emerald-500" />
-                <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
-              </span>
-            </label>
-          )}
           <button
             onClick={logout}
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10"
@@ -211,6 +194,49 @@ export default function Layout() {
           </button>
         </div>
       </aside>
+
+      {/* طلب مشاركة الموقع — بشكل نافذة نظام مثل تطبيقات آندرويد/آيفون
+          (سؤال واحد، نص مختصر، زر سماح بارز وزر رفض بجانبه)، وليس زر
+          تحكم دائم في الواجهة. يظهر مرة واحدة فقط لكل موظف معنيّ لم
+          يُقرِّر بعد. */}
+      {awaitingLocationDecision && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-white text-center shadow-2xl">
+            <div className="px-5 pb-4 pt-6">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50">
+                <MapPin className="h-6 w-6 text-brand-600" />
+              </div>
+              <div className="text-[15px] font-semibold text-slate-800">
+                {tt('"زهى" يرغب بمشاركة موقعك', '"Zaha" Would Like to Share Your Location')}
+              </div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+                {tt(
+                  'يُستخدَم موقعك لتتبّع الفريق الميداني أثناء العمل فقط، ويظهر للإدارة طالما السماح مفعّل. يمكنك تغيير هذا لاحقاً.',
+                  'Your location is used to track the field team while working, and stays visible to management while allowed. You can change this later.',
+                )}
+              </p>
+            </div>
+            <div className="border-t border-slate-100">
+              <button
+                type="button"
+                disabled={locationToggleBusy}
+                onClick={() => respondToLocationPrompt(false)}
+                className="w-full border-b border-slate-100 py-3 text-[15px] text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {t('عدم السماح')}
+              </button>
+              <button
+                type="button"
+                disabled={locationToggleBusy}
+                onClick={() => respondToLocationPrompt(true)}
+                className="w-full py-3 text-[15px] font-semibold text-brand-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {locationToggleBusy ? t('جارِ الحفظ…') : t('السماح')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
