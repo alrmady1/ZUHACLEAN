@@ -2098,12 +2098,22 @@ function LandingPageTab() {
   const [items, setItems] = useState<LandingService[] | null>(null);
   const [editing, setEditing] = useState<LandingService | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // ترتيب معرّفات الخدمات الحالي — مرجع متزامن (وليس state) يُستخدَم أثناء
+  // السحب والإفلات فقط، مطابقةً لنفس نمط PermissionsTab أدناه. يُحدَّث من
+  // items في كل تحميل ومن move()/السحب مباشرةً حتى لا يختلّ لو بدأ المستخدم
+  // سحباً جديداً بعد إعادة ترتيب سابقة بلا انتظار استجابة الخادم.
+  const orderRef = useRef<string[]>([]);
+  const dragIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   function refreshSettings() {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings);
   }
   function refreshItems() {
-    api.get<LandingService[]>('/landing-services').then(setItems);
+    api.get<LandingService[]>('/landing-services').then((list) => {
+      orderRef.current = list.map((s) => s.id);
+      setItems(list);
+    });
   }
   useEffect(() => {
     refreshSettings();
@@ -2136,8 +2146,41 @@ function LandingPageTab() {
     const target = index + dir;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
+    orderRef.current = next.map((s) => s.id);
     setItems(next);
     await api.patch('/landing-services/reorder', { order: next.map((s) => s.id) });
+  }
+
+  // سحب وإفلات بديل لأزرار الأعلى/الأسفل — نفس منطق PermissionsTab
+  // بالضبط: إعادة ترتيب items بصرياً بشكل حي أثناء السحب فوق أي بطاقة
+  // أخرى، ثم حفظ الترتيب الكامل الجديد بطلب واحد فور الإفلات.
+  function handleDragStart(id: string) {
+    dragIdRef.current = id;
+  }
+  function handleDragOver(e: DragEvent<HTMLDivElement>, overId: string) {
+    e.preventDefault();
+    setDragOverId(overId);
+    const draggedId = dragIdRef.current;
+    if (!items || !draggedId || draggedId === overId) return;
+    const order = orderRef.current;
+    const fromIdx = order.indexOf(draggedId);
+    const toIdx = order.indexOf(overId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const nextOrder = [...order];
+    const [moved] = nextOrder.splice(fromIdx, 1);
+    nextOrder.splice(toIdx, 0, moved);
+    orderRef.current = nextOrder;
+    const byId = new Map(items.map((s) => [s.id, s]));
+    setItems(nextOrder.map((id) => byId.get(id)!));
+  }
+  async function handleDrop() {
+    dragIdRef.current = null;
+    setDragOverId(null);
+    await api.patch('/landing-services/reorder', { order: orderRef.current });
+  }
+  function handleDragEnd() {
+    dragIdRef.current = null;
+    setDragOverId(null);
   }
 
   return (
@@ -2251,9 +2294,20 @@ function LandingPageTab() {
           </button>
         </div>
 
+        <p className="mb-3 text-xs text-slate-400">{t('اسحب أي بطاقة من مقبض السحب لإعادة ترتيبها، أو استخدم سهمي الأعلى والأسفل')}</p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {(items ?? []).map((s, idx) => (
-            <div key={s.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div
+              key={s.id}
+              draggable
+              onDragStart={() => handleDragStart(s.id)}
+              onDragOver={(e) => handleDragOver(e, s.id)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+              className={`overflow-hidden rounded-2xl border bg-white transition ${
+                dragOverId === s.id ? 'border-brand-400 bg-brand-50/40' : 'border-slate-200'
+              }`}
+            >
               <div className="flex h-28 items-center justify-center bg-slate-50">
                 {s.image_url ? (
                   <img src={s.image_url} alt={s.title} className="h-full w-full object-cover" />
@@ -2269,6 +2323,9 @@ function LandingPageTab() {
                     {s.is_active ? t('معروضة') : t('مخفية')}
                   </span>
                   <div className="flex items-center gap-0.5">
+                    <span className="cursor-grab p-1 text-slate-300 hover:text-slate-500 active:cursor-grabbing" title={t('اسحب لإعادة الترتيب')}>
+                      <DragHandleIcon className="h-3.5 w-3.5" />
+                    </span>
                     <button onClick={() => move(idx, -1)} disabled={idx === 0} title={t('تحريك لأعلى')} className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30">
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
