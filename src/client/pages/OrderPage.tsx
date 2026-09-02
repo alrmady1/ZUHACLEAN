@@ -411,25 +411,10 @@ export default function OrderPage() {
         </div>
       </section>
 
-      {/* ============================ شريط واتساب ============================ */}
-      <section className="px-5 py-12 text-center sm:px-10" style={{ backgroundColor: NAVY }}>
-        <h2 className="text-xl font-extrabold text-white sm:text-2xl">جاهز نبدأ بخدمتك؟</h2>
-        <p className="mt-2 text-sm text-white/60">تواصل معنا الآن واحصل على أفضل عرض يناسب احتياجك</p>
-        <a
-          href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold"
-          style={{ backgroundColor: GREEN, color: NAVY }}
-        >
-          <MessageCircle className="h-4 w-4" /> تواصل عبر واتساب
-        </a>
-      </section>
-
       {/* ============================== تواصل ============================== */}
       <section id="contact" className="mx-auto max-w-2xl px-5 py-16 text-center sm:px-10">
         <h2 className="text-xl font-extrabold" style={{ color: NAVY }}>
-          استجابة سريعة بلا تعقيد
+          اطلب الان
         </h2>
         <p className="mt-2 text-sm text-slate-500">اتصل بنا مباشرة أو راسلنا عبر واتساب، فريقنا جاهز للرد عليك</p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
