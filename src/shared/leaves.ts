@@ -1,8 +1,10 @@
 // إجازات سنوية — بخلاف weekly_days_off (تنبيه فقط، انظر weekdays.ts)، وجود
 // إجازة سارية يمنع فعلياً إسناد موعد جديد لصاحبها خلال فترتها. انظر مواضع
-// الاستخدام: NewAppointmentModal، AppointmentDetailModal.
-import type { LeaveRecord, Profile } from '../../shared/types.js';
-import { LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+// الاستخدام: NewAppointmentModal، AppointmentDetailModal، وsrc/server/lib/
+// scheduling.ts (اختيار مشرف متاح تلقائياً لموعد أنشأه الرد الآلي على
+// واتساب) — في src/shared عمداً لأنها بلا أي اعتماد على المتصفح.
+import type { LeaveRecord, Profile } from './types.js';
+import { LEAVE_TYPE_LABELS_AR } from './types.js';
 
 // نص نوع الإجازة المعروض — "أخرى" تعرض النص الذي كتبه المدير يدوياً
 // (other_type_label) بدل التسمية الثابتة العامة.

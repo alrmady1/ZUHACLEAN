@@ -12,8 +12,8 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
-import { findDayOffConflicts } from '../lib/weekdays.js';
-import { findLeaveConflicts } from '../lib/leaves.js';
+import { findDayOffConflicts } from '../../shared/weekdays.js';
+import { findLeaveConflicts } from '../../shared/leaves.js';
 
 // تحويل ISO إلى صيغة <input type="datetime-local"> (بالتوقيت المحلي —
 // datetime-local لا يفهم "Z"/UTC، فيجب بناء السلسلة يدوياً من مكوّنات
@@ -37,7 +37,7 @@ function computeServicesAmount(chosen: Service[], quantities: Record<string, num
   }, 0);
 }
 
-const STATUS_ORDER: AppointmentStatus[] = ['scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
+const STATUS_ORDER: AppointmentStatus[] = ['pending_review', 'scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
   { value: 'all', label: 'الكل' },
   { value: 'before', label: 'قبل العمل' },
@@ -539,6 +539,40 @@ export default function AppointmentDetailModal({
               </div>
             )}
           </div>
+
+          {/* موعد أنشأه الرد الآلي على واتساب تلقائياً — بانتظار مراجعة
+              موظف قبل أن يُعامَل كموعد فعلي مؤكَّد (انظر whatsapp_thread_id
+              وقسم "الرد الآلي" في src/server/lib/whatsappBot.ts). زر
+              "تأكيد الموعد" يستدعي نفس setStatus المستخدَم في منتقي
+              الحالة أدناه، وليس مساراً منفصلاً. */}
+          {appointment.status === 'pending_review' && (
+            <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+              <div className="mb-1 text-sm font-semibold text-violet-800">{t('موعد آلي من واتساب — بانتظار المراجعة')}</div>
+              <p className="mb-3 text-xs leading-relaxed text-violet-600">
+                {t('أنشأ الرد الآلي هذا الموعد تلقائياً من محادثة واتساب مع العميل. راجع البيانات أدناه (الخدمة، الوقت، المشرف) وعدِّلها إن احتاج الأمر، ثم أكِّد الموعد أو ارفض الطلب.')}
+              </p>
+              {canUpdateStatus && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setStatus('scheduled')}
+                    className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {t('تأكيد الموعد')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setStatus('cancelled')}
+                    className="rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    {t('رفض الطلب')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status picker — the only place status can change now */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">

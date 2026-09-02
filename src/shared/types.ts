@@ -203,6 +203,10 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
 export const PERMISSIONS_ACCESS_ROLES: UserRole[] = ['general_manager', 'admin'];
 
 export type AppointmentStatus =
+  // موعد أنشأه الرد الآلي على واتساب تلقائياً — بانتظار مراجعة موظف قبل أن
+  // يُعامَل كموعد فعلي مؤكَّد (انظر WhatsappThread وقسم البانر في
+  // AppointmentDetailModal.tsx). لا يُنشئه أي مسار آخر في التطبيق.
+  | 'pending_review'
   | 'scheduled'
   | 'on_the_way'
   | 'in_progress'
@@ -268,7 +272,7 @@ export interface Profile {
   role: UserRole;
   supervisor_id?: string;
   // أيام الإجازة الأسبوعية الثابتة (لمشرف ميداني أو فني) — مفاتيح أيام
-  // الأسبوع (sunday..saturday، انظر src/client/lib/weekdays.ts). لا تمنع
+  // الأسبوع (sunday..saturday، انظر src/shared/weekdays.ts). لا تمنع
   // إسناد موعد في هذا اليوم، فقط تُظهر تنبيهاً تأكيدياً قبل الحفظ (انظر
   // findDayOffConflicts وموضعي استخدامها: NewAppointmentModal،
   // AppointmentDetailModal).
@@ -309,7 +313,7 @@ export const LEAVE_TYPE_LABELS_AR: Record<LeaveType, string> = {
 // إجازة سنوية مسجَّلة لمشرف ميداني أو فني — بخلاف weekly_days_off (إجازة
 // أسبوعية ثابتة متكررة، تُنبِّه فقط)، هذه فترة محددة بتاريخين لا يمكن خلالها
 // إسناد موعد جديد لهذا الشخص إطلاقاً (منع فعلي، انظر findLeaveConflicts في
-// src/client/lib/leaves.ts وموضعي استخدامها: NewAppointmentModal،
+// src/shared/leaves.ts وموضعي استخدامها: NewAppointmentModal،
 // AppointmentDetailModal).
 export interface LeaveRecord {
   id: string;
@@ -423,6 +427,38 @@ export interface Lead {
   // (زر "تحديد موعد") — رابط مرجعي فقط، لا يمنع حذف الموعد لاحقاً.
   linked_appointment_id?: string;
   created_at: string;
+}
+
+// محادثة واتساب واحدة مع رقم عميل واحد — يُنشئها ويُحدِّثها الرد الآلي
+// (src/server/lib/whatsappBot.ts) عند كل رسالة واردة عبر ويب هوك WhatsApp
+// Cloud API. تُبنى الرسائل تدريجياً عبر أحداث ويب هوك منفصلة (لا توجد جلسة
+// حية)، فتُخزَّن هنا لتُعطي الذكاء الاصطناعي "ذاكرة" المحادثة بين رسالة
+// وأخرى. 'booked' تعني أن محادثة أنتجت موعداً (pending_review) بالفعل —
+// لا تُعاد معالجة المزيد من الرسائل لإنشاء موعد آخر لنفس المحادثة.
+export type WhatsappThreadStatus = 'active' | 'booked' | 'closed';
+
+export interface WhatsappMessage {
+  id: string;
+  direction: 'in' | 'out';
+  text: string;
+  created_at: string;
+  // معرّف رسالة واتساب (wamid) — للرسائل الواردة فقط، يمنع إعادة معالجة
+  // نفس الرسالة لو أعاد Meta إرسال نفس حدث الويب هوك (retry معروف الحدوث).
+  wa_message_id?: string;
+}
+
+export interface WhatsappThread {
+  id: string;
+  // مطبَّع محلياً عبر normalizeSaudiPhone — نفس صيغة Customer.phone.
+  phone: string;
+  // اسم الملف الشخصي في واتساب كما وصل أول رسالة — لقطة فقط، لا تتحدَّث.
+  contact_name?: string;
+  messages: WhatsappMessage[];
+  status: WhatsappThreadStatus;
+  // مُعبَّأ تلقائياً عند إنشاء موعد pending_review من هذه المحادثة.
+  linked_appointment_id?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // ألوان الهوية البصرية المعتمدة لصفحة "اطلب الخدمة" العامة — قابلة للتعديل
@@ -691,6 +727,10 @@ export interface Appointment {
   visit_service_type?: string;
   visit_outcome?: VisitOutcome;
   visit_outcome_at?: string;
+  // معرّف محادثة WhatsappThread التي أنشأت هذا الموعد تلقائياً (status
+  // البدئية 'pending_review') — غائب على كل المواعيد الأخرى المُنشأة
+  // يدوياً أو من عقد متكرر.
+  whatsapp_thread_id?: string;
 }
 
 export const VAT_RATE = 0.15;

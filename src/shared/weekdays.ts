@@ -2,7 +2,12 @@
 // Contract.visit_days_of_week وProfile.weekly_days_off، ومطابقة لترتيب
 // JS Date.getDay() (0=الأحد..6=السبت) — انظر WEEKDAY_INDEX في
 // src/server/routes/api.ts للنسخة المطابقة على الخادم.
-import type { Profile } from '../../shared/types.js';
+//
+// في src/shared (وليس src/client/lib) عمداً — findDayOffConflicts دالة
+// بلا أي اعتماد على المتصفح، يستخدمها العميل (NewAppointmentModal،
+// AppointmentDetailModal) والخادم معاً (src/server/lib/scheduling.ts، عند
+// اختيار مشرف متاح تلقائياً لموعد أنشأه الرد الآلي على واتساب).
+import type { Profile } from './types.js';
 
 export const WEEKDAYS: { key: string; label: string }[] = [
   { key: 'sunday', label: 'الأحد' },
@@ -30,7 +35,9 @@ export function weekdayLabel(key: string | undefined): string {
 // هذا الموعد يوافق إجازته الأسبوعية الثابتة (Profile.weekly_days_off)؟
 // لا تُستخدم هذه للمنع — فقط لتنبيه تأكيدي قبل الحفظ (انظر
 // findDayOffConflicts في مواضع الاستخدام: NewAppointmentModal،
-// AppointmentDetailModal).
+// AppointmentDetailModal). الاستثناء الوحيد: الحجز الآلي عبر واتساب
+// (src/server/lib/scheduling.ts) يُعامِلها كمنع فعلي، إذ لا يوجد موظف
+// بشري يقرر "أستمر مع ذلك؟" في ذلك المسار.
 export function findDayOffConflicts(
   dateStr: string,
   people: { profile: Profile | undefined; roleLabel: string }[],

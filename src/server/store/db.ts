@@ -30,6 +30,8 @@ import type {
   ActivityLogEntry,
   Quote,
   Lead,
+  WhatsappThread,
+  WhatsappMessage,
   LandingPageSettings,
   LandingService,
 } from '../../shared/types.js';
@@ -92,6 +94,9 @@ interface DbShape {
   // بطاقات الخدمات التسويقية المعروضة في نفس الصفحة — انظر LandingService
   // في src/shared/types.ts.
   landingServices: LandingService[];
+  // محادثات واتساب مع الرد الآلي (WhatsApp Cloud API webhook) — انظر
+  // WhatsappThread في src/shared/types.ts وsrc/server/lib/whatsappBot.ts.
+  whatsappThreads: WhatsappThread[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -378,6 +383,7 @@ function seed(): DbShape {
         is_active: true,
         created_at: new Date().toISOString(),
       })),
+    whatsappThreads: [],
   };
 }
 
@@ -429,6 +435,7 @@ async function load(): Promise<DbShape> {
           created_at: new Date().toISOString(),
         }));
     }
+    if (!parsed.whatsappThreads) parsed.whatsappThreads = [];
     // ترقية سجلات leads القديمة (قبل توسيع الحالات) — "contacted"/"closed"
     // لم تعودا موجودتين في LeadStatus، تُطابَقان لأقرب حالة جديدة مكافئة.
     // (لا حاجة لحفظ فوري هنا — تُكتَب تلقائياً مع أول persist() تالٍ لأي
@@ -764,6 +771,37 @@ export const store = {
       const idx = db.leads.findIndex((l) => l.id === id);
       if (idx === -1) return false;
       db.leads.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  whatsappThreads: {
+    // الأحدث أولاً — نفس ترتيب leads أعلاه.
+    list: () => [...db.whatsappThreads].reverse(),
+    get: (id: string) => db.whatsappThreads.find((t) => t.id === id),
+    getByPhone: (phone: string) => db.whatsappThreads.find((t) => t.phone === phone),
+    insert: (t: WhatsappThread) => { db.whatsappThreads.push(t); persist(); return t; },
+    update: (id: string, patch: Partial<WhatsappThread>) => {
+      const idx = db.whatsappThreads.findIndex((t) => t.id === id);
+      if (idx === -1) return undefined;
+      db.whatsappThreads[idx] = { ...db.whatsappThreads[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.whatsappThreads[idx];
+    },
+    // يُلحق رسالة واحدة (واردة أو صادرة) بمحادثة موجودة — أشيع بكثير من
+    // استبدال المصفوفة كاملة عبر update() عند كل رسالة واتساب جديدة.
+    appendMessage: (id: string, message: WhatsappMessage) => {
+      const thread = db.whatsappThreads.find((t) => t.id === id);
+      if (!thread) return undefined;
+      thread.messages.push(message);
+      thread.updated_at = new Date().toISOString();
+      persist();
+      return thread;
+    },
+    remove: (id: string) => {
+      const idx = db.whatsappThreads.findIndex((t) => t.id === id);
+      if (idx === -1) return false;
+      db.whatsappThreads.splice(idx, 1);
       persist();
       return true;
     },

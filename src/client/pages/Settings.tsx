@@ -66,8 +66,8 @@ import {
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
-import { WEEKDAYS } from '../lib/weekdays.js';
-import { leaveTypeDisplay } from '../lib/leaves.js';
+import { WEEKDAYS } from '../../shared/weekdays.js';
+import { leaveTypeDisplay } from '../../shared/leaves.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
@@ -1573,9 +1573,9 @@ function TeamLinksTab() {
 // ---------------------------------------------------------------------------
 // Leaves tab — قسمان: (1) أيام الإجازة الأسبوعية الثابتة لكل مشرف ميداني
 // وفني — لا تمنع حجز موعد في ذلك اليوم، فقط تُستخدم لاحقاً كتنبيه تأكيدي
-// (انظر findDayOffConflicts في src/client/lib/weekdays.ts). (2) الإجازات
+// (انظر findDayOffConflicts في src/shared/weekdays.ts). (2) الإجازات
 // السنوية — فترة محددة بتاريخين تمنع فعلياً إسناد موعد جديد خلالها (انظر
-// findLeaveConflicts في src/client/lib/leaves.ts). كلاهما تحت صلاحية
+// findLeaveConflicts في src/shared/leaves.ts). كلاهما تحت صلاحية
 // edit_days_off نفسها، ومواضع الاستخدام: NewAppointmentModal
 // وAppointmentDetailModal.
 // ---------------------------------------------------------------------------

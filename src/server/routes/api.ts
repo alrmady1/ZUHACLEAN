@@ -4,6 +4,7 @@ import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds } from '../lib/push.js';
+import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
   Appointment,
   Contract,
@@ -660,6 +661,7 @@ api.post('/appointments', (req, res) => {
 });
 
 const APPT_STATUS_LABEL_AR: Record<string, string> = {
+  pending_review: 'بانتظار المراجعة',
   scheduled: 'مجدولة',
   on_the_way: 'في الطريق',
   in_progress: 'جارية',
@@ -1303,6 +1305,33 @@ api.delete('/leads/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف طلب العميل "${target?.name ?? ''}"`);
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// ويب هوك واتساب (WhatsApp Cloud API) — نقطتان: GET للتحقق أثناء ربط
+// التطبيق من لوحة Meta (مرة واحدة فقط عند الإعداد)، POST تستقبل كل رسالة
+// عميل واردة فعلياً. عامة بالضرورة (Meta لا ترسل أي رمز مصادقة قابل
+// للتحقق منه على نقطة كهذه) — التحقق الوحيد المتاح هو WHATSAPP_VERIFY_TOKEN
+// عند GET فقط. انظر src/server/lib/whatsappBot.ts لمعالجة الرسائل فعلياً.
+// ---------------------------------------------------------------------------
+api.get('/whatsapp/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return res.status(200).send(req.query['hub.challenge']);
+  }
+  res.sendStatus(403);
+});
+
+api.post('/whatsapp/webhook', (req, res) => {
+  // نُجيب Meta فوراً بـ200 بصرف النظر عن أي شيء لاحقاً — Meta تُعيد
+  // المحاولة (وربما تُضاعف الإرسال) لو لم تصلها 200 سريعة، وأي عمل فعلي
+  // (استدعاء الذكاء الاصطناعي، إرسال الرد، إنشاء الموعد) لا يجب أن يُبطئ
+  // هذه الاستجابة أو يمنعها.
+  res.sendStatus(200);
+  void handleIncomingWhatsappMessage(req.body).catch((err) => {
+    console.error('❌ فشل معالجة رسالة واتساب واردة:', err);
+  });
 });
 
 // ---------------------------------------------------------------------------

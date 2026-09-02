@@ -6,8 +6,8 @@ import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
-import { findDayOffConflicts } from '../lib/weekdays.js';
-import { findLeaveConflicts } from '../lib/leaves.js';
+import { findDayOffConflicts } from '../../shared/weekdays.js';
+import { findLeaveConflicts } from '../../shared/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 
 // السعر الكامل لمجموعة خدمات مختارة: سعر ثابت (default_price) للخدمات

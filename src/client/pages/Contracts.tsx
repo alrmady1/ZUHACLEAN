@@ -7,7 +7,7 @@ import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from 
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
-import { WEEKDAYS } from '../lib/weekdays.js';
+import { WEEKDAYS } from '../../shared/weekdays.js';
 import ContractDocument from '../components/ContractDocument.js';
 
 export default function Contracts() {

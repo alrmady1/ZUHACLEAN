@@ -11,6 +11,7 @@ import { useI18n } from '../lib/i18n.js';
 // الخرائط (نفس الأسلوب المتّبع في APPT_STATUS_STYLE أدناه وأي خريطة حالة
 // مشابهة في الملفات الأخرى).
 export const APPT_STATUS_STYLE: Record<AppointmentStatus, { label: string; className: string }> = {
+  pending_review: { label: 'بانتظار المراجعة', className: 'bg-violet-100 text-violet-700' },
   scheduled: { label: 'مجدولة', className: 'bg-slate-100 text-slate-700' },
   on_the_way: { label: 'في الطريق', className: 'bg-blue-100 text-blue-700' },
   in_progress: { label: 'جارية', className: 'bg-amber-100 text-amber-700' },
