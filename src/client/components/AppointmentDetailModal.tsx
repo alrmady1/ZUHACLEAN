@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome } from '../../shared/types.js';
-import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR } from '../../shared/types.js';
+import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR, SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { APPT_STATUS_STYLE } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
@@ -22,6 +22,19 @@ function toDatetimeLocalValue(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// السعر الكامل لمجموعة خدمات مختارة عند التعديل — سعر ثابت (default_price)
+// أو (الكمية × سعر الوحدة) لخدمة مسعَّرة بالمتر المربع/المقعد. نفس منطق
+// NewAppointmentModal عند الحجز الأول، مكرَّر هنا محلياً لبقاء كل مكوّن
+// مستقلاً بذاته.
+function computeServicesAmount(chosen: Service[], quantities: Record<string, number>): number {
+  return chosen.reduce((sum, s) => {
+    if (s.pricing_model && s.pricing_model !== 'fixed') {
+      return sum + (quantities[s.id] ?? 1) * (s.unit_price ?? 0);
+    }
+    return sum + s.default_price;
+  }, 0);
 }
 
 const STATUS_ORDER: AppointmentStatus[] = ['scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
@@ -82,6 +95,10 @@ export default function AppointmentDetailModal({
   const [timeInput, setTimeInput] = useState(toDatetimeLocalValue(appointment.scheduled_at));
   const [editingServices, setEditingServices] = useState(false);
   const [editServiceIds, setEditServiceIds] = useState<string[]>([]);
+  // الكمية المُدخَلة لكل خدمة مسعَّرة بالوحدة أثناء التعديل (نفس فكرة
+  // NewAppointmentModal) — لا تتوفر كمية أصلية محفوظة لهذا الموعد، فتبدأ
+  // بـ1 لأي خدمة كهذه محدَّدة مسبقاً عند فتح وضع التعديل.
+  const [editServiceQuantities, setEditServiceQuantities] = useState<Record<string, number>>({});
   const [editAmount, setEditAmount] = useState<number | ''>(appointment.amount);
   const [editDuration, setEditDuration] = useState<number | ''>(appointment.expected_duration_minutes);
   const [showEditServiceDropdown, setShowEditServiceDropdown] = useState(false);
@@ -248,7 +265,13 @@ export default function AppointmentDetailModal({
   function startEditingServices() {
     const names = appointment.service_name_snapshot.split('،').map((n) => n.trim()).filter(Boolean);
     const matched = services.filter((s) => names.includes(s.name));
-    setEditServiceIds(matched.length > 0 ? matched.map((s) => s.id) : [appointment.service_id].filter(Boolean));
+    const ids = matched.length > 0 ? matched.map((s) => s.id) : [appointment.service_id].filter(Boolean);
+    setEditServiceIds(ids);
+    setEditServiceQuantities(
+      Object.fromEntries(
+        matched.filter((s) => s.pricing_model && s.pricing_model !== 'fixed').map((s) => [s.id, 1]),
+      ),
+    );
     setEditAmount(appointment.amount);
     setEditDuration(appointment.expected_duration_minutes);
     setEditingServices(true);
@@ -256,14 +279,35 @@ export default function AppointmentDetailModal({
 
   // اختيار/إلغاء خدمة يعيد حساب السعر والمدة تلقائياً كمجموع القيم
   // الافتراضية للخدمات المختارة — يبقى قابلاً للتعديل يدوياً بعدها (نفس
-  // منطق NewAppointmentModal عند الحجز الأول).
+  // منطق NewAppointmentModal عند الحجز الأول). خدمة مسعَّرة بالمتر
+  // المربع/المقعد تُضاف بكمية 1 افتراضياً عند اختيارها أول مرة.
   function toggleEditService(id: string) {
     setEditServiceIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
       const chosen = services.filter((s) => next.includes(s.id));
-      setEditAmount(chosen.reduce((sum, s) => sum + s.default_price, 0));
+      setEditServiceQuantities((prevQ) => {
+        const nextQ = { ...prevQ };
+        if (!next.includes(id)) {
+          delete nextQ[id];
+        } else if (nextQ[id] === undefined) {
+          const svc = services.find((s) => s.id === id);
+          if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+        }
+        setEditAmount(computeServicesAmount(chosen, nextQ));
+        return nextQ;
+      });
       setEditDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
       return next;
+    });
+  }
+
+  // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة أثناء التعديل.
+  function updateEditServiceQuantity(id: string, qty: number) {
+    setEditServiceQuantities((prev) => {
+      const nextQ = { ...prev, [id]: qty };
+      const chosen = services.filter((s) => editServiceIds.includes(s.id));
+      setEditAmount(computeServicesAmount(chosen, nextQ));
+      return nextQ;
     });
   }
 
@@ -632,7 +676,11 @@ export default function AppointmentDetailModal({
                               </span>
                               <input type="checkbox" checked={checked} onChange={() => toggleEditService(s.id)} className="hidden" />
                               <span className="flex-1 text-slate-700">{s.name}</span>
-                              <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                              <span className="shrink-0 text-xs text-slate-400">
+                                {s.pricing_model && s.pricing_model !== 'fixed'
+                                  ? `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
+                                  : formatMoney(s.default_price)}
+                              </span>
                             </label>
                           );
                         })}
@@ -640,6 +688,27 @@ export default function AppointmentDetailModal({
                       </div>
                     )}
                   </div>
+
+                  {services
+                    .filter((s): s is Service & { pricing_model: 'per_sqm' | 'per_seat' } =>
+                      editServiceIds.includes(s.id) && !!s.pricing_model && s.pricing_model !== 'fixed',
+                    )
+                    .map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+                        <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={editServiceQuantities[s.id] ?? 1}
+                          onChange={(e) => updateEditServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
+                          className="input w-16 shrink-0 py-1 text-center text-xs"
+                        />
+                        <span className="shrink-0 text-xs text-slate-400">× {formatMoney(s.unit_price ?? 0)}</span>
+                      </div>
+                    ))}
+
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-xs">
                       <span className="mb-1 block font-medium text-slate-600">{t('السعر (ر.س)')}</span>

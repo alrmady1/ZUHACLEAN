@@ -34,11 +34,14 @@ import {
   ArrowDown,
   ExternalLink,
   AlertTriangle,
+  Ruler,
+  Armchair,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
   Profile,
   Service,
+  ServicePricingModel,
   UserRole,
   PaymentMethodOption,
   ServiceCategory,
@@ -51,7 +54,13 @@ import type {
   LandingService,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
-import { SETTINGS_ACCESS_ROLES, PERMISSIONS_ACCESS_ROLES, ACTIVITY_LOG_DELETE_ROLES, LEAVE_TYPE_LABELS_AR } from '../../shared/types.js';
+import {
+  SETTINGS_ACCESS_ROLES,
+  PERMISSIONS_ACCESS_ROLES,
+  ACTIVITY_LOG_DELETE_ROLES,
+  LEAVE_TYPE_LABELS_AR,
+  SERVICE_PRICING_MODEL_LABELS_AR,
+} from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -561,7 +570,6 @@ function ServicesTab() {
   const [editing, setEditing] = useState<Service | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
 
   function refresh() {
@@ -582,32 +590,6 @@ function ServicesTab() {
       return;
     await api.del(`/services/${s.id}`);
     refresh();
-  }
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSubmitting(true);
-    const form = new FormData(e.currentTarget);
-    const payload = {
-      name: form.get('name'),
-      description: form.get('description') || undefined,
-      category: form.get('category') || undefined,
-      default_price: Number(form.get('default_price')),
-      default_duration_minutes: Number(form.get('default_duration_minutes')),
-      is_active: form.get('is_active') === 'on',
-    };
-    try {
-      if (editing) {
-        await api.patch(`/services/${editing.id}`, payload);
-      } else {
-        await api.post('/services', payload);
-      }
-      setShowForm(false);
-      setEditing(null);
-      refresh();
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
@@ -684,7 +666,15 @@ function ServicesTab() {
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">{s.category}</span>
                 )}
               </div>
-              <div className="mb-1 text-sm font-semibold text-slate-800">{s.name}</div>
+              <div className="mb-1 flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-slate-800">{s.name}</span>
+                {s.pricing_model && s.pricing_model !== 'fixed' && (
+                  <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
+                    {s.pricing_model === 'per_sqm' ? <Ruler className="h-3 w-3" /> : <Armchair className="h-3 w-3" />}
+                    {t(SERVICE_PRICING_MODEL_LABELS_AR[s.pricing_model])}
+                  </span>
+                )}
+              </div>
               {s.description && <p className="mb-3 text-xs leading-relaxed text-slate-500">{s.description}</p>}
 
               <div className="grid grid-cols-2 gap-2">
@@ -695,8 +685,16 @@ function ServicesTab() {
                   <div className="text-sm font-semibold text-slate-700">{formatDuration(s.default_duration_minutes)}</div>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-3 py-2">
-                  <div className="mb-0.5 text-[11px] text-slate-400">{t('السعر الافتراضي (شامل الضريبة)')}</div>
-                  <div className="text-sm font-semibold text-slate-700">{formatMoney(s.default_price)}</div>
+                  <div className="mb-0.5 text-[11px] text-slate-400">
+                    {s.pricing_model === 'per_sqm'
+                      ? tt('السعر لكل متر مربع', 'Price per m²')
+                      : s.pricing_model === 'per_seat'
+                        ? tt('السعر لكل مقعد', 'Price per seat')
+                        : t('السعر الافتراضي (شامل الضريبة)')}
+                  </div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    {formatMoney(s.pricing_model && s.pricing_model !== 'fixed' ? s.unit_price ?? 0 : s.default_price)}
+                  </div>
                 </div>
               </div>
 
@@ -739,14 +737,25 @@ function ServicesTab() {
                   {s.is_active ? t('نشطة') : t('موقوفة')}
                 </span>
                 <div className="w-48 shrink-0">
-                  <div className="truncate text-sm font-semibold text-slate-800">{s.name}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-slate-800">{s.name}</span>
+                    {s.pricing_model && s.pricing_model !== 'fixed' && (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">
+                        {s.pricing_model === 'per_sqm' ? <Ruler className="h-3 w-3" /> : <Armchair className="h-3 w-3" />}
+                      </span>
+                    )}
+                  </div>
                   {s.description && <div className="truncate text-xs text-slate-400">{s.description}</div>}
                 </div>
                 <span className="w-32 shrink-0 truncate text-xs font-medium text-slate-500">{s.category || '—'}</span>
                 <span className="flex w-32 shrink-0 items-center gap-1 text-xs text-slate-500">
                   <Clock className="h-3.5 w-3.5 text-slate-400" /> {formatDuration(s.default_duration_minutes)}
                 </span>
-                <span className="w-28 shrink-0 text-sm font-semibold text-slate-700">{formatMoney(s.default_price)}</span>
+                <span className="w-28 shrink-0 text-sm font-semibold text-slate-700">
+                  {formatMoney(s.pricing_model && s.pricing_model !== 'fixed' ? s.unit_price ?? 0 : s.default_price)}
+                  {s.pricing_model === 'per_sqm' && <span className="text-[10px] font-normal text-slate-400"> / {t('م²')}</span>}
+                  {s.pricing_model === 'per_seat' && <span className="text-[10px] font-normal text-slate-400"> / {t('مقعد')}</span>}
+                </span>
                 <div className="mr-auto flex items-center gap-1">
                   <button
                     onClick={() => handleDelete(s)}
@@ -773,115 +782,19 @@ function ServicesTab() {
       )}
 
       {showForm && (
-        <Modal
-          title={editing ? tt(`تعديل ${editing.name}`, `Edit ${editing.name}`) : t('إضافة خدمة جديدة')}
-          subtitle={t('تحديد تفاصيل وباقة الخدمة والأسعار الافتراضية بالريال السعودي')}
+        <ServiceFormModal
+          editing={editing}
+          categories={categories}
           onClose={() => {
             setShowForm(false);
             setEditing(null);
           }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label={t('اسم الخدمة *')} icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />}>
-              <input
-                name="name"
-                defaultValue={editing?.name}
-                required
-                placeholder={t('مثال: تنظيف وتلميع واجهات الزجاج')}
-                className="input"
-              />
-            </Field>
-
-            <Field label={t('تصنيف وقسم الخدمة')} icon={<Tag className="h-3.5 w-3.5 text-brand-500" />}>
-              <div className="relative">
-                <select
-                  name="category"
-                  defaultValue={editing?.category ?? ''}
-                  className="input appearance-none pe-9"
-                >
-                  <option value="">{t('بدون تصنيف')}</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('المدة التقريبية (دقيقة) *')} icon={<Clock className="h-3.5 w-3.5 text-brand-500" />}>
-                <input
-                  type="number"
-                  name="default_duration_minutes"
-                  min={1}
-                  defaultValue={editing?.default_duration_minutes ?? 60}
-                  required
-                  className="input"
-                />
-              </Field>
-              <Field label={t('السعر الافتراضي (SAR، شامل الضريبة) *')} icon={<DollarSign className="h-3.5 w-3.5 text-brand-500" />}>
-                <input
-                  type="number"
-                  name="default_price"
-                  min={0}
-                  step="0.01"
-                  defaultValue={editing?.default_price}
-                  required
-                  className="input"
-                />
-              </Field>
-            </div>
-
-            <Field label={t('وصف الخدمة والمميزات المشمولة')} icon={<FileText className="h-3.5 w-3.5 text-brand-500" />}>
-              <textarea
-                name="description"
-                defaultValue={editing?.description}
-                rows={3}
-                placeholder={t('مثال: يشمل غسيل الأرضيات، تلميع الأسطح، غسيل الشبابيك واستخدام مواد معتمدة...')}
-                className="input resize-none"
-              />
-            </Field>
-
-            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <span>
-                <span className="block text-sm font-medium text-slate-700">{t('حالة تفعيل الخدمة')}</span>
-                <span className="block text-xs text-slate-400">{t('الخدمة متاحة للحجز في قائمة المواعيد')}</span>
-              </span>
-              <span className="relative inline-block h-6 w-11 shrink-0">
-                <input
-                  type="checkbox"
-                  name="is_active"
-                  defaultChecked={editing?.is_active ?? true}
-                  className="peer sr-only"
-                />
-                <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500" />
-                <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
-              </span>
-            </label>
-
-            <div className="mt-2 flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {submitting ? t('جارِ الحفظ…') : editing ? t('حفظ التعديلات') : t('إضافة الخدمة')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditing(null);
-                }}
-                className="text-sm font-medium text-slate-400 hover:text-slate-600"
-              >
-                {t('إلغاء')}
-              </button>
-            </div>
-          </form>
-        </Modal>
+          onSaved={() => {
+            setShowForm(false);
+            setEditing(null);
+            refresh();
+          }}
+        />
       )}
 
       {showCategories && (
@@ -895,6 +808,188 @@ function ServicesTab() {
         />
       )}
     </div>
+  );
+}
+
+// نموذج إضافة/تعديل خدمة — مستخرج كمكوّن مستقل (بنفس نمط LandingServiceForm)
+// حتى تُعاد تهيئة حالة "نموذج التسعير" من الصفر عند كل فتح (mount/unmount
+// كامل بفضل `{showForm && (...)}` في المكوّن الأب)، بدل أن تبقى عالقة من
+// فتحة سابقة. حقل السعر واحد فقط ظاهر دائماً (name="price_value") ويُعاد
+// تفسيره حسب pricingModel عند الإرسال: سعر ثابت (default_price) أو سعر
+// الوحدة للمتر المربع/المقعد (unit_price) — وفي الحالة الثانية يُخزَّن نفس
+// الرقم أيضاً كـ default_price (سعر الوحدة الواحدة) لأن الحقل مطلوب دوماً.
+function ServiceFormModal({
+  editing,
+  categories,
+  onClose,
+  onSaved,
+}: {
+  editing: Service | null;
+  categories: ServiceCategory[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t, tt } = useI18n();
+  const [pricingModel, setPricingModel] = useState<ServicePricingModel>(editing?.pricing_model ?? 'fixed');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const priceValue = Number(form.get('price_value'));
+    const payload = {
+      name: form.get('name'),
+      description: form.get('description') || undefined,
+      category: form.get('category') || undefined,
+      default_price: priceValue,
+      default_duration_minutes: Number(form.get('default_duration_minutes')),
+      is_active: form.get('is_active') === 'on',
+      pricing_model: pricingModel === 'fixed' ? undefined : pricingModel,
+      unit_price: pricingModel === 'fixed' ? undefined : priceValue,
+    };
+    try {
+      if (editing) {
+        await api.patch(`/services/${editing.id}`, payload);
+      } else {
+        await api.post('/services', payload);
+      }
+      onSaved();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const priceLabel =
+    pricingModel === 'per_sqm'
+      ? t('سعر المتر المربع الواحد (SAR، شامل الضريبة) *')
+      : pricingModel === 'per_seat'
+        ? t('سعر المقعد الواحد (SAR، شامل الضريبة) *')
+        : t('السعر الافتراضي (SAR، شامل الضريبة) *');
+  const priceDefaultValue = pricingModel === 'fixed' ? editing?.default_price : editing?.unit_price;
+
+  return (
+    <Modal
+      title={editing ? tt(`تعديل ${editing.name}`, `Edit ${editing.name}`) : t('إضافة خدمة جديدة')}
+      subtitle={t('تحديد تفاصيل وباقة الخدمة والأسعار الافتراضية بالريال السعودي')}
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label={t('اسم الخدمة *')} icon={<Sparkles className="h-3.5 w-3.5 text-brand-500" />}>
+          <input
+            name="name"
+            defaultValue={editing?.name}
+            required
+            placeholder={t('مثال: تنظيف وتلميع واجهات الزجاج')}
+            className="input"
+          />
+        </Field>
+
+        <Field label={t('تصنيف وقسم الخدمة')} icon={<Tag className="h-3.5 w-3.5 text-brand-500" />}>
+          <div className="relative">
+            <select name="category" defaultValue={editing?.category ?? ''} className="input appearance-none pe-9">
+              <option value="">{t('بدون تصنيف')}</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          </div>
+        </Field>
+
+        <Field label={t('نموذج التسعير')} icon={<Ruler className="h-3.5 w-3.5 text-brand-500" />}>
+          <div className="relative">
+            <select
+              value={pricingModel}
+              onChange={(e) => setPricingModel(e.target.value as ServicePricingModel)}
+              className="input appearance-none pe-9"
+            >
+              {(Object.keys(SERVICE_PRICING_MODEL_LABELS_AR) as ServicePricingModel[]).map((m) => (
+                <option key={m} value={m}>
+                  {t(SERVICE_PRICING_MODEL_LABELS_AR[m])}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          </div>
+          {pricingModel !== 'fixed' && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              {pricingModel === 'per_sqm'
+                ? tt(
+                    'سيُطلب إدخال عدد الأمتار (م²) عند إضافة الخدمة لموعد، ويُحسب السعر تلقائياً (قابل للتعديل).',
+                    'You will be asked for the area (m²) when adding this service to an appointment — the price is calculated automatically (still editable).',
+                  )
+                : tt(
+                    'سيُطلب إدخال عدد المقاعد عند إضافة الخدمة لموعد، ويُحسب السعر تلقائياً (قابل للتعديل).',
+                    'You will be asked for the number of seats when adding this service to an appointment — the price is calculated automatically (still editable).',
+                  )}
+            </p>
+          )}
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('المدة التقريبية (دقيقة) *')} icon={<Clock className="h-3.5 w-3.5 text-brand-500" />}>
+            <input
+              type="number"
+              name="default_duration_minutes"
+              min={1}
+              defaultValue={editing?.default_duration_minutes ?? 60}
+              required
+              className="input"
+            />
+          </Field>
+          <Field label={priceLabel} icon={<DollarSign className="h-3.5 w-3.5 text-brand-500" />}>
+            <input
+              key={pricingModel}
+              type="number"
+              name="price_value"
+              min={0}
+              step="0.01"
+              defaultValue={priceDefaultValue}
+              required
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <Field label={t('وصف الخدمة والمميزات المشمولة')} icon={<FileText className="h-3.5 w-3.5 text-brand-500" />}>
+          <textarea
+            name="description"
+            defaultValue={editing?.description}
+            rows={3}
+            placeholder={t('مثال: يشمل غسيل الأرضيات، تلميع الأسطح، غسيل الشبابيك واستخدام مواد معتمدة...')}
+            className="input resize-none"
+          />
+        </Field>
+
+        <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <span>
+            <span className="block text-sm font-medium text-slate-700">{t('حالة تفعيل الخدمة')}</span>
+            <span className="block text-xs text-slate-400">{t('الخدمة متاحة للحجز في قائمة المواعيد')}</span>
+          </span>
+          <span className="relative inline-block h-6 w-11 shrink-0">
+            <input type="checkbox" name="is_active" defaultChecked={editing?.is_active ?? true} className="peer sr-only" />
+            <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500" />
+            <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
+          </span>
+        </label>
+
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? t('جارِ الحفظ…') : editing ? t('حفظ التعديلات') : t('إضافة الخدمة')}
+          </button>
+          <button type="button" onClick={onClose} className="text-sm font-medium text-slate-400 hover:text-slate-600">
+            {t('إلغاء')}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

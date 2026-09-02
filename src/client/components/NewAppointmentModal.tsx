@@ -2,12 +2,25 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile, Appointment, LeaveRecord } from '../../shared/types.js';
+import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
 import { findDayOffConflicts } from '../lib/weekdays.js';
 import { findLeaveConflicts } from '../lib/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
+
+// السعر الكامل لمجموعة خدمات مختارة: سعر ثابت (default_price) للخدمات
+// العادية، أو (الكمية × سعر الوحدة) للخدمات المسعَّرة بالمتر المربع أو
+// بالمقعد — الكمية الافتراضية 1 حتى تُعدَّل يدوياً من مربع الإدخال.
+function computeServicesAmount(chosen: Service[], quantities: Record<string, number>): number {
+  return chosen.reduce((sum, s) => {
+    if (s.pricing_model && s.pricing_model !== 'fixed') {
+      return sum + (quantities[s.id] ?? 1) * (s.unit_price ?? 0);
+    }
+    return sum + s.default_price;
+  }, 0);
+}
 
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
@@ -84,9 +97,17 @@ export default function NewAppointmentModal({
   const [addingCustomer, setAddingCustomer] = useState(false);
 
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(matchedLeadService ? [matchedLeadService.id] : []);
+  // الكمية المُدخَلة لكل خدمة مسعَّرة بالوحدة (عدد الأمتار أو المقاعد) —
+  // خدمات السعر الثابت لا تظهر هنا إطلاقاً. تبدأ بـ1 لأي خدمة كهذه محدَّدة
+  // مسبقاً (من طلب وارد محوَّل)، وتُضاف/تُحذف تلقائياً مع toggleService.
+  const [serviceQuantities, setServiceQuantities] = useState<Record<string, number>>(
+    matchedLeadService && matchedLeadService.pricing_model && matchedLeadService.pricing_model !== 'fixed'
+      ? { [matchedLeadService.id]: 1 }
+      : {},
+  );
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
-  const [amount, setAmount] = useState<number | ''>(matchedLeadService?.default_price ?? 0);
+  const [amount, setAmount] = useState<number | ''>(matchedLeadService ? computeServicesAmount([matchedLeadService], { [matchedLeadService.id]: 1 }) : 0);
   // مدة زيارة المعاينة افتراضياً أقصر بكثير من موعد خدمة فعلي (30 دقيقة
   // بدل 120) — قابلة للتعديل بالطبع لو احتاج المشرف وقتاً أطول.
   const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120));
@@ -131,14 +152,35 @@ export default function NewAppointmentModal({
 
   // Selecting/deselecting a service recomputes the totals as the sum of the
   // selected services' defaults — still editable afterwards if the agreed
-  // price differs.
+  // price differs. A service priced per m²/seat contributes quantity×unit_price
+  // instead of default_price (quantity defaults to 1 when first selected).
   function toggleService(id: string) {
     setSelectedServiceIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
       const chosen = services.filter((s) => next.includes(s.id));
-      setAmount(chosen.reduce((sum, s) => sum + s.default_price, 0));
+      setServiceQuantities((prevQ) => {
+        const nextQ = { ...prevQ };
+        if (!next.includes(id)) {
+          delete nextQ[id];
+        } else if (nextQ[id] === undefined) {
+          const svc = services.find((s) => s.id === id);
+          if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+        }
+        setAmount(computeServicesAmount(chosen, nextQ));
+        return nextQ;
+      });
       setDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
       return next;
+    });
+  }
+
+  // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة، مع إعادة
+  // احتساب السعر الإجمالي فوراً — يبقى قابلاً للتعديل اليدوي بعدها كأي سعر.
+  function updateServiceQuantity(id: string, qty: number) {
+    setServiceQuantities((prev) => {
+      const nextQ = { ...prev, [id]: qty };
+      setAmount(computeServicesAmount(selectedServices, nextQ));
+      return nextQ;
     });
   }
 
@@ -489,7 +531,11 @@ export default function NewAppointmentModal({
                           </span>
                           <input type="checkbox" checked={checked} onChange={() => toggleService(s.id)} className="hidden" />
                           <span className="flex-1 text-slate-700">{s.name}</span>
-                          <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                          <span className="shrink-0 text-xs text-slate-400">
+                            {s.pricing_model && s.pricing_model !== 'fixed'
+                              ? `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
+                              : formatMoney(s.default_price)}
+                          </span>
                         </label>
                       );
                     })}
@@ -497,6 +543,29 @@ export default function NewAppointmentModal({
                   </div>
                 )}
               </div>
+
+              {selectedServices.some((s) => s.pricing_model && s.pricing_model !== 'fixed') && (
+                <div className="space-y-2">
+                  {selectedServices
+                    .filter((s): s is Service & { pricing_model: 'per_sqm' | 'per_seat' } => !!s.pricing_model && s.pricing_model !== 'fixed')
+                    .map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5">
+                        <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={serviceQuantities[s.id] ?? 1}
+                          onChange={(e) => updateServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
+                          className="input w-20 shrink-0 py-1 text-center"
+                        />
+                        <span className="shrink-0 text-xs text-slate-400">× {formatMoney(s.unit_price ?? 0)}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('سعر الخدمة المتفق عليه (SAR، شامل الضريبة) *')}</span>

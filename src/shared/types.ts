@@ -485,6 +485,25 @@ export interface Customer {
   created_at: string;
 }
 
+// نموذج تسعير الخدمة — غائب/'fixed' = سعر ثابت (default_price)، كما كانت
+// كل الخدمات سابقاً. 'per_sqm'/'per_seat': السعر النهائي = الكمية التي
+// تُدخَل عند الحجز (عدد الأمتار أو المقاعد) × unit_price (سعر الوحدة
+// الافتراضي المُعدّ من الإعدادات ← الخدمات) — قابل للتعديل كأي سعر آخر.
+export type ServicePricingModel = 'fixed' | 'per_sqm' | 'per_seat';
+
+export const SERVICE_PRICING_MODEL_LABELS_AR: Record<ServicePricingModel, string> = {
+  fixed: 'سعر ثابت',
+  per_sqm: 'بالمتر المربع',
+  per_seat: 'بالمقعد',
+};
+
+// وحدة القياس المعروضة بجانب حقل الكمية عند الحجز (مقابلة لكل نموذج غير
+// ثابت) — 'fixed' لا تستخدمها إطلاقاً.
+export const SERVICE_PRICING_UNIT_LABELS_AR: Record<Exclude<ServicePricingModel, 'fixed'>, string> = {
+  per_sqm: 'عدد الأمتار (م²)',
+  per_seat: 'عدد المقاعد',
+};
+
 export interface Service {
   id: string;
   name: string;
@@ -493,6 +512,10 @@ export interface Service {
   default_price: number;
   default_duration_minutes: number;
   is_active: boolean;
+  pricing_model?: ServicePricingModel;
+  // سعر الوحدة الافتراضي (للمتر أو للمقعد) — يُستخدَم فقط عندما
+  // pricing_model ليست 'fixed'.
+  unit_price?: number;
 }
 
 export interface PaymentMethodOption {

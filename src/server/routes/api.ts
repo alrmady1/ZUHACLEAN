@@ -517,6 +517,8 @@ api.post('/services', (req, res) => {
     default_price: Number(body.default_price ?? 0),
     default_duration_minutes: Number(body.default_duration_minutes ?? 60),
     is_active: body.is_active ?? true,
+    pricing_model: body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined,
+    unit_price: body.pricing_model && body.pricing_model !== 'fixed' ? Number(body.unit_price ?? 0) : undefined,
   };
   store.services.insert(service);
   logActivity(req, `تم إضافة خدمة "${service.name}"`);
@@ -532,6 +534,10 @@ api.patch('/services/:id', (req, res) => {
   if (body.default_price !== undefined) patch.default_price = Number(body.default_price);
   if (body.default_duration_minutes !== undefined) patch.default_duration_minutes = Number(body.default_duration_minutes);
   if (body.is_active !== undefined) patch.is_active = body.is_active;
+  if (body.pricing_model !== undefined) {
+    patch.pricing_model = body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined;
+    patch.unit_price = patch.pricing_model ? Number(body.unit_price ?? 0) : undefined;
+  }
 
   const updated = store.services.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
