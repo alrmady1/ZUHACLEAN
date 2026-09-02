@@ -134,6 +134,15 @@ export default function OrderPage() {
         className="relative overflow-hidden px-5 py-16 sm:px-10 sm:py-20"
         style={{ backgroundColor: NAVY }}
       >
+        {/* صورة خلفية خفيفة جداً (شفافية منخفضة) لأحد فنيي الميدان أثناء
+            العمل — خلف الدوائر الزخرفية والمحتوى بالكامل، بلا أي تأثير على
+            وضوح النص الأبيض فوقها. */}
+        <img
+          src="/hero-worker.jpeg"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-10"
+        />
         <div
           className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full opacity-20"
           style={{ backgroundColor: GREEN }}
@@ -301,27 +310,21 @@ export default function OrderPage() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            {/* شعار تمارا — كبسولة مستديرة بالكامل بتدرّج ألوان متعدد النقاط
-                (أصفر أعلى اليسار، وردي في الوسط، أزرق وبنفسجي أسفل)، مطابقةً
-                لشكل الشعار الرسمي المرسَل. */}
+            {/* شعار تمارا الرسمي — ملف SVG بالأسود بلا خلفية (وحده)، فوق
+                كبسولة بتدرّج الألوان الرسمي (أصفر/وردي/أزرق/بنفسجي)
+                المطابق لشعار تمارا الملوّن الكامل. */}
             <span
-              dir="rtl"
-              className="rounded-full px-6 py-2.5 text-lg font-black text-slate-900 shadow-sm sm:text-xl"
+              className="flex items-center justify-center rounded-full px-6 py-3 shadow-sm"
               style={{
                 background:
                   'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
               }}
             >
-              تمارا
+              <img src="/tamara-logo.svg" alt="Tamara" className="h-4 w-auto sm:h-5" />
             </span>
-            {/* شعار تابي — مستطيل مستدير الزوايا بتدرّج أخضر نعناعي إلى
-                فيروزي، مطابقةً لشكل الشعار الرسمي المرسَل. */}
-            <span
-              className="rounded-2xl px-6 py-2.5 text-lg font-extrabold italic tracking-tight text-slate-900 shadow-sm sm:text-xl"
-              style={{ background: 'linear-gradient(100deg, #b6ffdd 0%, #37e8a4 100%)' }}
-            >
-              tabby
-            </span>
+            {/* شعار تابي الرسمي — ملف PNG كاملاً مع خلفيته (التدرّج الأخضر
+                النعناعي) كما هو، بلا أي تعديل. */}
+            <img src="/tabby-logo.png" alt="Tabby" className="h-10 w-auto rounded-2xl shadow-sm sm:h-11" />
           </div>
         </div>
       </section>
