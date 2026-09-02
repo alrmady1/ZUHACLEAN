@@ -281,6 +281,38 @@ export default function OrderPage() {
         </div>
       </section>
 
+      {/* =================== لا تشيل هم الدفع (تابي وتمارا) =================== */}
+      <section className="mx-auto max-w-3xl px-5 pb-2 pt-8 sm:px-10">
+        <div
+          className="flex flex-col items-center gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row-reverse sm:justify-between"
+          style={{ borderColor: CREAM }}
+        >
+          <div className="text-center sm:text-right">
+            <p className="text-base font-extrabold sm:text-lg" style={{ color: NAVY }}>
+              لا تشيل هم الدفع!
+            </p>
+            <p className="mt-1 text-sm text-slate-500 sm:text-base">
+              يمكنك التقسيط عن طريق <span className="font-bold" style={{ color: '#5433a7' }}>تمارا</span> و{' '}
+              <span className="font-bold" style={{ color: '#0f8a72' }}>تابي</span>
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <span
+              className="rounded-xl px-5 py-2.5 text-base font-extrabold text-slate-900 shadow-sm sm:text-lg"
+              style={{ background: 'linear-gradient(135deg, #ffb199, #ff8a9e, #b98aff, #7ea0ff)' }}
+            >
+              تمارا
+            </span>
+            <span
+              className="rounded-xl px-5 py-2.5 text-base font-extrabold italic tracking-tight text-slate-900 shadow-sm sm:text-lg"
+              style={{ backgroundColor: '#5cffbc' }}
+            >
+              tabby
+            </span>
+          </div>
+        </div>
+      </section>
+
       {/* ============================== الخدمات ============================== */}
       <section id="services" className="mx-auto max-w-6xl px-5 py-16 sm:px-10">
         <div className="mb-10 text-center">
