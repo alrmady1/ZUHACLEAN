@@ -413,7 +413,7 @@ export default function OrderPage() {
 
       {/* ============================== تواصل ============================== */}
       <section id="contact" className="mx-auto max-w-2xl px-5 py-16 text-center sm:px-10">
-        <h2 className="text-xl font-extrabold" style={{ color: NAVY }}>
+        <h2 className="text-[2.5rem] font-extrabold" style={{ color: NAVY }}>
           اطلب الان
         </h2>
         <p className="mt-2 text-sm text-slate-500">اتصل بنا مباشرة أو راسلنا عبر واتساب، فريقنا جاهز للرد عليك</p>
