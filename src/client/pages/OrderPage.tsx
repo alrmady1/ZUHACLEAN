@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
-import { COMPANY_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
+import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { LandingPageSettings, LandingService } from '../../shared/types.js';
 
 // صفحة عامة خارجية — بلا تسجيل دخول عمداً — لاستقبال طلبات العملاء من
@@ -456,8 +456,7 @@ export default function OrderPage() {
       {/* ============================== الفوتر ============================== */}
       <footer className="px-5 py-8 text-center sm:px-10" style={{ backgroundColor: NAVY }}>
         <div className="mb-3 flex items-center justify-center gap-2">
-          <img src="/icon-192.png" alt={COMPANY_NAME} className="h-8 w-8 rounded-lg" />
-          <span className="font-extrabold text-white">{COMPANY_NAME}</span>
+          <span className="font-extrabold text-white">{COMPANY_LEGAL_NAME}</span>
         </div>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
       </footer>
