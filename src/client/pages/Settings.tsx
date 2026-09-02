@@ -2204,6 +2204,25 @@ function LandingPageTab() {
               className="input"
             />
           </Field>
+
+          <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span>
+              <span className="block text-sm font-medium text-slate-700">{t('شريط التقسيط عبر تابي وتمارا')}</span>
+              <span className="block text-xs text-slate-400">
+                {t('يظهر أسفل قسم الهيرو مباشرة: "لا تشيل هم الدفع! يمكنك التقسيط عن طريق تابي وتمارا"')}
+              </span>
+            </span>
+            <span className="relative inline-block h-6 w-11 shrink-0">
+              <input
+                type="checkbox"
+                checked={settings.show_installments_banner ?? true}
+                onChange={(e) => setSettings((s) => ({ ...s, show_installments_banner: e.target.checked }))}
+                className="peer sr-only"
+              />
+              <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500" />
+              <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
+            </span>
+          </label>
         </div>
 
         <button

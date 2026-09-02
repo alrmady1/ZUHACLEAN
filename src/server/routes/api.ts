@@ -1322,6 +1322,8 @@ api.patch('/landing-settings', (req, res) => {
     hero_title: typeof body.hero_title === 'string' && body.hero_title.trim() ? body.hero_title.trim() : current.hero_title,
     hero_subtitle: typeof body.hero_subtitle === 'string' ? body.hero_subtitle.trim() : current.hero_subtitle,
     tagline: typeof body.tagline === 'string' && body.tagline.trim() ? body.tagline.trim() : current.tagline,
+    show_installments_banner:
+      typeof body.show_installments_banner === 'boolean' ? body.show_installments_banner : current.show_installments_banner ?? true,
   };
   store.landingSettings.set(next);
   logActivity(req, 'تم تعديل إعدادات صفحة الطلبات الخارجية (الألوان/النصوص)');

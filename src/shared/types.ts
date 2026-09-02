@@ -449,6 +449,11 @@ export interface LandingPageSettings {
   hero_title: string;
   hero_subtitle: string;
   tagline: string;
+  // إظهار/إخفاء شريط "لا تشيل هم الدفع! يمكنك التقسيط عن طريق تابي
+  // وتمارا" أسفل قسم الهيرو في صفحة "اطلب الخدمة" العامة — افتراضياً
+  // ظاهر (true) حتى لا تختفي من الحسابات القديمة التي أُنشئت قبل إضافة
+  // هذا الخيار (سجلّها المحفوظ لا يحتوي هذا الحقل إطلاقاً).
+  show_installments_banner?: boolean;
 }
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
@@ -457,6 +462,7 @@ export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
   hero_subtitle:
     'حلول تنظيف وصيانة شاملة للمنازل والمكاتب والمرافق التجارية، بفريق مدرّب وأدوات ومواد معتمدة — نصل إليك بموعد محدد ونلتزم به.',
   tagline: 'نظافة تستحق الثقة',
+  show_installments_banner: true,
 };
 
 // بطاقة خدمة تسويقية معروضة في صفحة "اطلب الخدمة" العامة — منفصلة عمداً عن

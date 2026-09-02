@@ -281,7 +281,11 @@ export default function OrderPage() {
         </div>
       </section>
 
-      {/* =================== لا تشيل هم الدفع (تابي وتمارا) =================== */}
+      {/* =================== لا تشيل هم الدفع (تابي وتمارا) ===================
+          يظهر افتراضياً (undefined = true، للسجلات المحفوظة قبل إضافة هذا
+          الخيار) ويُخفى بالكامل فقط لو عطّله المدير صراحةً من الإعدادات ←
+          الطلبات الخارجية. */}
+      {settings.show_installments_banner !== false && (
       <section className="mx-auto max-w-3xl px-5 pb-2 pt-8 sm:px-10">
         <div
           className="flex flex-col items-center gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row-reverse sm:justify-between"
@@ -297,21 +301,31 @@ export default function OrderPage() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            {/* شعار تمارا — كبسولة مستديرة بالكامل بتدرّج ألوان متعدد النقاط
+                (أصفر أعلى اليسار، وردي في الوسط، أزرق وبنفسجي أسفل)، مطابقةً
+                لشكل الشعار الرسمي المرسَل. */}
             <span
-              className="rounded-xl px-5 py-2.5 text-base font-extrabold text-slate-900 shadow-sm sm:text-lg"
-              style={{ background: 'linear-gradient(135deg, #ffb199, #ff8a9e, #b98aff, #7ea0ff)' }}
+              dir="rtl"
+              className="rounded-full px-6 py-2.5 text-lg font-black text-slate-900 shadow-sm sm:text-xl"
+              style={{
+                background:
+                  'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
+              }}
             >
               تمارا
             </span>
+            {/* شعار تابي — مستطيل مستدير الزوايا بتدرّج أخضر نعناعي إلى
+                فيروزي، مطابقةً لشكل الشعار الرسمي المرسَل. */}
             <span
-              className="rounded-xl px-5 py-2.5 text-base font-extrabold italic tracking-tight text-slate-900 shadow-sm sm:text-lg"
-              style={{ backgroundColor: '#5cffbc' }}
+              className="rounded-2xl px-6 py-2.5 text-lg font-extrabold italic tracking-tight text-slate-900 shadow-sm sm:text-xl"
+              style={{ background: 'linear-gradient(100deg, #b6ffdd 0%, #37e8a4 100%)' }}
             >
               tabby
             </span>
           </div>
         </div>
       </section>
+      )}
 
       {/* ============================== الخدمات ============================== */}
       <section id="services" className="mx-auto max-w-6xl px-5 py-16 sm:px-10">
