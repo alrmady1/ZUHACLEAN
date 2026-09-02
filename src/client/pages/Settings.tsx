@@ -36,6 +36,8 @@ import {
   AlertTriangle,
   Ruler,
   Armchair,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
@@ -2341,7 +2343,7 @@ function LandingPageTab() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                   <button onClick={() => toggleActive(s)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" title={s.is_active ? t('إخفاء من الصفحة') : t('إظهار في الصفحة')}>
-                    {s.is_active ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                    {s.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => {
