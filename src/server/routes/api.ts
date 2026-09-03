@@ -1327,7 +1327,12 @@ api.post('/whatsapp/webhook', async (req, res) => {
   } catch (err) {
     console.error('❌ فشل معالجة رسالة واتساب واردة:', err);
   }
-  res.sendStatus(200);
+  // TwiML فارغ صراحةً (وليس res.sendStatus(200) — نص جسمها الافتراضي
+  // الحرفي هو "OK"، وTwilio تُرسِل أي جسم استجابة غير XML صالح كرسالة
+  // واتساب تلقائية للعميل! هذا بالضبط سبب ظهور رد "OK" الغامض في كل
+  // رسالة — Response> فارغ يعني صراحة "لا رد تلقائي هنا، الرد الفعلي يصل
+  // لاحقاً عبر REST API في sendWhatsappTextMessage أعلاه).
+  res.type('text/xml').status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
 });
 
 // ---------------------------------------------------------------------------
