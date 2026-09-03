@@ -280,6 +280,11 @@ function UsersTab() {
             {filtered.map((p) => {
               const isSelf = p.id === currentUser?.id;
               const isLastManager = p.role === 'general_manager' && profiles.filter((x) => x.role === 'general_manager').length <= 1;
+              // منع "الدخول بهذا الحساب" لأي حساب مدير عام من أي حساب آخر —
+              // حتى لو كان الحساب الحالي يملك صلاحية الاطلاع على هذه الصفحة
+              // (admin_supervisor مثلاً)، لا يمكنه ترقية نفسه فعلياً بالدخول
+              // مباشرة كمدير عام عبر هذا الزر.
+              const isTargetGM = p.role === 'general_manager';
               const team = profiles.filter((tech) => tech.role === 'technician' && tech.supervisor_id === p.id);
               const supervisor = profiles.find((s) => s.id === p.supervisor_id);
               const initial = p.full_name.trim().charAt(0);
@@ -356,6 +361,10 @@ function UsersTab() {
                   <div className="shrink-0">
                     {isSelf ? (
                       <span className="text-xs font-medium text-slate-300">{t('الحساب الفعلي')}</span>
+                    ) : isTargetGM ? (
+                      <span className="text-xs font-medium text-slate-300" title={t('لا يمكن الدخول لحساب مدير عام من حساب آخر')}>
+                        {t('مقيَّد')}
+                      </span>
                     ) : (
                       <button
                         onClick={() => switchToAccount(p)}
@@ -378,6 +387,11 @@ function UsersTab() {
         {filtered.map((p) => {
           const isSelf = p.id === currentUser?.id;
           const isLastManager = p.role === 'general_manager' && profiles.filter((x) => x.role === 'general_manager').length <= 1;
+          // منع "الدخول بهذا الحساب" لأي حساب مدير عام من أي حساب آخر — حتى
+          // لو كان الحساب الحالي يملك صلاحية الاطلاع على هذه الصفحة
+          // (admin_supervisor مثلاً)، لا يمكنه ترقية نفسه فعلياً بالدخول
+          // مباشرة كمدير عام عبر هذا الزر.
+          const isTargetGM = p.role === 'general_manager';
           const team = profiles.filter((tech) => tech.role === 'technician' && tech.supervisor_id === p.id);
           const supervisor = profiles.find((s) => s.id === p.supervisor_id);
           const initial = p.full_name.trim().charAt(0);
@@ -480,6 +494,13 @@ function UsersTab() {
                 </div>
                 {isSelf ? (
                   <span className="rounded-lg px-2 py-1 text-xs font-medium text-slate-300">{t('الحساب الفعلي')}</span>
+                ) : isTargetGM ? (
+                  <span
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-slate-300"
+                    title={t('لا يمكن الدخول لحساب مدير عام من حساب آخر')}
+                  >
+                    {t('مقيَّد')}
+                  </span>
                 ) : (
                   <button
                     onClick={() => switchToAccount(p)}
