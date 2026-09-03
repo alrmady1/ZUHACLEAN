@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, Invoice, PaymentMethodOption } from '../../shared/types.js';
-import { AppointmentStatusBadge } from '../components/Badge.js';
+import { AppointmentStatusBadge, isAppointmentOverdue, OverdueIndicator } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import DayClock from '../components/DayClock.js';
@@ -273,7 +273,10 @@ export default function Dashboard() {
                         <td className="py-2.5 text-slate-600">{assignee}</td>
                         <td className="py-2.5 text-slate-600">{formatMoney(a.amount)}</td>
                         <td className="py-2.5">
-                          <AppointmentStatusBadge status={a.status} />
+                          <div className="flex items-center gap-1.5">
+                            <AppointmentStatusBadge status={a.status} />
+                            {isAppointmentOverdue(a) && <OverdueIndicator />}
+                          </div>
                         </td>
                       </tr>
                     );

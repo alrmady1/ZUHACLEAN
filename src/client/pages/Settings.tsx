@@ -2561,6 +2561,10 @@ function PermissionsTab() {
 
   async function toggle(key: string, role: UserRole, checked: boolean) {
     if (!rows) return;
+    // حماية إضافية على مستوى الدالة نفسها، وليس فقط تعطيل مربع الاختيار
+    // بالواجهة — صلاحيات المدير العام غير قابلة للتعديل من هذا الجدول
+    // إطلاقاً، من أي حساب.
+    if (role === 'general_manager') return;
     const idx = rows.findIndex(([k]) => k === key);
     if (idx === -1) return;
     const current = rows[idx][1].roles;
@@ -2652,17 +2656,25 @@ function PermissionsTab() {
                   <DragHandleIcon className="h-4 w-4" />
                 </td>
                 <td className="p-3 font-medium text-slate-700">{t(label)}</td>
-                {ROLES.map((role) => (
-                  <td key={role} className="p-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={roles.includes(role)}
-                      disabled={savingKey === key}
-                      onChange={(e) => toggle(key, role, e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
-                    />
-                  </td>
-                ))}
+                {ROLES.map((role) => {
+                  // صلاحيات المدير العام محمية من التعديل عبر هذا الجدول
+                  // نهائياً (حتى من حساب مدير نظام آخر يملك وصولاً لهذه
+                  // الصفحة) — يبقى دوره الأعلى غير قابل للتقييد من أي مكان
+                  // في الواجهة.
+                  const isGMColumn = role === 'general_manager';
+                  return (
+                    <td key={role} className="p-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={roles.includes(role)}
+                        disabled={savingKey === key || isGMColumn}
+                        title={isGMColumn ? t('لا يمكن تعديل صلاحيات المدير العام') : undefined}
+                        onChange={(e) => toggle(key, role, e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400 disabled:cursor-not-allowed"
+                      />
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

@@ -1,5 +1,6 @@
-import { Star } from 'lucide-react';
+import { Star, AlertTriangle } from 'lucide-react';
 import type {
+  Appointment,
   AppointmentStatus,
   PaymentStatus,
   ContractStatus,
@@ -45,6 +46,31 @@ function Pill({ label, className }: { label: string; className: string }) {
 export const AppointmentStatusBadge = ({ status }: { status: AppointmentStatus }) => (
   <Pill {...APPT_STATUS_STYLE[status]} />
 );
+
+// حالات "نشطة" فقط — تعتبر مهمة متأخرة لو تجاوزت وقتها المتوقع وحالتها
+// لسه على واحدة منها؛ 'مؤجلة'/'مكتملة'/'ملغاة' تعني إن الحالة تغيّرت
+// فعلياً لتعكس الواقع، فلا داعي لتنبيه إضافي.
+const OVERDUE_ELIGIBLE_STATUSES: AppointmentStatus[] = ['pending_review', 'scheduled', 'on_the_way', 'in_progress'];
+
+// هل تجاوز هذا الموعد وقته المتوقع (موعد البدء + المدة التقديرية) بينما
+// حالته لسه لم تُحدَّث لتعكس ذلك؟ تنبيه بصري بحت — لا يمنع أي إجراء ولا
+// يغيّر أي بيانات، فقط يلفت انتباه الموظف لمهمة تحتاج متابعة أو تحديث حالة.
+export function isAppointmentOverdue(a: Appointment): boolean {
+  if (!OVERDUE_ELIGIBLE_STATUSES.includes(a.status)) return false;
+  const expectedEnd = new Date(a.scheduled_at).getTime() + a.expected_duration_minutes * 60000;
+  return Number.isFinite(expectedEnd) && Date.now() > expectedEnd;
+}
+
+// أيقونة تنبيه صغيرة تُعرض بجانب AppointmentStatusBadge لمهمة متأخرة —
+// انظر isAppointmentOverdue أعلاه لشرط الظهور.
+export function OverdueIndicator() {
+  const { t } = useI18n();
+  return (
+    <span title={t('تجاوز الموعد وقته المتوقع ولم تُحدَّث حالته بعد')} className="inline-flex text-red-500">
+      <AlertTriangle className="h-4 w-4" />
+    </span>
+  );
+}
 export const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => (
   <Pill {...PAYMENT_STYLE[status]} />
 );

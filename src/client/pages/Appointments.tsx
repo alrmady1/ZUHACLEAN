@@ -22,7 +22,14 @@ import {
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, CustomerRating, Invoice } from '../../shared/types.js';
 import { VISIT_OUTCOME_LABELS_AR } from '../../shared/types.js';
-import { AppointmentStatusBadge, PaymentStatusBadge, RatingStars, APPT_STATUS_STYLE } from '../components/Badge.js';
+import {
+  AppointmentStatusBadge,
+  PaymentStatusBadge,
+  RatingStars,
+  APPT_STATUS_STYLE,
+  isAppointmentOverdue,
+  OverdueIndicator,
+} from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
@@ -557,7 +564,10 @@ export default function Appointments() {
                       </div>
                     </td>
                     <td className="p-3">
-                      <AppointmentStatusBadge status={a.status} />
+                      <div className="flex items-center gap-1.5">
+                        <AppointmentStatusBadge status={a.status} />
+                        {isAppointmentOverdue(a) && <OverdueIndicator />}
+                      </div>
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1">
@@ -740,6 +750,7 @@ export default function Appointments() {
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-slate-500">{formatTimeAr(a.scheduled_at)}</span>
                       <AppointmentStatusBadge status={a.status} />
+                      {isAppointmentOverdue(a) && <OverdueIndicator />}
                       {canDeleteAppointment && (
                         <button
                           onClick={(e) => {
@@ -870,7 +881,10 @@ export default function Appointments() {
                         )}
                       </td>
                       <td className="p-3">
-                        <AppointmentStatusBadge status={a.status} />
+                        <div className="flex items-center gap-1.5">
+                          <AppointmentStatusBadge status={a.status} />
+                          {isAppointmentOverdue(a) && <OverdueIndicator />}
+                        </div>
                       </td>
                       <td className="p-3">
                         {rating ? (
