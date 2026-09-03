@@ -352,8 +352,9 @@ function UsersTab() {
                         setEditing(p);
                         setShowForm(true);
                       }}
-                      title={t('تعديل')}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      disabled={isTargetGM && !isSelf}
+                      title={isTargetGM && !isSelf ? t('لا يمكن تعديل حساب مدير عام من حساب آخر') : t('تعديل')}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -486,8 +487,9 @@ function UsersTab() {
                       setEditing(p);
                       setShowForm(true);
                     }}
-                    title={t('تعديل')}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                    disabled={isTargetGM && !isSelf}
+                    title={isTargetGM && !isSelf ? t('لا يمكن تعديل حساب مدير عام من حساب آخر') : t('تعديل')}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -861,6 +863,7 @@ function ServiceFormModal({
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     const priceValue = Number(form.get('price_value'));
+    const unitDurationRaw = form.get('unit_duration_seconds');
     const payload = {
       name: form.get('name'),
       description: form.get('description') || undefined,
@@ -870,6 +873,8 @@ function ServiceFormModal({
       is_active: form.get('is_active') === 'on',
       pricing_model: pricingModel === 'fixed' ? undefined : pricingModel,
       unit_price: pricingModel === 'fixed' ? undefined : priceValue,
+      unit_duration_seconds:
+        pricingModel !== 'fixed' && unitDurationRaw && Number(unitDurationRaw) > 0 ? Number(unitDurationRaw) : undefined,
     };
     try {
       if (editing) {
@@ -976,6 +981,33 @@ function ServiceFormModal({
             />
           </Field>
         </div>
+
+        {pricingModel !== 'fixed' && (
+          <Field
+            label={
+              pricingModel === 'per_sqm'
+                ? t('مدة المتر المربع الواحد (ثانية) — اختياري')
+                : t('مدة المقعد الواحد (ثانية) — اختياري')
+            }
+            icon={<Clock className="h-3.5 w-3.5 text-brand-500" />}
+          >
+            <input
+              key={`dur-${pricingModel}`}
+              type="number"
+              name="unit_duration_seconds"
+              min={0}
+              defaultValue={editing?.unit_duration_seconds}
+              placeholder={t('اتركه فارغاً لتبقى المدة الكلية ثابتة (المدة التقريبية أعلاه)')}
+              className="input"
+            />
+            <p className="mt-1.5 text-xs text-slate-400">
+              {tt(
+                'عند تحديدها، مدة الموعد الكلية لهذه الخدمة = الكمية المُدخَلة عند الحجز × هذه القيمة، بدل المدة التقريبية الثابتة أعلاه.',
+                'When set, the total appointment duration for this service = the quantity entered at booking × this value, instead of the fixed estimated duration above.',
+              )}
+            </p>
+          </Field>
+        )}
 
         <Field label={t('وصف الخدمة والمميزات المشمولة')} icon={<FileText className="h-3.5 w-3.5 text-brand-500" />}>
           <textarea

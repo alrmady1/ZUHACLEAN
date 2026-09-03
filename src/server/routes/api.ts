@@ -520,6 +520,10 @@ api.post('/services', (req, res) => {
     is_active: body.is_active ?? true,
     pricing_model: body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined,
     unit_price: body.pricing_model && body.pricing_model !== 'fixed' ? Number(body.unit_price ?? 0) : undefined,
+    unit_duration_seconds:
+      body.pricing_model && body.pricing_model !== 'fixed' && body.unit_duration_seconds
+        ? Number(body.unit_duration_seconds)
+        : undefined,
   };
   store.services.insert(service);
   logActivity(req, `تم إضافة خدمة "${service.name}"`);
@@ -538,6 +542,7 @@ api.patch('/services/:id', (req, res) => {
   if (body.pricing_model !== undefined) {
     patch.pricing_model = body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined;
     patch.unit_price = patch.pricing_model ? Number(body.unit_price ?? 0) : undefined;
+    patch.unit_duration_seconds = patch.pricing_model && body.unit_duration_seconds ? Number(body.unit_duration_seconds) : undefined;
   }
 
   const updated = store.services.update(req.params.id, patch);

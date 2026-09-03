@@ -558,6 +558,12 @@ export interface Service {
   // سعر الوحدة الافتراضي (للمتر أو للمقعد) — يُستخدَم فقط عندما
   // pricing_model ليست 'fixed'.
   unit_price?: number;
+  // مدة الوحدة الواحدة (بالثواني — للمتر أو للمقعد) — اختياري، يُستخدَم
+  // فقط عندما pricing_model ليست 'fixed'. عند تحديدها، مدة الخدمة الكلية
+  // = الكمية المُدخَلة عند الحجز × هذه القيمة (بدل default_duration_minutes
+  // الثابتة). غائبة = تبقى المدة الكلية ثابتة (default_duration_minutes)
+  // بصرف النظر عن الكمية، كما كانت كل خدمات per_sqm/per_seat سابقاً.
+  unit_duration_seconds?: number;
 }
 
 export interface PaymentMethodOption {

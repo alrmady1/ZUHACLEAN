@@ -37,6 +37,22 @@ function computeServicesAmount(chosen: Service[], quantities: Record<string, num
   }, 0);
 }
 
+// مدة مجموعة خدمات مختارة عند التعديل — نفس منطق computeServicesAmount:
+// خدمة لها unit_duration_seconds تُحتسب كـ(الكمية × هذه القيمة)، والباقي
+// يبقى على مدته التقريبية الثابتة default_duration_minutes.
+function computeServicesDuration(chosen: Service[], quantities: Record<string, number>): number {
+  let totalMinutes = 0;
+  let totalSeconds = 0;
+  for (const s of chosen) {
+    if (s.pricing_model && s.pricing_model !== 'fixed' && s.unit_duration_seconds) {
+      totalSeconds += (quantities[s.id] ?? 1) * s.unit_duration_seconds;
+    } else {
+      totalMinutes += s.default_duration_minutes;
+    }
+  }
+  return totalMinutes + Math.round(totalSeconds / 60);
+}
+
 const STATUS_ORDER: AppointmentStatus[] = ['pending_review', 'scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
   { value: 'all', label: 'الكل' },
@@ -282,33 +298,29 @@ export default function AppointmentDetailModal({
   // منطق NewAppointmentModal عند الحجز الأول). خدمة مسعَّرة بالمتر
   // المربع/المقعد تُضاف بكمية 1 افتراضياً عند اختيارها أول مرة.
   function toggleEditService(id: string) {
-    setEditServiceIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      const chosen = services.filter((s) => next.includes(s.id));
-      setEditServiceQuantities((prevQ) => {
-        const nextQ = { ...prevQ };
-        if (!next.includes(id)) {
-          delete nextQ[id];
-        } else if (nextQ[id] === undefined) {
-          const svc = services.find((s) => s.id === id);
-          if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
-        }
-        setEditAmount(computeServicesAmount(chosen, nextQ));
-        return nextQ;
-      });
-      setEditDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
-      return next;
-    });
+    const next = editServiceIds.includes(id) ? editServiceIds.filter((x) => x !== id) : [...editServiceIds, id];
+    const chosen = services.filter((s) => next.includes(s.id));
+    const nextQ = { ...editServiceQuantities };
+    if (!next.includes(id)) {
+      delete nextQ[id];
+    } else if (nextQ[id] === undefined) {
+      const svc = services.find((s) => s.id === id);
+      if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+    }
+    setEditServiceQuantities(nextQ);
+    setEditAmount(computeServicesAmount(chosen, nextQ));
+    setEditDuration(computeServicesDuration(chosen, nextQ));
+    setEditServiceIds(next);
   }
 
-  // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة أثناء التعديل.
+  // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة أثناء التعديل
+  // — يعيد احتساب السعر والمدة الإجماليين معاً.
   function updateEditServiceQuantity(id: string, qty: number) {
-    setEditServiceQuantities((prev) => {
-      const nextQ = { ...prev, [id]: qty };
-      const chosen = services.filter((s) => editServiceIds.includes(s.id));
-      setEditAmount(computeServicesAmount(chosen, nextQ));
-      return nextQ;
-    });
+    const nextQ = { ...editServiceQuantities, [id]: qty };
+    const chosen = services.filter((s) => editServiceIds.includes(s.id));
+    setEditServiceQuantities(nextQ);
+    setEditAmount(computeServicesAmount(chosen, nextQ));
+    setEditDuration(computeServicesDuration(chosen, nextQ));
   }
 
   async function saveServices() {

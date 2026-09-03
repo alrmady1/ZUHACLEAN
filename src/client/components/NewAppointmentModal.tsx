@@ -22,6 +22,25 @@ function computeServicesAmount(chosen: Service[], quantities: Record<string, num
   }, 0);
 }
 
+// مدة مجموعة خدمات مختارة، بنفس منطق computeServicesAmount: خدمة محدَّد
+// لها unit_duration_seconds (مدة الوحدة الواحدة) تُحتسب كـ(الكمية × هذه
+// القيمة)، بقية الخدمات (بما فيها per_sqm/per_seat بلا مدة وحدة محدَّدة)
+// تبقى على مدتها التقريبية الثابتة default_duration_minutes كالمعتاد.
+// تُجمَع الثواني على حدة ثم تُحوَّل لدقائق مرة واحدة في النهاية لتفادي
+// تراكم خطأ التقريب عبر عدة خدمات.
+function computeServicesDuration(chosen: Service[], quantities: Record<string, number>): number {
+  let totalMinutes = 0;
+  let totalSeconds = 0;
+  for (const s of chosen) {
+    if (s.pricing_model && s.pricing_model !== 'fixed' && s.unit_duration_seconds) {
+      totalSeconds += (quantities[s.id] ?? 1) * s.unit_duration_seconds;
+    } else {
+      totalMinutes += s.default_duration_minutes;
+    }
+  }
+  return totalMinutes + Math.round(totalSeconds / 60);
+}
+
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
@@ -155,33 +174,29 @@ export default function NewAppointmentModal({
   // price differs. A service priced per m²/seat contributes quantity×unit_price
   // instead of default_price (quantity defaults to 1 when first selected).
   function toggleService(id: string) {
-    setSelectedServiceIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      const chosen = services.filter((s) => next.includes(s.id));
-      setServiceQuantities((prevQ) => {
-        const nextQ = { ...prevQ };
-        if (!next.includes(id)) {
-          delete nextQ[id];
-        } else if (nextQ[id] === undefined) {
-          const svc = services.find((s) => s.id === id);
-          if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
-        }
-        setAmount(computeServicesAmount(chosen, nextQ));
-        return nextQ;
-      });
-      setDuration(chosen.reduce((sum, s) => sum + s.default_duration_minutes, 0));
-      return next;
-    });
+    const next = selectedServiceIds.includes(id) ? selectedServiceIds.filter((x) => x !== id) : [...selectedServiceIds, id];
+    const chosen = services.filter((s) => next.includes(s.id));
+    const nextQ = { ...serviceQuantities };
+    if (!next.includes(id)) {
+      delete nextQ[id];
+    } else if (nextQ[id] === undefined) {
+      const svc = services.find((s) => s.id === id);
+      if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+    }
+    setServiceQuantities(nextQ);
+    setAmount(computeServicesAmount(chosen, nextQ));
+    setDuration(computeServicesDuration(chosen, nextQ));
+    setSelectedServiceIds(next);
   }
 
   // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة، مع إعادة
-  // احتساب السعر الإجمالي فوراً — يبقى قابلاً للتعديل اليدوي بعدها كأي سعر.
+  // احتساب السعر والمدة الإجماليين فوراً — يبقيان قابلين للتعديل اليدوي
+  // بعدها كأي سعر أو مدة أخرى.
   function updateServiceQuantity(id: string, qty: number) {
-    setServiceQuantities((prev) => {
-      const nextQ = { ...prev, [id]: qty };
-      setAmount(computeServicesAmount(selectedServices, nextQ));
-      return nextQ;
-    });
+    const nextQ = { ...serviceQuantities, [id]: qty };
+    setServiceQuantities(nextQ);
+    setAmount(computeServicesAmount(selectedServices, nextQ));
+    setDuration(computeServicesDuration(selectedServices, nextQ));
   }
 
   useEffect(() => {
