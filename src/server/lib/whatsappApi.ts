@@ -1,38 +1,32 @@
-// إرسال رسالة نصية عبر WhatsApp Cloud API (Meta Graph API) —
-// WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID مطلوبان في متغيرات
-// البيئة (انظر .env.example). بدونهما هذا الملف يرفض الإرسال بصمت مع
-// تسجيل تحذير، على نفس نمط push.ts (لا يوقف تشغيل الخادم في بيئة لم
+// إرسال رسالة نصية عبر واتساب باستخدام Twilio (وليس WhatsApp Cloud API
+// المباشر من Meta — تعذّر إكمال تسجيل حساب مطوّرين هناك، انظر نقاش الجلسة).
+// TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WHATSAPP_NUMBER مطلوبة في
+// متغيرات البيئة (انظر .env.example). بدونها هذا الملف يرفض الإرسال بصمت
+// مع تسجيل تحذير، على نفس نمط push.ts (لا يوقف تشغيل الخادم في بيئة لم
 // تُضبط فيها بعد).
-const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = process.env;
-const whatsappConfigured = Boolean(WHATSAPP_ACCESS_TOKEN && WHATSAPP_PHONE_NUMBER_ID);
+import twilio from 'twilio';
 
-if (!whatsappConfigured) {
-  console.warn('⚠️ WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID غير مضبوطين — إرسال رسائل واتساب معطَّل حتى تُضبط في متغيرات البيئة.');
+const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER } = process.env;
+const twilioConfigured = Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_WHATSAPP_NUMBER);
+const client = twilioConfigured ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
+
+if (!twilioConfigured) {
+  console.warn('⚠️ TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_WHATSAPP_NUMBER غير مضبوطة — إرسال رسائل واتساب معطَّل حتى تُضبط في متغيرات البيئة.');
 }
 
-// toPhoneIntl بصيغة دولية بلا "+" (مثال: "9665XXXXXXXX") — نفس صيغة
-// message.from الواردة من ويب هوك واتساب مباشرة، وليست الصيغة المحلية
-// المطبَّعة (normalizeSaudiPhone) المستخدمة في تخزين Customer.phone.
-export async function sendWhatsappTextMessage(toPhoneIntl: string, text: string): Promise<void> {
-  if (!whatsappConfigured) return;
+// toWhatsappAddress بصيغة Twilio الكاملة: "whatsapp:+9665XXXXXXXX" — هذه
+// بالضبط قيمة حقل From في جسم ويب هوك الاستقبال، فتُستخدم كما هي دون أي
+// تحويل إضافي (وليست الصيغة المحلية المطبَّعة normalizeSaudiPhone المستخدمة
+// في تخزين Customer.phone).
+export async function sendWhatsappTextMessage(toWhatsappAddress: string, text: string): Promise<void> {
+  if (!client) return;
   try {
-    const res = await fetch(`https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: toPhoneIntl,
-        type: 'text',
-        text: { body: text },
-      }),
+    await client.messages.create({
+      from: TWILIO_WHATSAPP_NUMBER,
+      to: toWhatsappAddress,
+      body: text,
     });
-    if (!res.ok) {
-      console.error('❌ فشل إرسال رسالة واتساب:', res.status, await res.text().catch(() => ''));
-    }
   } catch (err) {
-    console.error('❌ خطأ أثناء إرسال رسالة واتساب:', err);
+    console.error('❌ فشل إرسال رسالة واتساب عبر Twilio:', err);
   }
 }

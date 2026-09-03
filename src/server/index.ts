@@ -17,6 +17,8 @@ async function createServer() {
   const app = express();
   const httpServer = http.createServer(app);
   app.use(express.json({ limit: '8mb' })); // generous limit: before/after photos are base64
+  // ويب هوك واتساب (Twilio) يرسل جسم الطلب بصيغة form-urlencoded، وليس JSON.
+  app.use(express.urlencoded({ extended: false }));
 
   app.use('/api', api);
 

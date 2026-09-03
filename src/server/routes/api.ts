@@ -1308,24 +1308,15 @@ api.delete('/leads/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// ويب هوك واتساب (WhatsApp Cloud API) — نقطتان: GET للتحقق أثناء ربط
-// التطبيق من لوحة Meta (مرة واحدة فقط عند الإعداد)، POST تستقبل كل رسالة
-// عميل واردة فعلياً. عامة بالضرورة (Meta لا ترسل أي رمز مصادقة قابل
-// للتحقق منه على نقطة كهذه) — التحقق الوحيد المتاح هو WHATSAPP_VERIFY_TOKEN
-// عند GET فقط. انظر src/server/lib/whatsappBot.ts لمعالجة الرسائل فعلياً.
+// ويب هوك واتساب (Twilio) — نقطة POST واحدة تستقبل كل رسالة عميل واردة
+// (Twilio لا تحتاج مصافحة تحقق منفصلة كـ Meta). الجسم يصل بصيغة
+// form-urlencoded (انظر express.urlencoded في index.ts/api/index.ts)، بحقول
+// From/To/Body/MessageSid/ProfileName المسطّحة القياسية لدى Twilio. عامة
+// بالضرورة (نفس مستوى حماية /public/leads) — انظر src/server/lib/
+// whatsappBot.ts لمعالجة الرسائل فعلياً.
 // ---------------------------------------------------------------------------
-api.get('/whatsapp/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    return res.status(200).send(req.query['hub.challenge']);
-  }
-  res.sendStatus(403);
-});
-
 api.post('/whatsapp/webhook', (req, res) => {
-  // نُجيب Meta فوراً بـ200 بصرف النظر عن أي شيء لاحقاً — Meta تُعيد
-  // المحاولة (وربما تُضاعف الإرسال) لو لم تصلها 200 سريعة، وأي عمل فعلي
+  // نُجيب Twilio فوراً بـ200 بصرف النظر عن أي شيء لاحقاً — أي عمل فعلي
   // (استدعاء الذكاء الاصطناعي، إرسال الرد، إنشاء الموعد) لا يجب أن يُبطئ
   // هذه الاستجابة أو يمنعها.
   res.sendStatus(200);

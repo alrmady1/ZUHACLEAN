@@ -120,28 +120,28 @@ export async function generateWhatsappReply(params: {
 // ---------------------------------------------------------------------------
 // معالجة رسالة واتساب واردة — الدالة المُركِّبة (composition root) التي
 // يستدعيها ويب هوك POST /api/whatsapp/webhook. تُقرأ دفاعياً من جسم الطلب
-// الخام دون افتراض أي بنية متداخلة مضمونة الوجود، لأنها نقطة نهاية عامة
-// تستقبل مدخلات خارجية مباشرة من Meta.
+// الخام دون افتراض أي حقل مضمون الوجود، لأنها نقطة نهاية عامة تستقبل
+// مدخلات خارجية مباشرة من Twilio (حقول form-urlencoded مسطّحة: From/To/
+// Body/MessageSid/ProfileName/NumMedia).
 // ---------------------------------------------------------------------------
 export async function handleIncomingWhatsappMessage(rawBody: unknown): Promise<void> {
   const body = rawBody as {
-    entry?: { changes?: { value?: {
-      messages?: { from?: string; id?: string; type?: string; text?: { body?: string } }[];
-      contacts?: { profile?: { name?: string } }[];
-    } }[] }[];
+    From?: string;
+    Body?: string;
+    MessageSid?: string;
+    ProfileName?: string;
+    NumMedia?: string;
   };
-  const value = body?.entry?.[0]?.changes?.[0]?.value;
-  const message = value?.messages?.[0];
-  if (!message?.from) return; // حدث حالة تسليم (status)، أو جسم غير متوقَّع — لا شيء لمعالجته
+  const from = body?.From; // "whatsapp:+9665XXXXXXXX" — نفس الصيغة تُستخدَم للرد لاحقاً
+  if (!from) return; // جسم غير متوقَّع — لا شيء لمعالجته
 
-  const from = message.from; // صيغة دولية بلا "+" (مثال: "9665XXXXXXXX") — نفس صيغة الإرسال لاحقاً
-  const waMessageId = message.id;
-  const contactName = value?.contacts?.[0]?.profile?.name;
+  const messageSid = body.MessageSid;
+  const contactName = body.ProfileName;
   const localPhone = normalizeSaudiPhone(from);
 
   let thread = store.whatsappThreads.getByPhone(localPhone);
-  // تجاهل إعادة إرسال Meta لنفس الحدث (retry معروف الحدوث في Cloud API)
-  if (waMessageId && thread?.messages.some((m) => m.wa_message_id === waMessageId)) return;
+  // تجاهل إعادة إرسال Twilio لنفس الرسالة (retry نادر لكن وارد)
+  if (messageSid && thread?.messages.some((m) => m.wa_message_id === messageSid)) return;
 
   if (!thread) {
     const now = new Date().toISOString();
@@ -156,13 +156,14 @@ export async function handleIncomingWhatsappMessage(rawBody: unknown): Promise<v
     });
   }
 
-  if (message.type !== 'text' || typeof message.text?.body !== 'string') {
+  const hasMedia = Number(body.NumMedia ?? '0') > 0;
+  if (hasMedia || typeof body.Body !== 'string') {
     // صور/موقع/ملصقات... — خارج نطاق النسخة الأولى، رد ثابت بدل الصمت
     store.whatsappThreads.appendMessage(thread.id, {
       id: store.id(),
       direction: 'in',
-      text: `[رسالة من نوع ${message.type ?? 'غير معروف'} — غير مدعومة حالياً]`,
-      wa_message_id: waMessageId,
+      text: hasMedia ? '[مرفق وسائط — غير مدعوم حالياً]' : '[رسالة بلا نص]',
+      wa_message_id: messageSid,
       created_at: new Date().toISOString(),
     });
     const fallback = 'هلا وغلا! حالياً أقدر أساعدك بالرسائل النصية فقط 🙏 تكرم تكتب طلبك؟';
@@ -176,12 +177,12 @@ export async function handleIncomingWhatsappMessage(rawBody: unknown): Promise<v
     return;
   }
 
-  const text = message.text.body;
+  const text = body.Body;
   store.whatsappThreads.appendMessage(thread.id, {
     id: store.id(),
     direction: 'in',
     text,
-    wa_message_id: waMessageId,
+    wa_message_id: messageSid,
     created_at: new Date().toISOString(),
   });
 

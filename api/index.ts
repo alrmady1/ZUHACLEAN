@@ -8,6 +8,8 @@ import { initStore } from '../src/server/store/db.js';
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
+// ويب هوك واتساب (Twilio) يرسل جسم الطلب بصيغة form-urlencoded، وليس JSON.
+app.use(express.urlencoded({ extended: false }));
 
 // Serverless has no long-running startup phase to await initStore() in
 // (unlike src/server/index.ts), and — unlike that single long-running
