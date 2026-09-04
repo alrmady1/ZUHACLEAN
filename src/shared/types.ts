@@ -38,6 +38,9 @@ export const CAN_DELETE_CUSTODY_ROLES: UserRole[] = ['general_manager'];
 // (نفس منطق CAN_EDIT_LOCATION_ROLES). هذه صلاحية حذف صورة واحدة بعد
 // رفعها — مختلفة عن "إضافة الصور قبل وبعد" الديناميكية أدناه.
 export const CAN_DELETE_PHOTOS_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor'];
+// استيراد العملاء بالجملة من ملف إكسل — المدير العام، مدير النظام،
+// والمشرف الإداري فقط (ثابتة عمداً كسابقاتها أعلاه، بلا تحكّم ديناميكي).
+export const CUSTOMER_IMPORT_ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor'];
 
 // ============================================================================
 // نظام الصلاحيات الديناميكي — صفحة "الإعدادات ← الصلاحيات" (المدير العام

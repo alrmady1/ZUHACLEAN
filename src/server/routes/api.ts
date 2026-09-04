@@ -30,6 +30,7 @@ import type {
   ServicePricingTier,
   CustomerType,
   CustomerSource,
+  Customer,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -522,6 +523,57 @@ api.delete('/customers/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف العميل "${target?.name ?? ''}"`);
   res.status(204).end();
+});
+
+// استيراد عملاء بالجملة (من ملف إكسل تُحلِّله الواجهة نفسها إلى صفوف
+// JSON — انظر CustomerImport.tsx) — نفس تحقق/تطبيع POST /customers لكل
+// صف، مع تخطي أي صف بجوال مكرر (ضمن الملف نفسه أو مطابق لعميل موجود
+// أصلاً) بدل رفض الطلب كله دفعة واحدة.
+api.post('/customers/import', (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (rows.length === 0) return res.status(400).json({ error: 'لا توجد صفوف للاستيراد' });
+
+  const existingPhones = new Set(store.customers.list().map((c) => c.phone));
+  const inserted: Customer[] = [];
+  const skipped: { row: number; name?: string; reason: string }[] = [];
+
+  rows.forEach((raw: Record<string, unknown>, i: number) => {
+    const rowNum = i + 1;
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    const phoneRaw = typeof raw.phone === 'string' || typeof raw.phone === 'number' ? String(raw.phone).trim() : '';
+    const address = typeof raw.address === 'string' ? raw.address.trim() : '';
+    if (!name || !phoneRaw || !address) {
+      skipped.push({ row: rowNum, name: name || undefined, reason: 'الاسم أو الجوال أو العنوان مفقود' });
+      return;
+    }
+    const phone = normalizeSaudiPhone(phoneRaw);
+    if (existingPhones.has(phone)) {
+      skipped.push({ row: rowNum, name, reason: 'رقم جوال مكرر' });
+      return;
+    }
+    const source = typeof raw.source === 'string' && raw.source ? (raw.source as CustomerSource) : undefined;
+    const customer = store.customers.insert({
+      id: store.id(),
+      name,
+      phone,
+      address,
+      district: typeof raw.district === 'string' && raw.district ? raw.district : undefined,
+      city: typeof raw.city === 'string' && raw.city ? raw.city : undefined,
+      location_url: typeof raw.location_url === 'string' && raw.location_url ? raw.location_url : undefined,
+      customer_type: typeof raw.customer_type === 'string' && raw.customer_type ? (raw.customer_type as CustomerType) : undefined,
+      source,
+      source_call_profile_id:
+        source === 'outbound_call' && typeof raw.source_call_profile_id === 'string' && raw.source_call_profile_id
+          ? raw.source_call_profile_id
+          : undefined,
+      created_at: new Date().toISOString(),
+    });
+    existingPhones.add(phone);
+    inserted.push(customer);
+  });
+
+  if (inserted.length > 0) logActivity(req, `تم استيراد ${inserted.length} عميل من ملف إكسل`);
+  res.status(201).json({ inserted, skipped });
 });
 
 // ---------------------------------------------------------------------------

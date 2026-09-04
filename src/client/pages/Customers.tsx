@@ -1,9 +1,27 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams, Navigate } from 'react-router-dom';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle, CalendarPlus } from 'lucide-react';
+import { useSearchParams, useNavigate, Navigate } from 'react-router-dom';
+import {
+  Plus,
+  X,
+  Phone,
+  MapPin,
+  Trash2,
+  Pencil,
+  Eye,
+  Check,
+  Search,
+  ChevronLeft,
+  ChevronDown,
+  Rows3,
+  LayoutGrid,
+  Map as MapIcon,
+  MessageCircle,
+  CalendarPlus,
+  FileSpreadsheet,
+} from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource, Service } from '../../shared/types.js';
-import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR } from '../../shared/types.js';
+import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR, CUSTOMER_IMPORT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
@@ -40,6 +58,7 @@ function VisitRow({ visit, rating }: { visit: Appointment; rating?: Rating }) {
 
 export default function Customers() {
   const { t, tt, lang } = useI18n();
+  const navigate = useNavigate();
   const { user, allProfiles, can } = useAuth();
   const canCreate = can('create_customers');
   const canEdit = can('edit_customers');
@@ -207,6 +226,15 @@ export default function Customers() {
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               <Plus className="h-4 w-4" /> {t('إضافة عميل جديد')}
+            </button>
+          )}
+          {user && CUSTOMER_IMPORT_ROLES.includes(user.role) && (
+            <button
+              onClick={() => navigate('/customers/import')}
+              title={t('استيراد عملاء من ملف إكسل')}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> {t('استيراد من إكسل')}
             </button>
           )}
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">

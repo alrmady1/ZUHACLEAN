@@ -10,6 +10,7 @@ import OrderPage from './pages/OrderPage.js';
 import Expenses from './pages/Expenses.js';
 import Sales from './pages/Sales.js';
 import Customers from './pages/Customers.js';
+import CustomerImport from './pages/CustomerImport.js';
 import TechnicianPortal from './pages/TechnicianPortal.js';
 import Tracking from './pages/Tracking.js';
 import Settings from './pages/Settings.js';
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/custody" element={<Navigate to="/expenses" replace />} />
         <Route path="/sales" element={<Sales />} />
         <Route path="/customers" element={<Customers />} />
+        <Route path="/customers/import" element={<CustomerImport />} />
         <Route path="/technician" element={<TechnicianPortal />} />
         <Route path="/tracking" element={<Tracking />} />
         <Route path="/settings" element={<Settings />} />

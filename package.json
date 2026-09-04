@@ -22,7 +22,8 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1",
     "recharts": "^2.15.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
