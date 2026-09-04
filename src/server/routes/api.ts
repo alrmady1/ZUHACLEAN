@@ -27,6 +27,7 @@ import type {
   LandingPageSettings,
   LandingService,
   VisitOutcome,
+  ServicePricingTier,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -507,9 +508,26 @@ api.delete('/customers/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/services', (_req, res) => res.json(store.services.list()));
 
+// يقرأ مصفوفة pricing_tiers من جسم الطلب (إن وُجدت وصالحة) — تُتجاهَل
+// أي عناصر ناقصة label/unit_price، وتُنشأ key عشوائية لأي عنصر جديد بلا
+// key (خدمة جديدة أو مستوى مضاف لتوّه من الواجهة).
+function parsePricingTiers(raw: unknown): ServicePricingTier[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const tiers = raw
+    .filter((t): t is Record<string, unknown> => typeof t === 'object' && t !== null && typeof t.label === 'string' && t.label.trim())
+    .map((t) => ({
+      key: typeof t.key === 'string' && t.key ? t.key : store.id(),
+      label: (t.label as string).trim(),
+      unit_price: Number(t.unit_price ?? 0),
+      unit_duration_seconds: t.unit_duration_seconds ? Number(t.unit_duration_seconds) : undefined,
+    }));
+  return tiers.length > 0 ? tiers : undefined;
+}
+
 api.post('/services', (req, res) => {
   const body = req.body ?? {};
   if (!body.name) return res.status(400).json({ error: 'name مطلوب' });
+  const isUnitPriced = body.pricing_model && body.pricing_model !== 'fixed';
   const service: Service = {
     id: store.id(),
     name: body.name,
@@ -518,12 +536,10 @@ api.post('/services', (req, res) => {
     default_price: Number(body.default_price ?? 0),
     default_duration_minutes: Number(body.default_duration_minutes ?? 60),
     is_active: body.is_active ?? true,
-    pricing_model: body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined,
-    unit_price: body.pricing_model && body.pricing_model !== 'fixed' ? Number(body.unit_price ?? 0) : undefined,
-    unit_duration_seconds:
-      body.pricing_model && body.pricing_model !== 'fixed' && body.unit_duration_seconds
-        ? Number(body.unit_duration_seconds)
-        : undefined,
+    pricing_model: isUnitPriced ? body.pricing_model : undefined,
+    unit_price: isUnitPriced ? Number(body.unit_price ?? 0) : undefined,
+    unit_duration_seconds: isUnitPriced && body.unit_duration_seconds ? Number(body.unit_duration_seconds) : undefined,
+    pricing_tiers: isUnitPriced ? parsePricingTiers(body.pricing_tiers) : undefined,
   };
   store.services.insert(service);
   logActivity(req, `تم إضافة خدمة "${service.name}"`);
@@ -543,6 +559,7 @@ api.patch('/services/:id', (req, res) => {
     patch.pricing_model = body.pricing_model && body.pricing_model !== 'fixed' ? body.pricing_model : undefined;
     patch.unit_price = patch.pricing_model ? Number(body.unit_price ?? 0) : undefined;
     patch.unit_duration_seconds = patch.pricing_model && body.unit_duration_seconds ? Number(body.unit_duration_seconds) : undefined;
+    patch.pricing_tiers = patch.pricing_model ? parsePricingTiers(body.pricing_tiers) : undefined;
   }
 
   const updated = store.services.update(req.params.id, patch);

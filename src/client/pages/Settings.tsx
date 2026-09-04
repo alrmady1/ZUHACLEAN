@@ -38,12 +38,14 @@ import {
   Armchair,
   Eye,
   EyeOff,
+  Layers,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
   Profile,
   Service,
   ServicePricingModel,
+  ServicePricingTier,
   UserRole,
   PaymentMethodOption,
   ServiceCategory,
@@ -857,6 +859,31 @@ function ServiceFormModal({
   const { t, tt } = useI18n();
   const [pricingModel, setPricingModel] = useState<ServicePricingModel>(editing?.pricing_model ?? 'fixed');
   const [submitting, setSubmitting] = useState(false);
+  // مستويات تسعير اختيارية (مثال: تنظيف سطحي/عميق للكنب) — كل صف عبارة عن
+  // نص مؤقّت (state) قبل تحويله لأرقام عند الإرسال، لتفادي مشاكل التحقق
+  // أثناء الكتابة (مثلاً حقل سعر فارغ مؤقتاً بينما يكتب المستخدم).
+  const [tiers, setTiers] = useState<{ key: string; label: string; unit_price: string; unit_duration_seconds: string }[]>(
+    () =>
+      (editing?.pricing_tiers ?? []).map((tier) => ({
+        key: tier.key,
+        label: tier.label,
+        unit_price: String(tier.unit_price),
+        unit_duration_seconds: tier.unit_duration_seconds ? String(tier.unit_duration_seconds) : '',
+      })),
+  );
+
+  function addTier() {
+    setTiers((prev) => [
+      ...prev,
+      { key: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: '', unit_price: '', unit_duration_seconds: '' },
+    ]);
+  }
+  function updateTier(key: string, patch: Partial<{ label: string; unit_price: string; unit_duration_seconds: string }>) {
+    setTiers((prev) => prev.map((tier) => (tier.key === key ? { ...tier, ...patch } : tier)));
+  }
+  function removeTier(key: string) {
+    setTiers((prev) => prev.filter((tier) => tier.key !== key));
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -864,6 +891,17 @@ function ServiceFormModal({
     const form = new FormData(e.currentTarget);
     const priceValue = Number(form.get('price_value'));
     const unitDurationRaw = form.get('unit_duration_seconds');
+    const pricingTiers: ServicePricingTier[] | undefined =
+      pricingModel !== 'fixed'
+        ? tiers
+            .filter((tier) => tier.label.trim() && Number(tier.unit_price) > 0)
+            .map((tier) => ({
+              key: tier.key,
+              label: tier.label.trim(),
+              unit_price: Number(tier.unit_price),
+              unit_duration_seconds: tier.unit_duration_seconds ? Number(tier.unit_duration_seconds) : undefined,
+            }))
+        : undefined;
     const payload = {
       name: form.get('name'),
       description: form.get('description') || undefined,
@@ -875,6 +913,7 @@ function ServiceFormModal({
       unit_price: pricingModel === 'fixed' ? undefined : priceValue,
       unit_duration_seconds:
         pricingModel !== 'fixed' && unitDurationRaw && Number(unitDurationRaw) > 0 ? Number(unitDurationRaw) : undefined,
+      pricing_tiers: pricingTiers && pricingTiers.length > 0 ? pricingTiers : undefined,
     };
     try {
       if (editing) {
@@ -1006,6 +1045,62 @@ function ServiceFormModal({
                 'When set, the total appointment duration for this service = the quantity entered at booking × this value, instead of the fixed estimated duration above.',
               )}
             </p>
+          </Field>
+        )}
+
+        {pricingModel !== 'fixed' && (
+          <Field label={t('مستويات تسعير إضافية (اختياري)')} icon={<Layers className="h-3.5 w-3.5 text-brand-500" />}>
+            <p className="mb-2 text-xs text-slate-400">
+              {tt(
+                'مثال: تنظيف سطحي وتنظيف عميق بسعر ومدة مختلفة لكل منهما. عند إضافة مستوى واحد على الأقل، يُطلَب من العميل اختيار المستوى عند الحجز بدل استخدام السعر/المدة أعلاه.',
+                'Example: light vs. deep cleaning with a different price and duration each. Once at least one tier is added, the customer must pick a tier when booking instead of using the price/duration above.',
+              )}
+            </p>
+            <div className="space-y-2">
+              {tiers.map((tier) => (
+                <div key={tier.key} className="flex items-center gap-2">
+                  <input
+                    value={tier.label}
+                    onChange={(e) => updateTier(tier.key, { label: e.target.value })}
+                    placeholder={t('اسم المستوى (مثال: تنظيف سطحي)')}
+                    className="input flex-[2]"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={tier.unit_price}
+                    onChange={(e) => updateTier(tier.key, { unit_price: e.target.value })}
+                    placeholder={t('السعر')}
+                    className="input flex-1"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={tier.unit_duration_seconds}
+                    onChange={(e) => updateTier(tier.key, { unit_duration_seconds: e.target.value })}
+                    placeholder={t('المدة (ثانية)')}
+                    className="input flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeTier(tier.key)}
+                    className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    title={t('حذف المستوى')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addTier}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 hover:border-brand-300 hover:text-brand-600"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('إضافة مستوى تسعير')}
+            </button>
           </Field>
         )}
 

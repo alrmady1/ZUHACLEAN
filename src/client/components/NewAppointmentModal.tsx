@@ -10,30 +10,45 @@ import { findDayOffConflicts } from '../../shared/weekdays.js';
 import { findLeaveConflicts } from '../../shared/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 
+// السعر/المدة الفعليان للوحدة الواحدة لخدمة مسعَّرة بالوحدة: إن كان لديها
+// مستويات تسعير (pricing_tiers)، تُستخدَم قيم المستوى المختار (أو المستوى
+// الأول افتراضياً قبل أي اختيار صريح)، وإلا فقيم unit_price/unit_duration_seconds
+// العامَّين للخدمة نفسها.
+function resolveUnitPricing(s: Service, tierKey: string | undefined): { unitPrice: number; unitDurationSeconds: number | undefined } {
+  if (s.pricing_tiers && s.pricing_tiers.length > 0) {
+    const tier = s.pricing_tiers.find((t) => t.key === tierKey) ?? s.pricing_tiers[0];
+    return { unitPrice: tier.unit_price, unitDurationSeconds: tier.unit_duration_seconds };
+  }
+  return { unitPrice: s.unit_price ?? 0, unitDurationSeconds: s.unit_duration_seconds };
+}
+
 // السعر الكامل لمجموعة خدمات مختارة: سعر ثابت (default_price) للخدمات
 // العادية، أو (الكمية × سعر الوحدة) للخدمات المسعَّرة بالمتر المربع أو
-// بالمقعد — الكمية الافتراضية 1 حتى تُعدَّل يدوياً من مربع الإدخال.
-function computeServicesAmount(chosen: Service[], quantities: Record<string, number>): number {
+// بالمقعد — الكمية الافتراضية 1 حتى تُعدَّل يدوياً من مربع الإدخال. سعر
+// الوحدة نفسه يُؤخَذ من المستوى المختار عند وجود مستويات تسعير.
+function computeServicesAmount(chosen: Service[], quantities: Record<string, number>, tierKeys: Record<string, string>): number {
   return chosen.reduce((sum, s) => {
     if (s.pricing_model && s.pricing_model !== 'fixed') {
-      return sum + (quantities[s.id] ?? 1) * (s.unit_price ?? 0);
+      const { unitPrice } = resolveUnitPricing(s, tierKeys[s.id]);
+      return sum + (quantities[s.id] ?? 1) * unitPrice;
     }
     return sum + s.default_price;
   }, 0);
 }
 
 // مدة مجموعة خدمات مختارة، بنفس منطق computeServicesAmount: خدمة محدَّد
-// لها unit_duration_seconds (مدة الوحدة الواحدة) تُحتسب كـ(الكمية × هذه
-// القيمة)، بقية الخدمات (بما فيها per_sqm/per_seat بلا مدة وحدة محدَّدة)
-// تبقى على مدتها التقريبية الثابتة default_duration_minutes كالمعتاد.
-// تُجمَع الثواني على حدة ثم تُحوَّل لدقائق مرة واحدة في النهاية لتفادي
-// تراكم خطأ التقريب عبر عدة خدمات.
-function computeServicesDuration(chosen: Service[], quantities: Record<string, number>): number {
+// لها unit_duration_seconds (مدة الوحدة الواحدة، من المستوى المختار عند
+// وجود مستويات تسعير) تُحتسب كـ(الكمية × هذه القيمة)، بقية الخدمات (بما
+// فيها per_sqm/per_seat بلا مدة وحدة محدَّدة) تبقى على مدتها التقريبية
+// الثابتة default_duration_minutes كالمعتاد. تُجمَع الثواني على حدة ثم
+// تُحوَّل لدقائق مرة واحدة في النهاية لتفادي تراكم خطأ التقريب عبر عدة خدمات.
+function computeServicesDuration(chosen: Service[], quantities: Record<string, number>, tierKeys: Record<string, string>): number {
   let totalMinutes = 0;
   let totalSeconds = 0;
   for (const s of chosen) {
-    if (s.pricing_model && s.pricing_model !== 'fixed' && s.unit_duration_seconds) {
-      totalSeconds += (quantities[s.id] ?? 1) * s.unit_duration_seconds;
+    const { unitDurationSeconds } = s.pricing_model && s.pricing_model !== 'fixed' ? resolveUnitPricing(s, tierKeys[s.id]) : { unitDurationSeconds: undefined };
+    if (unitDurationSeconds) {
+      totalSeconds += (quantities[s.id] ?? 1) * unitDurationSeconds;
     } else {
       totalMinutes += s.default_duration_minutes;
     }
@@ -124,9 +139,19 @@ export default function NewAppointmentModal({
       ? { [matchedLeadService.id]: 1 }
       : {},
   );
+  // المستوى المختار لكل خدمة لها مستويات تسعير (pricing_tiers) — مفتاح
+  // (key) المستوى، وليس فهرسه، حتى يبقى الاختيار صحيحاً بصرف النظر عن
+  // ترتيب المستويات. خدمة بلا مستويات لا تظهر هنا إطلاقاً.
+  const [serviceTierKeys, setServiceTierKeys] = useState<Record<string, string>>(
+    matchedLeadService?.pricing_tiers && matchedLeadService.pricing_tiers.length > 0
+      ? { [matchedLeadService.id]: matchedLeadService.pricing_tiers[0].key }
+      : {},
+  );
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
-  const [amount, setAmount] = useState<number | ''>(matchedLeadService ? computeServicesAmount([matchedLeadService], { [matchedLeadService.id]: 1 }) : 0);
+  const [amount, setAmount] = useState<number | ''>(
+    matchedLeadService ? computeServicesAmount([matchedLeadService], { [matchedLeadService.id]: 1 }, serviceTierKeys) : 0,
+  );
   // مدة زيارة المعاينة افتراضياً أقصر بكثير من موعد خدمة فعلي (30 دقيقة
   // بدل 120) — قابلة للتعديل بالطبع لو احتاج المشرف وقتاً أطول.
   const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120));
@@ -177,15 +202,21 @@ export default function NewAppointmentModal({
     const next = selectedServiceIds.includes(id) ? selectedServiceIds.filter((x) => x !== id) : [...selectedServiceIds, id];
     const chosen = services.filter((s) => next.includes(s.id));
     const nextQ = { ...serviceQuantities };
+    const nextT = { ...serviceTierKeys };
     if (!next.includes(id)) {
       delete nextQ[id];
+      delete nextT[id];
     } else if (nextQ[id] === undefined) {
       const svc = services.find((s) => s.id === id);
-      if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+      if (svc?.pricing_model && svc.pricing_model !== 'fixed') {
+        nextQ[id] = 1;
+        if (svc.pricing_tiers && svc.pricing_tiers.length > 0) nextT[id] = svc.pricing_tiers[0].key;
+      }
     }
     setServiceQuantities(nextQ);
-    setAmount(computeServicesAmount(chosen, nextQ));
-    setDuration(computeServicesDuration(chosen, nextQ));
+    setServiceTierKeys(nextT);
+    setAmount(computeServicesAmount(chosen, nextQ, nextT));
+    setDuration(computeServicesDuration(chosen, nextQ, nextT));
     setSelectedServiceIds(next);
   }
 
@@ -195,8 +226,17 @@ export default function NewAppointmentModal({
   function updateServiceQuantity(id: string, qty: number) {
     const nextQ = { ...serviceQuantities, [id]: qty };
     setServiceQuantities(nextQ);
-    setAmount(computeServicesAmount(selectedServices, nextQ));
-    setDuration(computeServicesDuration(selectedServices, nextQ));
+    setAmount(computeServicesAmount(selectedServices, nextQ, serviceTierKeys));
+    setDuration(computeServicesDuration(selectedServices, nextQ, serviceTierKeys));
+  }
+
+  // تغيير مستوى التسعير المختار لخدمة (مثال: تنظيف سطحي ↔ عميق)، مع إعادة
+  // احتساب السعر والمدة الإجماليين فوراً من سعر/مدة المستوى الجديد.
+  function updateServiceTier(id: string, tierKey: string) {
+    const nextT = { ...serviceTierKeys, [id]: tierKey };
+    setServiceTierKeys(nextT);
+    setAmount(computeServicesAmount(selectedServices, serviceQuantities, nextT));
+    setDuration(computeServicesDuration(selectedServices, serviceQuantities, nextT));
   }
 
   useEffect(() => {
@@ -548,7 +588,9 @@ export default function NewAppointmentModal({
                           <span className="flex-1 text-slate-700">{s.name}</span>
                           <span className="shrink-0 text-xs text-slate-400">
                             {s.pricing_model && s.pricing_model !== 'fixed'
-                              ? `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
+                              ? s.pricing_tiers && s.pricing_tiers.length > 0
+                                ? tt('حسب المستوى', 'by tier')
+                                : `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
                               : formatMoney(s.default_price)}
                           </span>
                         </label>
@@ -563,21 +605,50 @@ export default function NewAppointmentModal({
                 <div className="space-y-2">
                   {selectedServices
                     .filter((s): s is Service & { pricing_model: 'per_sqm' | 'per_seat' } => !!s.pricing_model && s.pricing_model !== 'fixed')
-                    .map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5">
-                        <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={serviceQuantities[s.id] ?? 1}
-                          onChange={(e) => updateServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
-                          className="input w-20 shrink-0 py-1 text-center"
-                        />
-                        <span className="shrink-0 text-xs text-slate-400">× {formatMoney(s.unit_price ?? 0)}</span>
-                      </div>
-                    ))}
+                    .map((s) => {
+                      const { unitPrice } = resolveUnitPricing(s, serviceTierKeys[s.id]);
+                      return (
+                        <div key={s.id} className="space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
+                          {s.pricing_tiers && s.pricing_tiers.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                              <span className="text-xs font-medium text-slate-600">{s.name}</span>
+                              <div className="flex flex-1 flex-wrap justify-end gap-1.5">
+                                {s.pricing_tiers.map((tier) => {
+                                  const active = (serviceTierKeys[s.id] ?? s.pricing_tiers![0].key) === tier.key;
+                                  return (
+                                    <button
+                                      key={tier.key}
+                                      type="button"
+                                      onClick={() => updateServiceTier(s.id, tier.key)}
+                                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                                        active ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {tier.label} · {formatMoney(tier.unit_price)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {!(s.pricing_tiers && s.pricing_tiers.length > 0) && (
+                              <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
+                            )}
+                            <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={serviceQuantities[s.id] ?? 1}
+                              onChange={(e) => updateServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
+                              className="input w-20 shrink-0 py-1 text-center"
+                            />
+                            <span className="shrink-0 text-xs text-slate-400">× {formatMoney(unitPrice)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
 

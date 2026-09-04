@@ -24,28 +24,43 @@ function toDatetimeLocalValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// السعر/المدة الفعليان للوحدة الواحدة لخدمة مسعَّرة بالوحدة — من المستوى
+// المختار (pricing_tiers) إن وُجد، وإلا من unit_price/unit_duration_seconds
+// العامَّين للخدمة نفسها. نفس منطق NewAppointmentModal، مكرَّر هنا محلياً
+// لبقاء كل مكوّن مستقلاً بذاته.
+function resolveUnitPricing(s: Service, tierKey: string | undefined): { unitPrice: number; unitDurationSeconds: number | undefined } {
+  if (s.pricing_tiers && s.pricing_tiers.length > 0) {
+    const tier = s.pricing_tiers.find((t) => t.key === tierKey) ?? s.pricing_tiers[0];
+    return { unitPrice: tier.unit_price, unitDurationSeconds: tier.unit_duration_seconds };
+  }
+  return { unitPrice: s.unit_price ?? 0, unitDurationSeconds: s.unit_duration_seconds };
+}
+
 // السعر الكامل لمجموعة خدمات مختارة عند التعديل — سعر ثابت (default_price)
 // أو (الكمية × سعر الوحدة) لخدمة مسعَّرة بالمتر المربع/المقعد. نفس منطق
 // NewAppointmentModal عند الحجز الأول، مكرَّر هنا محلياً لبقاء كل مكوّن
 // مستقلاً بذاته.
-function computeServicesAmount(chosen: Service[], quantities: Record<string, number>): number {
+function computeServicesAmount(chosen: Service[], quantities: Record<string, number>, tierKeys: Record<string, string>): number {
   return chosen.reduce((sum, s) => {
     if (s.pricing_model && s.pricing_model !== 'fixed') {
-      return sum + (quantities[s.id] ?? 1) * (s.unit_price ?? 0);
+      const { unitPrice } = resolveUnitPricing(s, tierKeys[s.id]);
+      return sum + (quantities[s.id] ?? 1) * unitPrice;
     }
     return sum + s.default_price;
   }, 0);
 }
 
 // مدة مجموعة خدمات مختارة عند التعديل — نفس منطق computeServicesAmount:
-// خدمة لها unit_duration_seconds تُحتسب كـ(الكمية × هذه القيمة)، والباقي
-// يبقى على مدته التقريبية الثابتة default_duration_minutes.
-function computeServicesDuration(chosen: Service[], quantities: Record<string, number>): number {
+// خدمة لها مدة وحدة (من المستوى المختار عند وجود مستويات تسعير) تُحتسب
+// كـ(الكمية × هذه القيمة)، والباقي يبقى على مدته التقريبية الثابتة
+// default_duration_minutes.
+function computeServicesDuration(chosen: Service[], quantities: Record<string, number>, tierKeys: Record<string, string>): number {
   let totalMinutes = 0;
   let totalSeconds = 0;
   for (const s of chosen) {
-    if (s.pricing_model && s.pricing_model !== 'fixed' && s.unit_duration_seconds) {
-      totalSeconds += (quantities[s.id] ?? 1) * s.unit_duration_seconds;
+    const { unitDurationSeconds } = s.pricing_model && s.pricing_model !== 'fixed' ? resolveUnitPricing(s, tierKeys[s.id]) : { unitDurationSeconds: undefined };
+    if (unitDurationSeconds) {
+      totalSeconds += (quantities[s.id] ?? 1) * unitDurationSeconds;
     } else {
       totalMinutes += s.default_duration_minutes;
     }
@@ -115,6 +130,9 @@ export default function AppointmentDetailModal({
   // NewAppointmentModal) — لا تتوفر كمية أصلية محفوظة لهذا الموعد، فتبدأ
   // بـ1 لأي خدمة كهذه محدَّدة مسبقاً عند فتح وضع التعديل.
   const [editServiceQuantities, setEditServiceQuantities] = useState<Record<string, number>>({});
+  // المستوى المختار لكل خدمة لها مستويات تسعير (pricing_tiers) أثناء
+  // التعديل — نفس فكرة NewAppointmentModal.
+  const [editServiceTierKeys, setEditServiceTierKeys] = useState<Record<string, string>>({});
   const [editAmount, setEditAmount] = useState<number | ''>(appointment.amount);
   const [editDuration, setEditDuration] = useState<number | ''>(appointment.expected_duration_minutes);
   const [showEditServiceDropdown, setShowEditServiceDropdown] = useState(false);
@@ -288,6 +306,11 @@ export default function AppointmentDetailModal({
         matched.filter((s) => s.pricing_model && s.pricing_model !== 'fixed').map((s) => [s.id, 1]),
       ),
     );
+    setEditServiceTierKeys(
+      Object.fromEntries(
+        matched.filter((s) => s.pricing_tiers && s.pricing_tiers.length > 0).map((s) => [s.id, s.pricing_tiers![0].key]),
+      ),
+    );
     setEditAmount(appointment.amount);
     setEditDuration(appointment.expected_duration_minutes);
     setEditingServices(true);
@@ -301,15 +324,21 @@ export default function AppointmentDetailModal({
     const next = editServiceIds.includes(id) ? editServiceIds.filter((x) => x !== id) : [...editServiceIds, id];
     const chosen = services.filter((s) => next.includes(s.id));
     const nextQ = { ...editServiceQuantities };
+    const nextT = { ...editServiceTierKeys };
     if (!next.includes(id)) {
       delete nextQ[id];
+      delete nextT[id];
     } else if (nextQ[id] === undefined) {
       const svc = services.find((s) => s.id === id);
-      if (svc?.pricing_model && svc.pricing_model !== 'fixed') nextQ[id] = 1;
+      if (svc?.pricing_model && svc.pricing_model !== 'fixed') {
+        nextQ[id] = 1;
+        if (svc.pricing_tiers && svc.pricing_tiers.length > 0) nextT[id] = svc.pricing_tiers[0].key;
+      }
     }
     setEditServiceQuantities(nextQ);
-    setEditAmount(computeServicesAmount(chosen, nextQ));
-    setEditDuration(computeServicesDuration(chosen, nextQ));
+    setEditServiceTierKeys(nextT);
+    setEditAmount(computeServicesAmount(chosen, nextQ, nextT));
+    setEditDuration(computeServicesDuration(chosen, nextQ, nextT));
     setEditServiceIds(next);
   }
 
@@ -319,8 +348,18 @@ export default function AppointmentDetailModal({
     const nextQ = { ...editServiceQuantities, [id]: qty };
     const chosen = services.filter((s) => editServiceIds.includes(s.id));
     setEditServiceQuantities(nextQ);
-    setEditAmount(computeServicesAmount(chosen, nextQ));
-    setEditDuration(computeServicesDuration(chosen, nextQ));
+    setEditAmount(computeServicesAmount(chosen, nextQ, editServiceTierKeys));
+    setEditDuration(computeServicesDuration(chosen, nextQ, editServiceTierKeys));
+  }
+
+  // تغيير مستوى التسعير المختار لخدمة أثناء التعديل — يعيد احتساب السعر
+  // والمدة الإجماليين من سعر/مدة المستوى الجديد.
+  function updateEditServiceTier(id: string, tierKey: string) {
+    const nextT = { ...editServiceTierKeys, [id]: tierKey };
+    const chosen = services.filter((s) => editServiceIds.includes(s.id));
+    setEditServiceTierKeys(nextT);
+    setEditAmount(computeServicesAmount(chosen, editServiceQuantities, nextT));
+    setEditDuration(computeServicesDuration(chosen, editServiceQuantities, nextT));
   }
 
   async function saveServices() {
@@ -724,7 +763,9 @@ export default function AppointmentDetailModal({
                               <span className="flex-1 text-slate-700">{s.name}</span>
                               <span className="shrink-0 text-xs text-slate-400">
                                 {s.pricing_model && s.pricing_model !== 'fixed'
-                                  ? `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
+                                  ? s.pricing_tiers && s.pricing_tiers.length > 0
+                                    ? tt('حسب المستوى', 'by tier')
+                                    : `${formatMoney(s.unit_price ?? 0)} / ${tt(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model], s.pricing_model === 'per_sqm' ? 'm²' : 'seat')}`
                                   : formatMoney(s.default_price)}
                               </span>
                             </label>
@@ -739,21 +780,50 @@ export default function AppointmentDetailModal({
                     .filter((s): s is Service & { pricing_model: 'per_sqm' | 'per_seat' } =>
                       editServiceIds.includes(s.id) && !!s.pricing_model && s.pricing_model !== 'fixed',
                     )
-                    .map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
-                        <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={editServiceQuantities[s.id] ?? 1}
-                          onChange={(e) => updateEditServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
-                          className="input w-16 shrink-0 py-1 text-center text-xs"
-                        />
-                        <span className="shrink-0 text-xs text-slate-400">× {formatMoney(s.unit_price ?? 0)}</span>
-                      </div>
-                    ))}
+                    .map((s) => {
+                      const { unitPrice } = resolveUnitPricing(s, editServiceTierKeys[s.id]);
+                      return (
+                        <div key={s.id} className="space-y-1.5 rounded-xl border border-slate-200 bg-white p-2">
+                          {s.pricing_tiers && s.pricing_tiers.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                              <span className="text-xs font-medium text-slate-600">{s.name}</span>
+                              <div className="flex flex-1 flex-wrap justify-end gap-1.5">
+                                {s.pricing_tiers.map((tier) => {
+                                  const active = (editServiceTierKeys[s.id] ?? s.pricing_tiers![0].key) === tier.key;
+                                  return (
+                                    <button
+                                      key={tier.key}
+                                      type="button"
+                                      onClick={() => updateEditServiceTier(s.id, tier.key)}
+                                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                                        active ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {tier.label} · {formatMoney(tier.unit_price)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {!(s.pricing_tiers && s.pricing_tiers.length > 0) && (
+                              <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
+                            )}
+                            <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={editServiceQuantities[s.id] ?? 1}
+                              onChange={(e) => updateEditServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
+                              className="input w-16 shrink-0 py-1 text-center text-xs"
+                            />
+                            <span className="shrink-0 text-xs text-slate-400">× {formatMoney(unitPrice)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
 
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-xs">

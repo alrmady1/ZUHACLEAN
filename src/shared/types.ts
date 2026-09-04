@@ -564,6 +564,23 @@ export interface Service {
   // الثابتة). غائبة = تبقى المدة الكلية ثابتة (default_duration_minutes)
   // بصرف النظر عن الكمية، كما كانت كل خدمات per_sqm/per_seat سابقاً.
   unit_duration_seconds?: number;
+  // مستويات تسعير اختيارية (مثال: تنظيف سطحي/عميق للكنب) — كل مستوى له
+  // سعر ومدة خاصة به للوحدة الواحدة، بدل unit_price/unit_duration_seconds
+  // العامَّين أعلاه. عند وجودها (مصفوفة غير فارغة)، يُطلَب عند الحجز اختيار
+  // مستوى واحد بالإضافة إلى الكمية، ويُحتسَب السعر والمدة من المستوى
+  // المختار تحديداً. غائبة/فارغة = تستمر الخدمة بسعر/مدة الوحدة العامَّين
+  // كالمعتاد (بلا مستويات).
+  pricing_tiers?: ServicePricingTier[];
+}
+
+export interface ServicePricingTier {
+  // معرّف مستقر للمستوى (يُنشأ عشوائياً عند الإضافة) — يُستخدَم لربط
+  // اختيار العميل بالمستوى الصحيح، مستقل عن ترتيب أو نص التسمية.
+  key: string;
+  // اسم المستوى المعروض عند الحجز (مثال: "تنظيف سطحي"، "تنظيف عميق").
+  label: string;
+  unit_price: number;
+  unit_duration_seconds?: number;
 }
 
 export interface PaymentMethodOption {
