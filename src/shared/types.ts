@@ -301,6 +301,11 @@ export interface Profile {
   // القائمة الجانبية، انظر Layout.tsx)، أبداً بلا علمه أو من جهة الإدارة.
   // غائب/false = لا مشاركة إطلاقاً، ولا يُقرأ last_location في هذه الحالة.
   location_sharing_enabled?: boolean;
+  // وقت آخر قرار (سماح أو رفض) — يُستخدَم لإعادة عرض طلب المشاركة دورياً
+  // لمن رفض سابقاً (بعد LOCATION_SHARING_REPROMPT_DAYS يوماً، انظر
+  // Layout.tsx) بدل أن يبقى الرفض نهائياً للأبد؛ من وافق لا يُعاد سؤاله
+  // إطلاقاً طالما لم يُوقف المشاركة بنفسه.
+  location_sharing_decision_at?: string;
   // آخر موقع مُبلَّغ عنه — يُحدَّث دورياً من جهاز الموظف نفسه طالما
   // location_sharing_enabled فعّال (انظر PATCH /profiles/:id/location في
   // api.ts). يبقى القديم ظاهراً بعد إيقاف المشاركة (بدل حذفه) مع توضيح

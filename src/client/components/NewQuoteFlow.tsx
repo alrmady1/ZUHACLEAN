@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { X, Plus, ChevronDown, Check, Sparkles, User, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Quote, QuotePathType } from '../../shared/types.js';
+import type { Customer, Service, Quote, QuotePathType, ServicePricingModel } from '../../shared/types.js';
+import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { DEFAULT_QUOTE_PAYMENT_NOTE } from '../../shared/documentDefaults.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -11,7 +12,29 @@ import { phoneMatchesQuery } from '../../shared/phone.js';
 interface QuoteLineItem {
   service_id: string;
   service_name: string;
+  // إجمالي البند — يبقى القيمة المُرسَلة فعلياً للخادم دائماً (نفس تعاقد
+  // POST /quotes الحالي، بلا تغيير)، سواء كانت سعراً ثابتاً أو ناتج
+  // (الكمية × سعر الوحدة/المستوى). قابل للتعديل اليدوي دوماً بعد الحساب
+  // التلقائي، كأي سعر آخر في التطبيق.
   price: number;
+  // الحقول التالية لخدمات الوحدة (per_sqm/per_seat) فقط — تُستورَد مباشرة
+  // من تعريف الخدمة في قائمة الخدمات (Settings ← الخدمات) عند إضافتها،
+  // وتُستخدَم لحساب price تلقائياً؛ غائبة لخدمات السعر الثابت.
+  pricing_model?: ServicePricingModel;
+  quantity?: number;
+  // مفتاح المستوى المختار عند وجود مستويات تسعير (pricing_tiers) على الخدمة.
+  tier_key?: string;
+}
+
+// سعر/مدة الوحدة الفعليان لخدمة مسعَّرة بالوحدة — من المستوى المختار
+// (pricing_tiers) إن وُجد، وإلا من unit_price العام للخدمة نفسها. نفس
+// منطق NewAppointmentModal، مكرَّر هنا محلياً (نفس الأسلوب المتَّبع في كل
+// نوافذ الحجز/العروض المستقلة بذاتها في هذا التطبيق).
+function resolveUnitPrice(s: Service, tierKey: string | undefined): number {
+  if (s.pricing_tiers && s.pricing_tiers.length > 0) {
+    return (s.pricing_tiers.find((t) => t.key === tierKey) ?? s.pricing_tiers[0]).unit_price;
+  }
+  return s.unit_price ?? 0;
 }
 
 // نافذة إنشاء عرض سعر — عميل (موجود أو جديد) ← مسار (زيارة واحدة أو
@@ -91,12 +114,57 @@ export default function NewQuoteFlow({
       if (exists) return prev.filter((it) => it.service_id !== id);
       const service = services.find((s) => s.id === id);
       if (!service) return prev;
+      // خدمة مسعَّرة بالوحدة (متر مربع/مقعد): تُستورَد كمية 1 افتراضياً
+      // مع سعر الوحدة (أو أول مستوى إن وُجدت مستويات) من تعريف الخدمة
+      // نفسه مباشرة — نفس فكرة الحجز، بدل سعر ثابت واحد.
+      if (service.pricing_model && service.pricing_model !== 'fixed') {
+        const tierKey = service.pricing_tiers && service.pricing_tiers.length > 0 ? service.pricing_tiers[0].key : undefined;
+        const unitPrice = resolveUnitPrice(service, tierKey);
+        return [
+          ...prev,
+          {
+            service_id: service.id,
+            service_name: service.name,
+            price: unitPrice,
+            pricing_model: service.pricing_model,
+            quantity: 1,
+            tier_key: tierKey,
+          },
+        ];
+      }
       return [...prev, { service_id: service.id, service_name: service.name, price: service.default_price }];
     });
   }
 
   function updatePrice(id: string, price: number) {
     setItems((prev) => prev.map((it) => (it.service_id === id ? { ...it, price } : it)));
+  }
+
+  // تعديل الكمية (عدد الأمتار/المقاعد) لخدمة مسعَّرة بالوحدة — يعيد
+  // احتساب price تلقائياً من سعر الوحدة/المستوى الحالي، ويبقى قابلاً
+  // للتعديل اليدوي بعدها كأي سعر آخر.
+  function updateQuantity(id: string, quantity: number) {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.service_id !== id) return it;
+        const service = services.find((s) => s.id === id);
+        const unitPrice = service ? resolveUnitPrice(service, it.tier_key) : 0;
+        return { ...it, quantity, price: Math.round(quantity * unitPrice * 100) / 100 };
+      }),
+    );
+  }
+
+  // تغيير مستوى التسعير المختار (سطحي/عميق مثلاً) — يعيد احتساب price من
+  // سعر المستوى الجديد × الكمية الحالية.
+  function updateTier(id: string, tierKey: string) {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.service_id !== id) return it;
+        const service = services.find((s) => s.id === id);
+        const unitPrice = service ? resolveUnitPrice(service, tierKey) : 0;
+        return { ...it, tier_key: tierKey, price: Math.round((it.quantity ?? 1) * unitPrice * 100) / 100 };
+      }),
+    );
   }
 
   const total = Math.round(items.reduce((sum, it) => sum + it.price, 0) * 100) / 100;
@@ -293,7 +361,13 @@ export default function NewQuoteFlow({
                         </span>
                         <input type="checkbox" checked={checked} onChange={() => toggleService(s.id)} className="hidden" />
                         <span className="flex-1 text-slate-700">{s.name}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{formatMoney(s.default_price)}</span>
+                        <span className="shrink-0 text-xs text-slate-400">
+                          {s.pricing_model && s.pricing_model !== 'fixed'
+                            ? s.pricing_tiers && s.pricing_tiers.length > 0
+                              ? t('حسب المستوى')
+                              : `${formatMoney(s.unit_price ?? 0)} / ${t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}`
+                            : formatMoney(s.default_price)}
+                        </span>
                       </label>
                     );
                   })}
@@ -304,27 +378,74 @@ export default function NewQuoteFlow({
 
             {items.length > 0 && (
               <div className="space-y-2">
-                {items.map((it) => (
-                  <div key={it.service_id} className="flex items-center gap-2">
-                    <span className="flex-1 truncate text-sm text-slate-700">{it.service_name}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={it.price}
-                      onChange={(e) => updatePrice(it.service_id, Number(e.target.value) || 0)}
-                      className="input w-28 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleService(it.service_id)}
-                      title={t('إزالة')}
-                      className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+                {items.map((it) => {
+                  const service = services.find((s) => s.id === it.service_id);
+                  const isUnitPriced = it.pricing_model && it.pricing_model !== 'fixed';
+                  return (
+                    <div key={it.service_id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-sm text-slate-700">{it.service_name}</span>
+                        {isUnitPriced && (
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            {t(SERVICE_PRICING_UNIT_LABELS_AR[it.pricing_model as Exclude<ServicePricingModel, 'fixed'>])}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleService(it.service_id)}
+                          title={t('إزالة')}
+                          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {isUnitPriced && service?.pricing_tiers && service.pricing_tiers.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {service.pricing_tiers.map((tier) => {
+                            const active = (it.tier_key ?? service.pricing_tiers![0].key) === tier.key;
+                            return (
+                              <button
+                                key={tier.key}
+                                type="button"
+                                onClick={() => updateTier(it.service_id, tier.key)}
+                                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                                  active ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                }`}
+                              >
+                                {tier.label} · {formatMoney(tier.unit_price)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        {isUnitPriced && (
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={it.quantity ?? 1}
+                            onChange={(e) => updateQuantity(it.service_id, e.target.value === '' ? 0 : Number(e.target.value))}
+                            className="input w-20 shrink-0 py-1 text-center text-sm"
+                          />
+                        )}
+                        <span className="flex-1 text-xs text-slate-400">
+                          {isUnitPriced ? t('السعر الإجمالي (شامل الضريبة، قابل للتعديل)') : t('السعر (شامل الضريبة)')}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={it.price}
+                          onChange={(e) => updatePrice(it.service_id, Number(e.target.value) || 0)}
+                          className="input w-28 shrink-0 text-sm"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
                 <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800">
                   <span>{t('الإجمالي (شامل الضريبة)')}</span>
                   <span>{formatMoney(total)}</span>

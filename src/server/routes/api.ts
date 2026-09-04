@@ -230,7 +230,10 @@ api.patch('/profiles/:id', (req, res) => {
 // متكرر)، فتُسجَّل في سجل العمليات بخلاف نقطة تحديث الإحداثيات أدناه.
 api.patch('/profiles/:id/location-sharing', (req, res) => {
   const enabled = !!req.body?.enabled;
-  const updated = store.profiles.update(req.params.id, { location_sharing_enabled: enabled });
+  const updated = store.profiles.update(req.params.id, {
+    location_sharing_enabled: enabled,
+    location_sharing_decision_at: new Date().toISOString(),
+  });
   if (!updated) return res.status(404).json({ error: 'not found' });
   logActivity(req, `${enabled ? 'تم تفعيل' : 'تم إيقاف'} مشاركة الموقع لـ "${updated.full_name}"`);
   res.json(toSafeProfile(updated));

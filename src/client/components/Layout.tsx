@@ -27,6 +27,8 @@ import { startLocationSharing, stopLocationSharing } from '../lib/locationSharin
 // الإدارة (هم من يطّلع على الموقع، لا من يشاركه). زر "مشاركة موقعي"
 // أدناه يظهر فقط لهذه الأدوار.
 const LOCATION_SHARING_ROLES: UserRole[] = ['supervisor', 'admin_supervisor', 'technician'];
+// كم يوماً ننتظر قبل إعادة عرض طلب مشاركة الموقع لمن رفضه سابقاً.
+const LOCATION_SHARING_REPROMPT_DAYS = 14;
 
 interface NavItem {
   to: string;
@@ -98,11 +100,18 @@ export default function Layout() {
   }, [user?.id, user?.location_sharing_enabled]);
 
   // لا زر تحكم دائم في الواجهة — طلب واحد بشكل نافذة نظام (مثل طلب
-  // الموقع في تطبيقات آندرويد/آيفون) يظهر أول مرة فقط لكل موظف معنيّ لم
-  // يُقرِّر بعد (location_sharing_enabled لا تزال undefined). القرار
-  // (سماح أو رفض) يُحفَظ ولا يُعاد السؤال بعده.
+  // الموقع في تطبيقات آندرويد/آيفون) يظهر فور تسجيل الدخول لكل موظف معنيّ
+  // لم يُقرِّر بعد (location_sharing_enabled لا تزال undefined). من وافق
+  // لا يُعاد سؤاله إطلاقاً. من رفض يُعاد سؤاله مرة أخرى بعد
+  // LOCATION_SHARING_REPROMPT_DAYS يوماً (بدل أن يبقى الرفض نهائياً
+  // للأبد) — يبقى بإمكانه الرفض مجدداً في كل مرة بكل بساطة.
   const awaitingLocationDecision =
-    !!user && LOCATION_SHARING_ROLES.includes(user.role) && user.location_sharing_enabled === undefined;
+    !!user &&
+    LOCATION_SHARING_ROLES.includes(user.role) &&
+    (user.location_sharing_enabled === undefined ||
+      (user.location_sharing_enabled === false &&
+        (!user.location_sharing_decision_at ||
+          Date.now() - new Date(user.location_sharing_decision_at).getTime() > LOCATION_SHARING_REPROMPT_DAYS * 86400000)));
 
   async function respondToLocationPrompt(allow: boolean) {
     if (!user || locationToggleBusy) return;
