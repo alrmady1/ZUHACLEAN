@@ -340,6 +340,7 @@ function seed(): DbShape {
     { id: 'ec-electricity', name: 'كهرباء', is_active: true },
     { id: 'ec-gas', name: 'غاز', is_active: true },
     { id: 'ec-misc', name: 'مشتريات متفرقة', is_active: true },
+    { id: 'ec-setup', name: 'تأسيس', is_active: true },
     { id: 'ec-veh-installment', name: 'قسط', parent_id: 'ec-vehicles', is_active: true },
     { id: 'ec-veh-fuel', name: 'بنزين', parent_id: 'ec-vehicles', is_active: true },
     { id: 'ec-veh-diesel', name: 'ديزل', parent_id: 'ec-vehicles', is_active: true },
@@ -412,6 +413,11 @@ async function load(): Promise<DbShape> {
     // تُضاف هنا لمن لا يملكها بعد، بدل الاعتماد فقط على seed() أعلاه.
     if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'سلفية')) {
       parsed.expenseCategories.push({ id: 'ec-advance', name: 'سلفية', is_active: true });
+    }
+    // فئة "تأسيس" أُضيفت بعد أن كانت قواعد بيانات كثيرة قد زُرعت أصلاً —
+    // تُضاف هنا لمن لا يملكها بعد، بدل الاعتماد فقط على seed() أعلاه.
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'تأسيس')) {
+      parsed.expenseCategories.push({ id: 'ec-setup', name: 'تأسيس', is_active: true });
     }
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.permissions) parsed.permissions = {};
