@@ -237,6 +237,7 @@ export const AR_TO_EN: Record<string, string> = {
   "المواعيد": "Appointments",
   "العملاء": "Customers",
   "المبيعات والفواتير": "Sales and Invoices",
+  "المبيعات": "Sales",
   "العقود": "Contracts",
   "المصروفات": "Expenses",
   "بوابة الفني": "Technician Portal",
