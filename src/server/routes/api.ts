@@ -15,6 +15,8 @@ import type {
   ServiceCategory,
   ExpenseCategoryItem,
   CustodyInvoice,
+  EmployeeDeduction,
+  EmployeeViolation,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -36,6 +38,7 @@ import {
   VAT_RATE,
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
+  SALARY_CATEGORY_NAME,
   DEFAULT_PERMISSIONS,
   PERMISSION_LABELS_AR,
   LEAVE_TYPE_LABELS_AR,
@@ -1105,9 +1108,10 @@ api.post('/expenses', (req, res) => {
   const body = req.body ?? {};
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
   const isAdvance = body.category === ADVANCE_CATEGORY_NAME;
-  // كلا الصنفين (عهدة وسلفية) يحملان "موظفاً معنياً" بنفس الحقلين —
-  // انظر التعليق على custody_holder_id في shared/types.ts.
-  const linksEmployee = isCustody || isAdvance;
+  const isSalary = body.category === SALARY_CATEGORY_NAME;
+  // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
+  // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
+  const linksEmployee = isCustody || isAdvance || isSalary;
   const expense = store.expenses.insert({
     id: store.id(),
     title: body.title,
@@ -1135,7 +1139,9 @@ api.post('/expenses', (req, res) => {
       ? `تم إضافة عهدة "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
       : isAdvance
         ? `تم إضافة سلفية "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
-        : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+        : isSalary
+          ? `تم إضافة راتب "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
+          : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
 });
@@ -1312,10 +1318,96 @@ api.post('/invoices', (req, res) => {
     issue_date: body.issue_date ?? new Date().toISOString().slice(0, 10),
     created_at: new Date().toISOString(),
     notes: body.notes,
+    recorded_by: body.recorded_by || undefined,
+    recorded_by_name: body.recorded_by_name || undefined,
   };
   store.invoices.insert(invoice);
   logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س`);
   res.status(201).json(invoice);
+});
+
+// ---------------------------------------------------------------------------
+// كشف حساب الموظف (تبويب داخل صفحة المحاسبة) — خصميات ومخالفات كل موظف.
+// راتبه وعهدته وفواتيره تُشتق من /expenses، /custody-invoices و/invoices
+// (custody_holder_id و recorded_by على التوالي)، فلا حاجة لمسارات إضافية
+// لها هنا.
+// ---------------------------------------------------------------------------
+api.get('/employee-deductions', (req, res) => {
+  const { employee_id } = req.query;
+  let list = store.employeeDeductions.list();
+  if (employee_id && typeof employee_id === 'string') {
+    list = list.filter((d) => d.employee_id === employee_id);
+  }
+  res.json(list);
+});
+
+api.post('/employee-deductions', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.employee_id || !body.title || body.amount === undefined) {
+    return res.status(400).json({ error: 'employee_id، title و amount مطلوبة' });
+  }
+  const deduction: EmployeeDeduction = {
+    id: store.id(),
+    employee_id: body.employee_id,
+    employee_name: store.profiles.get(body.employee_id)?.full_name ?? body.employee_name,
+    title: body.title,
+    amount: Number(body.amount) || 0,
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    notes: body.notes || undefined,
+    recorded_by: body.recorded_by || undefined,
+    recorded_by_name: body.recorded_by_name || undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.employeeDeductions.insert(deduction);
+  logActivity(req, `تم إضافة خصم "${deduction.title}" على "${deduction.employee_name ?? ''}"`);
+  res.status(201).json(deduction);
+});
+
+api.delete('/employee-deductions/:id', (req, res) => {
+  const target = store.employeeDeductions.list().find((d) => d.id === req.params.id);
+  const removed = store.employeeDeductions.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف خصم "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
+  res.status(204).end();
+});
+
+api.get('/employee-violations', (req, res) => {
+  const { employee_id } = req.query;
+  let list = store.employeeViolations.list();
+  if (employee_id && typeof employee_id === 'string') {
+    list = list.filter((v) => v.employee_id === employee_id);
+  }
+  res.json(list);
+});
+
+api.post('/employee-violations', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.employee_id || !body.title) {
+    return res.status(400).json({ error: 'employee_id و title مطلوبة' });
+  }
+  const violation: EmployeeViolation = {
+    id: store.id(),
+    employee_id: body.employee_id,
+    employee_name: store.profiles.get(body.employee_id)?.full_name ?? body.employee_name,
+    title: body.title,
+    amount: body.amount !== undefined && body.amount !== '' ? Number(body.amount) || 0 : undefined,
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    notes: body.notes || undefined,
+    recorded_by: body.recorded_by || undefined,
+    recorded_by_name: body.recorded_by_name || undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.employeeViolations.insert(violation);
+  logActivity(req, `تم إضافة مخالفة "${violation.title}" على "${violation.employee_name ?? ''}"`);
+  res.status(201).json(violation);
+});
+
+api.delete('/employee-violations/:id', (req, res) => {
+  const target = store.employeeViolations.list().find((v) => v.id === req.params.id);
+  const removed = store.employeeViolations.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف مخالفة "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------

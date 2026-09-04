@@ -5,6 +5,7 @@ import type { Appointment, Customer, Invoice, PaymentMethodOption } from '../../
 import { VAT_RATE } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from './InvoiceDocument.js';
+import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
 export default function PayAppointmentModal({
@@ -21,6 +22,7 @@ export default function PayAppointmentModal({
   onPaid: () => void;
 }) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const activeMethods = paymentMethods.filter((m) => m.is_active);
   const [amount, setAmount] = useState(appointment.remaining_amount);
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
@@ -49,6 +51,8 @@ export default function PayAppointmentModal({
         subtotal,
         payment_status: fullySettled ? 'paid' : 'partial',
         payment_method: method,
+        recorded_by: user?.id,
+        recorded_by_name: user?.full_name,
       });
       onPaid();
       // Work is done and paid — show the tax invoice immediately (with its
