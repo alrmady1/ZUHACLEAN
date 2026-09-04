@@ -198,6 +198,7 @@ export default function Customers() {
       tax_number: isCompany ? form.get('tax_number') || undefined : undefined,
       national_address: isCompany ? form.get('national_address') || undefined : undefined,
       commercial_registration_number: isCompany ? form.get('commercial_registration_number') || undefined : undefined,
+      marketer_id: form.get('marketer_id') || undefined,
     };
     try {
       if (editing) {
@@ -522,6 +523,20 @@ export default function Customers() {
                   </a>
                 </div>
               </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('المسوّق المسؤول (اختياري)')}</span>
+                <div className="relative">
+                  <select name="marketer_id" defaultValue={editing?.marketer_id ?? ''} className="input appearance-none pe-9">
+                    <option value="">{t('-- بدون --')}</option>
+                    {allProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('نوع العميل')}</span>
@@ -675,6 +690,7 @@ function CustomerDetailModal({
   const [taxNumber, setTaxNumber] = useState(customer.tax_number ?? '');
   const [nationalAddress, setNationalAddress] = useState(customer.national_address ?? '');
   const [commercialRegNumber, setCommercialRegNumber] = useState(customer.commercial_registration_number ?? '');
+  const [marketerId, setMarketerId] = useState(customer.marketer_id ?? '');
 
   async function save() {
     setSubmitting(true);
@@ -693,6 +709,7 @@ function CustomerDetailModal({
         tax_number: isCompany ? taxNumber || undefined : undefined,
         national_address: isCompany ? nationalAddress || undefined : undefined,
         commercial_registration_number: isCompany ? commercialRegNumber || undefined : undefined,
+        marketer_id: marketerId || undefined,
       });
       onSaved();
       setEditing(false);
@@ -733,6 +750,7 @@ function CustomerDetailModal({
                       setTaxNumber(customer.tax_number ?? '');
                       setNationalAddress(customer.national_address ?? '');
                       setCommercialRegNumber(customer.commercial_registration_number ?? '');
+                      setMarketerId(customer.marketer_id ?? '');
                       setEditing(true);
                     }}
                     title={t('تعديل بيانات العميل')}
@@ -757,7 +775,7 @@ function CustomerDetailModal({
                   </div>
                 )}
               </div>
-              {(customer.customer_type || customer.source) && (
+              {(customer.customer_type || customer.source || customer.marketer_id) && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {customer.customer_type && (
                     <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
@@ -770,6 +788,11 @@ function CustomerDetailModal({
                       {customer.source === 'outbound_call' &&
                         customer.source_call_profile_id &&
                         ` — ${allProfiles.find((p) => p.id === customer.source_call_profile_id)?.full_name ?? ''}`}
+                    </span>
+                  )}
+                  {customer.marketer_id && (
+                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                      {t('المسوّق')}: {allProfiles.find((p) => p.id === customer.marketer_id)?.full_name ?? ''}
                     </span>
                   )}
                 </div>
@@ -919,6 +942,20 @@ function CustomerDetailModal({
                   >
                     <MapIcon className="h-4 w-4" />
                   </a>
+                </div>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('المسوّق المسؤول (اختياري)')}</span>
+                <div className="relative">
+                  <select value={marketerId} onChange={(e) => setMarketerId(e.target.value)} className="input appearance-none pe-9">
+                    <option value="">{t('-- بدون --')}</option>
+                    {allProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 </div>
               </label>
               <div className="flex items-center gap-2">

@@ -36,8 +36,11 @@ import type {
   WhatsappMessage,
   LandingPageSettings,
   LandingService,
+  CommissionConfig,
+  CommissionTier,
+  CommissionEligibility,
 } from '../../shared/types.js';
-import { DEFAULT_PERMISSIONS, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
+import { DEFAULT_PERMISSIONS, DEFAULT_LANDING_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -104,6 +107,11 @@ interface DbShape {
   // محادثات واتساب مع الرد الآلي (WhatsApp Cloud API webhook) — انظر
   // WhatsappThread في src/shared/types.ts وsrc/server/lib/whatsappBot.ts.
   whatsappThreads: WhatsappThread[];
+  // نظام العمولات — سجل إعدادات واحد (singleton) + شرائح تصاعدية + من
+  // يستحق فعلياً. انظر src/shared/types.ts.
+  commissionConfig: CommissionConfig;
+  commissionTiers: CommissionTier[];
+  commissionEligibility: CommissionEligibility[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -394,6 +402,16 @@ function seed(): DbShape {
         created_at: new Date().toISOString(),
       })),
     whatsappThreads: [],
+    commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
+    // نقطة بداية مقترحة (نسب تصاعدية معقولة، معدَّلة بالكامل لاحقاً من
+    // الإعدادات ← العمولات): 20-25 ألف 5%/2%، 25-30 ألف 7%/3%، فوق 30
+    // ألف 10%/4% (مسوّق/مشرف على التوالي).
+    commissionTiers: [
+      { id: 'ct-1', from: 20000, to: 25000, marketer_rate: 0.05, supervisor_rate: 0.02 },
+      { id: 'ct-2', from: 25000, to: 30000, marketer_rate: 0.07, supervisor_rate: 0.03 },
+      { id: 'ct-3', from: 30000, to: null, marketer_rate: 0.1, supervisor_rate: 0.04 },
+    ],
+    commissionEligibility: [],
   };
 }
 
@@ -453,6 +471,9 @@ async function load(): Promise<DbShape> {
         }));
     }
     if (!parsed.whatsappThreads) parsed.whatsappThreads = [];
+    if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
+    if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
+    if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
     // ترقية سجلات leads القديمة (قبل توسيع الحالات) — "contacted"/"closed"
     // لم تعودا موجودتين في LeadStatus، تُطابَقان لأقرب حالة جديدة مكافئة.
     // (لا حاجة لحفظ فوري هنا — تُكتَب تلقائياً مع أول persist() تالٍ لأي
@@ -695,7 +716,15 @@ export const store = {
   },
   expenses: {
     list: () => db.expenses,
+    get: (id: string) => db.expenses.find((e) => e.id === id),
     insert: (e: Expense) => { db.expenses.push(e); persist(); return e; },
+    update: (id: string, patch: Partial<Expense>) => {
+      const idx = db.expenses.findIndex((e) => e.id === id);
+      if (idx === -1) return undefined;
+      db.expenses[idx] = { ...db.expenses[idx], ...patch };
+      persist();
+      return db.expenses[idx];
+    },
     remove: (id: string) => {
       const idx = db.expenses.findIndex((e) => e.id === id);
       if (idx === -1) return false;
@@ -986,6 +1015,49 @@ export const store = {
       db.paymentMethods[idx] = { ...db.paymentMethods[idx], ...patch };
       persist();
       return db.paymentMethods[idx];
+    },
+  },
+  commissionConfig: {
+    get: () => db.commissionConfig,
+    set: (next: CommissionConfig) => { db.commissionConfig = next; persist(); return next; },
+  },
+  commissionTiers: {
+    // مرتَّبة بحسب from تصاعدياً عند كل قراءة — حساب العمولة والواجهة
+    // كلاهما يعتمدان على ترتيب الشرائح، أضمن من الاعتماد على ترتيب
+    // الإدخال/التعديل.
+    list: () => [...db.commissionTiers].sort((a, b) => a.from - b.from),
+    insert: (t: CommissionTier) => { db.commissionTiers.push(t); persist(); return t; },
+    update: (id: string, patch: Partial<CommissionTier>) => {
+      const idx = db.commissionTiers.findIndex((t) => t.id === id);
+      if (idx === -1) return undefined;
+      db.commissionTiers[idx] = { ...db.commissionTiers[idx], ...patch };
+      persist();
+      return db.commissionTiers[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.commissionTiers.findIndex((t) => t.id === id);
+      if (idx === -1) return false;
+      db.commissionTiers.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  commissionEligibility: {
+    list: () => db.commissionEligibility,
+    insert: (e: CommissionEligibility) => { db.commissionEligibility.push(e); persist(); return e; },
+    update: (id: string, patch: Partial<CommissionEligibility>) => {
+      const idx = db.commissionEligibility.findIndex((e) => e.id === id);
+      if (idx === -1) return undefined;
+      db.commissionEligibility[idx] = { ...db.commissionEligibility[idx], ...patch };
+      persist();
+      return db.commissionEligibility[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.commissionEligibility.findIndex((e) => e.id === id);
+      if (idx === -1) return false;
+      db.commissionEligibility.splice(idx, 1);
+      persist();
+      return true;
     },
   },
 };

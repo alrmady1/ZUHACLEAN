@@ -39,6 +39,10 @@ import {
   Eye,
   EyeOff,
   Layers,
+  Percent as CommissionsIcon,
+  Target,
+  ShieldAlert,
+  UserCheck,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
@@ -56,8 +60,11 @@ import type {
   ActivityLogEntry,
   LandingPageSettings,
   LandingService,
+  CommissionConfig,
+  CommissionTier,
+  CommissionEligibility,
 } from '../../shared/types.js';
-import { DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
+import { DEFAULT_LANDING_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
   SETTINGS_ACCESS_ROLES,
   PERMISSIONS_ACCESS_ROLES,
@@ -2790,6 +2797,303 @@ function PermissionsTab() {
   );
 }
 
+// تبويب "العمولات" — إعداد نظام عمولات المسوّق والمشرف (نقطة التعادل،
+// المستهدفات، الشرائح التصاعدية، ومن يستحق فعلياً). هذا تبويب الإعداد
+// فقط — الأرقام الفعلية المحسوبة لكل شهر (الإيراد، من يستحق كم) تُعرَض
+// في تبويب "العمولات" داخل صفحة المحاسبة، وليس هنا.
+function CommissionsTab() {
+  const { t } = useI18n();
+  const { allProfiles } = useAuth();
+  const [configForm, setConfigForm] = useState<CommissionConfig>(DEFAULT_COMMISSION_CONFIG);
+  const [tiers, setTiers] = useState<CommissionTier[]>([]);
+  const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  function refresh() {
+    api.get<CommissionConfig>('/commission-config').then(setConfigForm);
+    api.get<CommissionTier[]>('/commission-tiers').then(setTiers);
+    api.get<CommissionEligibility[]>('/commission-eligibility').then(setEligibility);
+  }
+  useEffect(refresh, []);
+
+  async function saveConfig() {
+    setSavingConfig(true);
+    try {
+      const saved = await api.patch<CommissionConfig>('/commission-config', configForm);
+      setConfigForm(saved);
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
+  const dailyBreakeven = configForm.effective_work_days > 0 ? configForm.monthly_fixed_expenses / configForm.effective_work_days : 0;
+
+  async function addTier() {
+    const lastTier = tiers[tiers.length - 1];
+    const from = lastTier ? (lastTier.to ?? lastTier.from + 5000) : configForm.base_target;
+    const created = await api.post<CommissionTier>('/commission-tiers', { from, to: null, marketer_rate: 0.05, supervisor_rate: 0.02 });
+    setTiers((prev) => [...prev, created].sort((a, b) => a.from - b.from));
+  }
+  async function updateTier(id: string, patch: Partial<CommissionTier>) {
+    const updated = await api.patch<CommissionTier>(`/commission-tiers/${id}`, patch);
+    setTiers((prev) => prev.map((tr) => (tr.id === id ? updated : tr)).sort((a, b) => a.from - b.from));
+  }
+  async function removeTier(id: string) {
+    if (!window.confirm(t('حذف هذه الشريحة؟'))) return;
+    await api.del(`/commission-tiers/${id}`);
+    setTiers((prev) => prev.filter((tr) => tr.id !== id));
+  }
+
+  const [newEligibleProfile, setNewEligibleProfile] = useState('');
+  const [newEligibleRole, setNewEligibleRole] = useState<'marketer' | 'supervisor'>('marketer');
+  async function addEligibility() {
+    if (!newEligibleProfile) return;
+    const created = await api.post<CommissionEligibility>('/commission-eligibility', {
+      profile_id: newEligibleProfile,
+      role: newEligibleRole,
+    });
+    setEligibility((prev) => [...prev, created]);
+    setNewEligibleProfile('');
+  }
+  async function toggleEligibilityActive(entry: CommissionEligibility) {
+    const updated = await api.patch<CommissionEligibility>(`/commission-eligibility/${entry.id}`, { active: !entry.active });
+    setEligibility((prev) => prev.map((x) => (x.id === entry.id ? updated : x)));
+  }
+  async function removeEligibility(id: string) {
+    if (!window.confirm(t('حذف هذا المستحق؟'))) return;
+    await api.del(`/commission-eligibility/${id}`);
+    setEligibility((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-slate-800">{t('إعدادات العمولات')}</h2>
+        <p className="text-sm text-slate-400">
+          {t('نقطة التعادل، المستهدفات الشهرية، الشرائح التصاعدية، ومن يستحق فعلياً — الأرقام الفعلية لكل شهر في تبويب "العمولات" داخل المحاسبة')}
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Target className="h-4 w-4 text-brand-600" />
+          <h3 className="text-sm font-semibold text-slate-700">{t('نقطة التعادل والمستهدفات الشهرية')}</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('المصاريف التشغيلية الثابتة شهرياً (ر.س)')}</span>
+            <input
+              type="number"
+              min={0}
+              value={configForm.monthly_fixed_expenses}
+              onChange={(e) => setConfigForm((p) => ({ ...p, monthly_fixed_expenses: Number(e.target.value) || 0 }))}
+              className="input"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('أيام العمل الفعالة شهرياً')}</span>
+            <input
+              type="number"
+              min={1}
+              value={configForm.effective_work_days}
+              onChange={(e) => setConfigForm((p) => ({ ...p, effective_work_days: Number(e.target.value) || 1 }))}
+              className="input"
+            />
+          </label>
+          <div className="rounded-xl bg-slate-50 p-3 text-sm">
+            <div className="text-xs text-slate-400">{t('نقطة التعادل اليومية (محسوبة)')}</div>
+            <div className="mt-1 font-bold text-slate-800">{formatMoney(dailyBreakeven)}</div>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('المستوى الأول — تغطية التكاليف (ر.س)')}</span>
+            <input
+              type="number"
+              min={0}
+              value={configForm.base_target}
+              onChange={(e) => setConfigForm((p) => ({ ...p, base_target: Number(e.target.value) || 0 }))}
+              className="input"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('المستوى الثاني — النمو (ر.س)')}</span>
+            <input
+              type="number"
+              min={0}
+              value={configForm.growth_target}
+              onChange={(e) => setConfigForm((p) => ({ ...p, growth_target: Number(e.target.value) || 0 }))}
+              className="input"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('المستوى الثالث — التجاوز (ر.س)')}</span>
+            <input
+              type="number"
+              min={0}
+              value={configForm.stretch_target}
+              onChange={(e) => setConfigForm((p) => ({ ...p, stretch_target: Number(e.target.value) || 0 }))}
+              className="input"
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+          <span className="text-xs font-semibold text-slate-600">{t('حدود الأمان')}</span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('أقصى نسبة شكاوى مسموحة لاستحقاق المشرف (%)')}</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={Math.round(configForm.supervisor_max_complaint_rate * 1000) / 10}
+              onChange={(e) => setConfigForm((p) => ({ ...p, supervisor_max_complaint_rate: (Number(e.target.value) || 0) / 100 }))}
+              className="input"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('أدنى حصة تبقى للشركة من الفائض (%)')}</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={Math.round(configForm.min_company_share * 1000) / 10}
+              onChange={(e) => setConfigForm((p) => ({ ...p, min_company_share: (Number(e.target.value) || 0) / 100 }))}
+              className="input"
+            />
+          </label>
+        </div>
+        <button
+          onClick={saveConfig}
+          disabled={savingConfig}
+          className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {savingConfig ? t('جارِ الحفظ…') : t('حفظ الإعدادات')}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-brand-600" />
+            <h3 className="text-sm font-semibold text-slate-700">{t('شرائح العمولة التصاعدية')}</h3>
+          </div>
+          <button
+            onClick={addTier}
+            className="flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500 hover:border-brand-300 hover:text-brand-600"
+          >
+            <Plus className="h-3.5 w-3.5" /> {t('إضافة شريحة')}
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-slate-400">
+          {t('تُطبَّق على إجمالي إيراد الشركة المحصَّل شهرياً (لا إيراد كل شخص وحده) — كل شريحة على الجزء الواقع داخل حدودها فقط')}
+        </p>
+        <div className="space-y-2">
+          {tiers.map((tier) => (
+            <div key={tier.id} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-center gap-2 rounded-xl bg-slate-50 p-2.5">
+              <input
+                type="number"
+                value={tier.from}
+                onChange={(e) => updateTier(tier.id, { from: Number(e.target.value) || 0 })}
+                className="input py-1 text-sm"
+                placeholder={t('من')}
+              />
+              <input
+                type="number"
+                value={tier.to ?? ''}
+                onChange={(e) => updateTier(tier.id, { to: e.target.value === '' ? null : Number(e.target.value) })}
+                className="input py-1 text-sm"
+                placeholder={t('إلى (فارغ = بلا حد)')}
+              />
+              <input
+                type="number"
+                step="0.1"
+                value={Math.round(tier.marketer_rate * 1000) / 10}
+                onChange={(e) => updateTier(tier.id, { marketer_rate: (Number(e.target.value) || 0) / 100 })}
+                className="input py-1 text-sm"
+                placeholder={t('% المسوّق')}
+              />
+              <input
+                type="number"
+                step="0.1"
+                value={Math.round(tier.supervisor_rate * 1000) / 10}
+                onChange={(e) => updateTier(tier.id, { supervisor_rate: (Number(e.target.value) || 0) / 100 })}
+                className="input py-1 text-sm"
+                placeholder={t('% المشرف')}
+              />
+              <button onClick={() => removeTier(tier.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {tiers.length === 0 && <div className="py-4 text-center text-xs text-slate-400">{t('لا توجد شرائح بعد')}</div>}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <UserCheck className="h-4 w-4 text-brand-600" />
+          <h3 className="text-sm font-semibold text-slate-700">{t('المستحقون فعلياً')}</h3>
+        </div>
+        <p className="mb-3 text-xs text-slate-400">
+          {t('تعيين يدوي مستقل عن دور الحساب في النظام — إيقاف التفعيل يوقف الاستحقاق فوراً دون حذف السجل')}
+        </p>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <select value={newEligibleProfile} onChange={(e) => setNewEligibleProfile(e.target.value)} className="input flex-1">
+            <option value="">{t('-- اختر موظف --')}</option>
+            {allProfiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={newEligibleRole}
+            onChange={(e) => setNewEligibleRole(e.target.value as 'marketer' | 'supervisor')}
+            className="input w-40"
+          >
+            <option value="marketer">{t('مسوّق')}</option>
+            <option value="supervisor">{t('مشرف')}</option>
+          </select>
+          <button
+            onClick={addEligibility}
+            className="flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> {t('إضافة')}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {eligibility.map((entry) => (
+            <div key={entry.id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
+              <div>
+                <div className="text-sm font-medium text-slate-700">{entry.profile_name}</div>
+                <div className="text-xs text-slate-400">{entry.role === 'marketer' ? t('مسوّق') : t('مشرف')}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleEligibilityActive(entry)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}
+                >
+                  {entry.active ? t('مفعَّل') : t('موقَّف')}
+                </button>
+                <button
+                  onClick={() => removeEligibility(entry.id)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {eligibility.length === 0 && <div className="py-4 text-center text-xs text-slate-400">{t('لا يوجد مستحقون بعد')}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // سجل العمليات — الإعدادات ← سجل العمليات (خلف صلاحية ديناميكية
 // view_activity_log). كل عملية تعديل/إضافة/حذف مؤثرة في التطبيق تُسجَّل
 // تلقائياً من الخادم (انظر logActivity في src/server/routes/api.ts) مع
@@ -2948,8 +3252,19 @@ export default function Settings() {
   const canLandingPage = can('edit_landing_page');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
+  const canCommissions = can('manage_commissions');
 
-  type SettingsTab = 'users' | 'services' | 'payment_methods' | 'expense_categories' | 'team_links' | 'days_off' | 'landing_page' | 'permissions' | 'activity_log';
+  type SettingsTab =
+    | 'users'
+    | 'services'
+    | 'payment_methods'
+    | 'expense_categories'
+    | 'team_links'
+    | 'days_off'
+    | 'landing_page'
+    | 'permissions'
+    | 'commissions'
+    | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
     // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
@@ -2961,6 +3276,7 @@ export default function Settings() {
     if (canDaysOff) return 'days_off';
     if (canLandingPage) return 'landing_page';
     if (canPermissions) return 'permissions';
+    if (canCommissions) return 'commissions';
     return 'activity_log';
   });
 
@@ -3041,6 +3357,14 @@ export default function Settings() {
             <PermissionsIcon className="h-4 w-4" /> {t('الصلاحيات')}
           </button>
         )}
+        {canCommissions && (
+          <button
+            onClick={() => setTab('commissions')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'commissions' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <CommissionsIcon className="h-4 w-4" /> {t('العمولات')}
+          </button>
+        )}
         {canActivityLog && (
           <button
             onClick={() => setTab('activity_log')}
@@ -3067,6 +3391,8 @@ export default function Settings() {
         <LandingPageTab />
       ) : tab === 'permissions' && canPermissions ? (
         <PermissionsTab />
+      ) : tab === 'commissions' && canCommissions ? (
+        <CommissionsTab />
       ) : canActivityLog ? (
         <ActivityLogTab />
       ) : null}

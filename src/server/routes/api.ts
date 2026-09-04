@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage } from '../lib/storage.js';
+import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage, uploadExpenseInvoice } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
@@ -33,6 +33,10 @@ import type {
   CustomerType,
   CustomerSource,
   Customer,
+  CommissionConfig,
+  CommissionTier,
+  CommissionEligibility,
+  Expense,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -482,6 +486,7 @@ api.post('/customers', (req, res) => {
     tax_number,
     national_address,
     commercial_registration_number,
+    marketer_id,
   } = req.body ?? {};
   if (!name || !phone || !address) {
     return res.status(400).json({ error: 'name, phone و address مطلوبة' });
@@ -502,6 +507,7 @@ api.post('/customers', (req, res) => {
     tax_number: isCompany ? tax_number || undefined : undefined,
     national_address: isCompany ? national_address || undefined : undefined,
     commercial_registration_number: isCompany ? commercial_registration_number || undefined : undefined,
+    marketer_id: marketer_id || undefined,
     created_at: new Date().toISOString(),
   });
   logActivity(req, `تم إضافة عميل "${customer.name}"`);
@@ -524,6 +530,7 @@ api.patch('/customers/:id', (req, res) => {
     tax_number?: string;
     national_address?: string;
     commercial_registration_number?: string;
+    marketer_id?: string;
   }> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.phone !== undefined) patch.phone = normalizeSaudiPhone(body.phone);
@@ -533,6 +540,7 @@ api.patch('/customers/:id', (req, res) => {
   if (body.location_url !== undefined) patch.location_url = body.location_url || undefined;
   if (body.notes !== undefined) patch.notes = body.notes || undefined;
   if (body.customer_type !== undefined) patch.customer_type = body.customer_type || undefined;
+  if (body.marketer_id !== undefined) patch.marketer_id = body.marketer_id || undefined;
   if (body.source !== undefined) {
     patch.source = body.source || undefined;
     patch.source_call_profile_id = body.source === 'outbound_call' ? body.source_call_profile_id || undefined : undefined;
@@ -1107,7 +1115,7 @@ api.delete('/contracts/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/expenses', (_req, res) => res.json(store.expenses.list()));
 
-api.post('/expenses', (req, res) => {
+api.post('/expenses', async (req, res) => {
   const body = req.body ?? {};
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
   const isAdvance = body.category === ADVANCE_CATEGORY_NAME;
@@ -1115,8 +1123,21 @@ api.post('/expenses', (req, res) => {
   // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
   // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
   const linksEmployee = isCustody || isAdvance || isSalary;
+  const expenseId = store.id();
+  // صورة أو PDF اختياري لسند الفاتورة — نفس منطق صورة الإجازة في POST
+  // /leaves أعلاه بالضبط (نرفعه أولاً باستخدام المعرّف المولَّد سلفاً، ثم
+  // نحفظ رابطه فقط ضمن سجل المصروف).
+  let invoiceFileUrl: string | undefined;
+  if (body.invoice_file_data_url) {
+    try {
+      invoiceFileUrl = await uploadExpenseInvoice(expenseId, body.invoice_file_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع ملف الفاتورة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+    }
+  }
   const expense = store.expenses.insert({
-    id: store.id(),
+    id: expenseId,
     title: body.title,
     category: body.category,
     sub_category: body.sub_category || undefined,
@@ -1134,6 +1155,8 @@ api.post('/expenses', (req, res) => {
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
     payment_method: body.payment_method ?? 'cash',
     notes: body.notes,
+    invoice_file_url: invoiceFileUrl,
+    invoice_file_name: invoiceFileUrl ? body.invoice_file_name || undefined : undefined,
     created_at: new Date().toISOString(),
   });
   logActivity(
@@ -1147,6 +1170,50 @@ api.post('/expenses', (req, res) => {
           : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
+});
+
+// تعديل مصروف قائم — مقيَّد في الواجهة بصلاحية edit_delete_expenses
+// (افتراضياً المدير العام ومدير النظام فقط، انظر DEFAULT_PERMISSIONS).
+api.patch('/expenses/:id', async (req, res) => {
+  const body = req.body ?? {};
+  const target = store.expenses.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'not found' });
+  const isCustody = (body.category ?? target.category) === CUSTODY_CATEGORY_NAME;
+  const isAdvance = (body.category ?? target.category) === ADVANCE_CATEGORY_NAME;
+  const isSalary = (body.category ?? target.category) === SALARY_CATEGORY_NAME;
+  const linksEmployee = isCustody || isAdvance || isSalary;
+  const patch: Partial<Expense> = {};
+  if (body.title !== undefined) patch.title = body.title;
+  if (body.category !== undefined) patch.category = body.category;
+  if (body.sub_category !== undefined) patch.sub_category = body.sub_category || undefined;
+  if (body.amount !== undefined) patch.amount = Number(body.amount);
+  if (body.date !== undefined) patch.date = body.date;
+  if (body.invoice_number !== undefined) patch.invoice_number = body.invoice_number || undefined;
+  if (body.payment_method !== undefined) patch.payment_method = body.payment_method;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  if (body.custody_holder_id !== undefined || body.category !== undefined) {
+    const holderId = linksEmployee ? body.custody_holder_id ?? target.custody_holder_id : undefined;
+    patch.custody_holder_id = holderId || undefined;
+    patch.custody_holder_name = holderId ? store.profiles.get(holderId)?.full_name : undefined;
+  }
+  // استبدال/إرفاق ملف فاتورة جديد — نفس منطق POST أعلاه؛ ملف قديم على
+  // Supabase Storage يبقى يتيماً بلا مشكلة (نفس منطق حذف صور المواعيد).
+  if (body.invoice_file_data_url) {
+    try {
+      patch.invoice_file_url = await uploadExpenseInvoice(target.id, body.invoice_file_data_url);
+      patch.invoice_file_name = body.invoice_file_name || undefined;
+    } catch (err) {
+      console.error('❌ فشل رفع ملف الفاتورة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+    }
+  } else if (body.remove_invoice_file) {
+    patch.invoice_file_url = undefined;
+    patch.invoice_file_name = undefined;
+  }
+  const updated = store.expenses.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل مصروف "${updated.title}"`);
+  res.json(updated);
 });
 
 // Deleting an expense (used for custody grants — see CAN_DELETE_CUSTODY_ROLES,
@@ -1422,6 +1489,247 @@ api.delete('/employee-violations/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف مخالفة "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// نظام العمولات — إعدادات (نقطة تعادل، مستهدفات، شرائح تصاعدية، من
+// يستحق فعلياً) + تقرير محسوب شهرياً. لا تحقق صلاحيات على مستوى الخادم
+// (كبقية هذا التطبيق) — view_commissions/manage_commissions يُطبَّقان في
+// الواجهة فقط.
+// ---------------------------------------------------------------------------
+api.get('/commission-config', (_req, res) => res.json(store.commissionConfig.get()));
+
+api.patch('/commission-config', (req, res) => {
+  const body = req.body ?? {};
+  const current = store.commissionConfig.get();
+  const next: CommissionConfig = {
+    monthly_fixed_expenses: body.monthly_fixed_expenses !== undefined ? Number(body.monthly_fixed_expenses) : current.monthly_fixed_expenses,
+    effective_work_days: body.effective_work_days !== undefined ? Number(body.effective_work_days) : current.effective_work_days,
+    base_target: body.base_target !== undefined ? Number(body.base_target) : current.base_target,
+    growth_target: body.growth_target !== undefined ? Number(body.growth_target) : current.growth_target,
+    stretch_target: body.stretch_target !== undefined ? Number(body.stretch_target) : current.stretch_target,
+    supervisor_max_complaint_rate:
+      body.supervisor_max_complaint_rate !== undefined ? Number(body.supervisor_max_complaint_rate) : current.supervisor_max_complaint_rate,
+    min_company_share: body.min_company_share !== undefined ? Number(body.min_company_share) : current.min_company_share,
+    updated_at: new Date().toISOString(),
+  };
+  store.commissionConfig.set(next);
+  logActivity(req, 'تم تعديل إعدادات العمولات');
+  res.json(next);
+});
+
+api.get('/commission-tiers', (_req, res) => res.json(store.commissionTiers.list()));
+
+api.post('/commission-tiers', (req, res) => {
+  const body = req.body ?? {};
+  if (body.from === undefined || body.marketer_rate === undefined || body.supervisor_rate === undefined) {
+    return res.status(400).json({ error: 'from, marketer_rate و supervisor_rate مطلوبة' });
+  }
+  const tier: CommissionTier = {
+    id: store.id(),
+    from: Number(body.from),
+    to: body.to === null || body.to === undefined || body.to === '' ? null : Number(body.to),
+    marketer_rate: Number(body.marketer_rate),
+    supervisor_rate: Number(body.supervisor_rate),
+  };
+  store.commissionTiers.insert(tier);
+  logActivity(req, `تم إضافة شريحة عمولة (${tier.from} - ${tier.to ?? '∞'})`);
+  res.status(201).json(tier);
+});
+
+api.patch('/commission-tiers/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<CommissionTier> = {};
+  if (body.from !== undefined) patch.from = Number(body.from);
+  if (body.to !== undefined) patch.to = body.to === null || body.to === '' ? null : Number(body.to);
+  if (body.marketer_rate !== undefined) patch.marketer_rate = Number(body.marketer_rate);
+  if (body.supervisor_rate !== undefined) patch.supervisor_rate = Number(body.supervisor_rate);
+  const updated = store.commissionTiers.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل شريحة عمولة (${updated.from} - ${updated.to ?? '∞'})`);
+  res.json(updated);
+});
+
+api.delete('/commission-tiers/:id', (req, res) => {
+  const target = store.commissionTiers.list().find((t) => t.id === req.params.id);
+  const removed = store.commissionTiers.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف شريحة عمولة (${target?.from ?? ''} - ${target?.to ?? '∞'})`);
+  res.status(204).end();
+});
+
+api.get('/commission-eligibility', (_req, res) => res.json(store.commissionEligibility.list()));
+
+api.post('/commission-eligibility', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.profile_id || (body.role !== 'marketer' && body.role !== 'supervisor')) {
+    return res.status(400).json({ error: 'profile_id و role (marketer|supervisor) مطلوبان' });
+  }
+  const profile = store.profiles.get(body.profile_id);
+  const entry: CommissionEligibility = {
+    id: store.id(),
+    profile_id: body.profile_id,
+    profile_name: profile?.full_name,
+    role: body.role,
+    active: body.active ?? true,
+    created_at: new Date().toISOString(),
+  };
+  store.commissionEligibility.insert(entry);
+  logActivity(req, `تم إضافة "${entry.profile_name ?? ''}" كمستحق عمولة ${entry.role === 'marketer' ? 'مسوّق' : 'مشرف'}`);
+  res.status(201).json(entry);
+});
+
+api.patch('/commission-eligibility/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<CommissionEligibility> = {};
+  if (body.active !== undefined) patch.active = !!body.active;
+  const updated = store.commissionEligibility.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `${updated.active ? 'تم تفعيل' : 'تم إيقاف'} استحقاق عمولة "${updated.profile_name ?? ''}"`);
+  res.json(updated);
+});
+
+api.delete('/commission-eligibility/:id', (req, res) => {
+  const target = store.commissionEligibility.list().find((e) => e.id === req.params.id);
+  const removed = store.commissionEligibility.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف استحقاق عمولة "${target?.profile_name ?? ''}"`);
+  res.status(204).end();
+});
+
+// تقرير محسوب لشهر محدَّد (افتراضياً الشهر الحالي) — الإيراد المحصَّل
+// الفعلي فقط (Payment.recorded_at ضمن الشهر، بصرف النظر عن تاريخ الموعد
+// نفسه)، الشرائح التصاعدية مطبَّقة على إجمالي إيراد الشركة (لا إيراد كل
+// شخص وحده)، ثم توزَّع كل من حصة المسوّقين وحصة المشرفين نسبياً حسب حصة
+// كل شخص الفعلية من إجمالي إيراد الشركة. شرط الأمان (أدنى حصة للشركة)
+// يُخفِّض كل الحصص المستحقة تناسبياً (لا يُلغي الاستحقاق نفسه) لو
+// تجاوزتها الشرائح المُعدَّة يدوياً.
+api.get('/commission-report', (req, res) => {
+  const month =
+    typeof req.query.month === 'string' && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
+  const config = store.commissionConfig.get();
+  const tiers = store.commissionTiers.list();
+  const appointments = store.appointments.list();
+  const customers = store.customers.list();
+  const ratings = store.ratings.list();
+
+  const inMonth = (iso: string) => iso.slice(0, 7) === month;
+
+  let companyRevenue = 0;
+  const revenueByCustomer = new Map<string, number>();
+  const revenueBySupervisor = new Map<string, number>();
+  for (const a of appointments) {
+    for (const p of a.payments) {
+      if (!inMonth(p.recorded_at)) continue;
+      companyRevenue += p.amount;
+      revenueByCustomer.set(a.customer_id, (revenueByCustomer.get(a.customer_id) ?? 0) + p.amount);
+      if (a.supervisor_id) revenueBySupervisor.set(a.supervisor_id, (revenueBySupervisor.get(a.supervisor_id) ?? 0) + p.amount);
+    }
+  }
+  companyRevenue = Math.round(companyRevenue * 100) / 100;
+
+  const revenueByMarketer = new Map<string, number>();
+  for (const c of customers) {
+    if (!c.marketer_id) continue;
+    const rev = revenueByCustomer.get(c.id);
+    if (rev) revenueByMarketer.set(c.marketer_id, (revenueByMarketer.get(c.marketer_id) ?? 0) + rev);
+  }
+
+  // نسبة شكاوى كل مشرف هذا الشهر — تقييمات ١-٢ نجوم ÷ إجمالي التقييمات
+  // على مواعيد ذلك المشرف تحديداً (Rating.created_at ضمن الشهر).
+  const apptById = new Map(appointments.map((a) => [a.id, a]));
+  const complaintStatsBySupervisor = new Map<string, { total: number; complaints: number }>();
+  for (const r of ratings) {
+    if (!inMonth(r.created_at)) continue;
+    const appt = apptById.get(r.appointment_id);
+    if (!appt?.supervisor_id) continue;
+    const stat = complaintStatsBySupervisor.get(appt.supervisor_id) ?? { total: 0, complaints: 0 };
+    stat.total += 1;
+    if (r.stars <= 2) stat.complaints += 1;
+    complaintStatsBySupervisor.set(appt.supervisor_id, stat);
+  }
+
+  const excess = Math.max(0, Math.round((companyRevenue - config.base_target) * 100) / 100);
+
+  function tierPoolAmount(rateKey: 'marketer_rate' | 'supervisor_rate'): number {
+    let total = 0;
+    for (const tier of tiers) {
+      if (companyRevenue <= tier.from) continue;
+      const upper = tier.to ?? Infinity;
+      const amountInTier = Math.min(companyRevenue, upper) - tier.from;
+      if (amountInTier <= 0) continue;
+      total += amountInTier * tier[rateKey];
+    }
+    return total;
+  }
+
+  const rawMarketerPool = excess > 0 ? tierPoolAmount('marketer_rate') : 0;
+  const rawSupervisorPool = excess > 0 ? tierPoolAmount('supervisor_rate') : 0;
+  const rawTotal = rawMarketerPool + rawSupervisorPool;
+  const maxAllowedTotal = excess * (1 - config.min_company_share);
+  const safetyScale = excess > 0 && rawTotal > maxAllowedTotal && rawTotal > 0 ? maxAllowedTotal / rawTotal : 1;
+
+  const marketerPool = Math.round(rawMarketerPool * safetyScale * 100) / 100;
+  const supervisorPool = Math.round(rawSupervisorPool * safetyScale * 100) / 100;
+
+  const eligibility = store.commissionEligibility.list().filter((e) => e.active);
+
+  const marketers = eligibility
+    .filter((e) => e.role === 'marketer')
+    .map((e) => {
+      const personalRevenue = revenueByMarketer.get(e.profile_id) ?? 0;
+      const share = companyRevenue > 0 ? personalRevenue / companyRevenue : 0;
+      return {
+        profile_id: e.profile_id,
+        profile_name: e.profile_name ?? store.profiles.get(e.profile_id)?.full_name ?? '',
+        personal_revenue: Math.round(personalRevenue * 100) / 100,
+        share_percent: Math.round(share * 10000) / 100,
+        commission_due: Math.round(marketerPool * share * 100) / 100,
+      };
+    });
+
+  const supervisors = eligibility
+    .filter((e) => e.role === 'supervisor')
+    .map((e) => {
+      const personalRevenue = revenueBySupervisor.get(e.profile_id) ?? 0;
+      const stat = complaintStatsBySupervisor.get(e.profile_id);
+      const complaintRate = stat && stat.total > 0 ? stat.complaints / stat.total : 0;
+      const eligible = complaintRate <= config.supervisor_max_complaint_rate;
+      const share = companyRevenue > 0 ? personalRevenue / companyRevenue : 0;
+      return {
+        profile_id: e.profile_id,
+        profile_name: e.profile_name ?? store.profiles.get(e.profile_id)?.full_name ?? '',
+        personal_revenue: Math.round(personalRevenue * 100) / 100,
+        share_percent: Math.round(share * 10000) / 100,
+        complaint_rate: Math.round(complaintRate * 10000) / 100,
+        rated_count: stat?.total ?? 0,
+        eligible,
+        commission_due: eligible ? Math.round(supervisorPool * share * 100) / 100 : 0,
+      };
+    });
+
+  const totalMarketerDue = Math.round(marketers.reduce((s, m) => s + m.commission_due, 0) * 100) / 100;
+  const totalSupervisorDue = Math.round(supervisors.reduce((s, v) => s + v.commission_due, 0) * 100) / 100;
+
+  res.json({
+    month,
+    config,
+    tiers,
+    company_revenue: companyRevenue,
+    daily_breakeven: Math.round((config.monthly_fixed_expenses / config.effective_work_days) * 100) / 100,
+    excess,
+    progress_percent: config.base_target > 0 ? Math.round((companyRevenue / config.base_target) * 10000) / 100 : 0,
+    raw_marketer_pool: Math.round(rawMarketerPool * 100) / 100,
+    raw_supervisor_pool: Math.round(rawSupervisorPool * 100) / 100,
+    safety_scale_applied: safetyScale < 1,
+    marketer_pool: marketerPool,
+    supervisor_pool: supervisorPool,
+    total_marketer_due: totalMarketerDue,
+    total_supervisor_due: totalSupervisorDue,
+    company_net_share: Math.round((companyRevenue - totalMarketerDue - totalSupervisorDue) * 100) / 100,
+    marketers,
+    supervisors,
+  });
 });
 
 // ---------------------------------------------------------------------------

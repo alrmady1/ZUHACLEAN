@@ -88,7 +88,10 @@ export type PermissionKey =
   | 'view_activity_log'
   | 'create_customer_visits'
   | 'view_employee_tracking'
-  | 'view_employee_accounts';
+  | 'view_employee_accounts'
+  | 'view_commissions'
+  | 'manage_commissions'
+  | 'edit_delete_expenses';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -132,6 +135,9 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   create_customer_visits: 'إضافة زيارة للعميل',
   view_employee_tracking: 'تتبع مواقع الموظفين',
   view_employee_accounts: 'الاطلاع على كشف حساب الموظفين (المحاسبة)',
+  view_commissions: 'الاطلاع على تبويب العمولات (المحاسبة)',
+  manage_commissions: 'تعديل إعدادات العمولات (النسب، المستهدفات، المستحقين)',
+  edit_delete_expenses: 'الاطلاع على تفاصيل المصروفات وتعديلها وحذفها',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -205,6 +211,15 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // صفحة الصلاحيات نفسها. إضافة/حذف قيود الخصميات والمخالفات تبقى مقيَّدة
   // بصلاحية edit_custody_expenses الحالية، لا صلاحية جديدة مستقلة.
   view_employee_accounts: GM_ADMIN,
+  // نظام العمولات — حسّاس مالياً بطبيعته (نسب، مستهدفات، من يستحق كم)،
+  // المدير العام ومدير النظام فقط افتراضياً، قابلة للتوسيع لاحقاً من
+  // صفحة الصلاحيات نفسها.
+  view_commissions: GM_ADMIN,
+  manage_commissions: GM_ADMIN,
+  // الاطلاع على تفاصيل مصروف معيَّن وتعديله/حذفه — بطلب صريح، المدير
+  // العام ومدير النظام فقط افتراضياً (لا المشرف الإداري رغم امتلاكه
+  // edit_custody_expenses الذي يتحكم فقط بإضافة مصروف جديد).
+  edit_delete_expenses: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -576,6 +591,11 @@ export interface Customer {
   tax_number?: string;
   national_address?: string;
   commercial_registration_number?: string;
+  // الموظف "المسوّق" الذي جلب هذا العميل — يُستخدَم فقط لتوزيع عمولة
+  // المسوّق نسبياً حسب إيراد كل مسوّق فعلياً (انظر نظام العمولات أدناه).
+  // اختياري تماماً، وغير مرتبط بـ source_call_profile_id أعلاه (ذلك خاص
+  // بمصدر "اتصال صادر" تحديداً، وهذا تعيين ملكية العميل التجارية).
+  marketer_id?: string;
   created_at: string;
 }
 
@@ -721,6 +741,12 @@ export interface Expense {
   custody_holder_name?: string;
   payment_method: PaymentMethod;
   notes?: string;
+  // صورة أو ملف PDF لسند/فاتورة المصروف — يُرفع كـ base64 data URL من
+  // العميل، ويُخزَّن في Supabase Storage (انظر uploadExpenseInvoice في
+  // server/lib/storage.ts)؛ هذا الحقل يحمل الرابط الموقَّع فقط، أبداً لا
+  // يُخزَّن الملف الخام هنا.
+  invoice_file_url?: string;
+  invoice_file_name?: string;
   created_at: string;
 }
 
@@ -866,6 +892,87 @@ export interface EmployeeViolation {
   notes?: string;
   recorded_by?: string;
   recorded_by_name?: string;
+  created_at: string;
+}
+
+// ============================================================================
+// نظام العمولات (تبويب "العمولات" داخل المحاسبة + صفحة إعداداته في
+// الإعدادات) — عمولات المسوّق والمشرف الميداني تُحتسَب فقط على الإيراد
+// المحصَّل الفعلي (paid) الذي يتجاوز نقطة تعادل الشركة الشهرية، بنِسَب
+// تصاعدية حسب إجمالي إيراد الشركة الشهري (ليست حسب إيراد كل شخص وحده)،
+// ثم تُوزَّع نسبياً على كل شخص مستحق حسب حصته الفعلية من الإيراد. كل
+// الأرقام أدناه (نقطة التعادل، المستهدفات، النسب، حد الشكاوى) قابلة
+// للتعديل الكامل من الإعدادات ← العمولات — القيم هنا مجرد نقطة بداية.
+// ============================================================================
+
+// إعدادات عامة واحدة فقط (سجل singleton، بنفس نمط LandingPageSettings) —
+// نقطة التعادل الشهرية، أيام العمل الفعّالة، المستهدفات الثلاثة، وحدّا
+// الأمان (نسبة الشكاوى القصوى للمشرف، وأدنى حصة صافية تبقى للشركة).
+export interface CommissionConfig {
+  // إجمالي المصاريف التشغيلية والإهلاك الشهرية الثابتة (SAR) — نقطة
+  // التعادل الشهرية مباشرة. لا عمولات إطلاقاً قبل تغطيتها.
+  monthly_fixed_expenses: number;
+  // عدد أيام العمل الفعلية بالشهر — يُستخدَم فقط لعرض "نقطة تعادل يومية"
+  // إرشادية (monthly_fixed_expenses ÷ هذا الرقم)، لا يدخل في حساب
+  // العمولة نفسها.
+  effective_work_days: number;
+  // عتبة بداية احتساب العمولات (SAR/شهرياً) — المستوى الأول "تغطية
+  // التكاليف"، نسبة عمولة 0% دونه مهما كان الإيراد.
+  base_target: number;
+  // عتبتا "نمو" و"تجاوز" — للعرض في شريط التقدم فقط (معالم تحفيزية)،
+  // الشرائح الفعلية للعمولة في commission_tiers أدناه مستقلة عنهما ولا
+  // يلزم أن تطابقهما بالضبط.
+  growth_target: number;
+  stretch_target: number;
+  // أقصى نسبة شكاوى (تقييمات ١-٢ نجوم ÷ إجمالي تقييمات مواعيده) مسموحة
+  // للمشرف الميداني خلال الشهر حتى يستحق عمولته ذلك الشهر — كسر عشري
+  // (0.02 = 2%). تجاوزها يُسقِط عمولة ذلك المشرف فقط لذلك الشهر، لا يوقف
+  // عمولة المسوّقين ولا حصة الشركة.
+  supervisor_max_complaint_rate: number;
+  // أدنى حصة يجب أن تبقى للشركة من الفائض (كسر عشري، 0.93 = 93%) — شرط
+  // أمان: مجموع نسب العمولة (لكل من يستحق فعلياً ذلك الشهر) في أي شريحة
+  // لا يتجاوز (1 - هذا الرقم)؛ لو تجاوزته الشرائح المُعدَّة يدوياً، تُخفَّض
+  // كل النسب المستحقة فعلياً في تلك الشريحة تناسبياً عند الاحتساب حتى
+  // يتحقق الشرط، بدل رفض الحفظ في الإعدادات نفسها.
+  min_company_share: number;
+  updated_at: string;
+}
+
+export const DEFAULT_COMMISSION_CONFIG: CommissionConfig = {
+  monthly_fixed_expenses: 20340,
+  effective_work_days: 26,
+  base_target: 20000,
+  growth_target: 25000,
+  stretch_target: 30000,
+  supervisor_max_complaint_rate: 0.02,
+  min_company_share: 0.93,
+  updated_at: new Date(0).toISOString(),
+};
+
+// شريحة تصاعدية من شرائح احتساب العمولة — مفتاحة بإجمالي إيراد الشركة
+// المحصَّل الشهري (لا بإيراد كل شخص وحده). from/to شاملان، to=null يعني
+// "بلا حد أعلى". الشرائح تُطبَّق على المبلغ الواقع داخل حدودها فقط (كنظام
+// الضريبة التصاعدية)، لا على كامل الإيراد بمجرد دخول شريحة أعلى.
+export interface CommissionTier {
+  id: string;
+  from: number;
+  to: number | null;
+  // كسور عشرية (0.05 = 5%) — نسبة كل من المسوّق والمشرف من الجزء الواقع
+  // داخل هذي الشريحة تحديداً.
+  marketer_rate: number;
+  supervisor_rate: number;
+}
+
+// من يستحق عمولة "مسوّق" أو "مشرف" فعلياً هذا الشهر — تعيين يدوي مستقل
+// عن دور الحساب الفعلي في النظام (UserRole)، فقد يكون "المسوّق" حساب
+// مشرف إداري أو أي دور آخر فعلياً. active=false يوقف الاستحقاق فوراً
+// دون حذف السجل (يحافظ على تاريخ من استحق ومتى).
+export interface CommissionEligibility {
+  id: string;
+  profile_id: string;
+  profile_name?: string;
+  role: 'marketer' | 'supervisor';
+  active: boolean;
   created_at: string;
 }
 
