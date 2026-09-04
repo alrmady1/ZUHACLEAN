@@ -7,6 +7,7 @@ import { VAT_RATE } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
+import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
 type ReportPeriod = 'week' | 'month' | 'year';
@@ -59,6 +60,7 @@ function ReportStat({
 
 export default function Sales() {
   const { t, tt } = useI18n();
+  const { user } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -134,6 +136,8 @@ export default function Sales() {
         subtotal,
         payment_status: form.get('payment_status'),
         payment_method: form.get('payment_method') || undefined,
+        recorded_by: user?.id,
+        recorded_by_name: user?.full_name,
       });
       setShowForm(false);
       setPreviewTotal(0);

@@ -50,7 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/leads', label: 'طلبات جديدة', icon: Inbox, permissionKey: 'view_leads_page' },
   // يجمع "المبيعات والفواتير" و"المصروفات" (كانتا رابطين مستقلين) في
   // صفحة واحدة بتبويبين داخليين — انظر Accounting.tsx.
-  { to: '/accounting', label: 'المحاسبة', icon: Calculator, permissionKeys: ['view_sales_invoices', 'view_expenses_page'] },
+  { to: '/accounting', label: 'المحاسبة', icon: Calculator, permissionKeys: ['view_sales_invoices', 'view_expenses_page', 'view_employee_accounts'] },
   // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".
   { to: '/quotes', label: 'عرض سعر', icon: Tag, permissionKey: 'view_quotes_page' },
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },

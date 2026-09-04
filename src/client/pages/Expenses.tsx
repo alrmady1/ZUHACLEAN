@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -171,7 +171,9 @@ function GeneralExpensesTab() {
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const isAdvance = category === ADVANCE_CATEGORY_NAME;
+  // السلفية والرواتب كلاهما يحتاج ربط الموظف (custody_holder_id) — انظر
+  // تعليق هذا الحقل في shared/types.ts.
+  const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME;
 
   // Custody grants are recorded and listed from the العهد tab now, not
   // here — keep the general form and table focused on non-custody spending.
@@ -227,7 +229,7 @@ function GeneralExpensesTab() {
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
-        custody_holder_id: isAdvance ? advanceEmployeeId || undefined : undefined,
+        custody_holder_id: needsEmployeeLink ? advanceEmployeeId || undefined : undefined,
       });
       setShowForm(false);
       setSubCategory('');
@@ -357,7 +359,7 @@ function GeneralExpensesTab() {
                   </select>
                 </label>
               )}
-              {isAdvance && (
+              {needsEmployeeLink && (
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
                   <select

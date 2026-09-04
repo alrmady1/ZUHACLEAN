@@ -21,6 +21,8 @@ import type {
   ServiceCategory,
   ExpenseCategoryItem,
   CustodyInvoice,
+  EmployeeDeduction,
+  EmployeeViolation,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -57,6 +59,11 @@ interface DbShape {
   serviceCategories: ServiceCategory[];
   expenseCategories: ExpenseCategoryItem[];
   custodyInvoices: CustodyInvoice[];
+  // خصميات ومخالفات الموظفين — كشف حساب الموظف (تبويب داخل صفحة
+  // المحاسبة). انظر EmployeeDeduction/EmployeeViolation في
+  // src/shared/types.ts.
+  employeeDeductions: EmployeeDeduction[];
+  employeeViolations: EmployeeViolation[];
   // صفحة الإعدادات ← الصلاحيات — من يملك كل صلاحية من PermissionKey.
   // مفتاح غائب من هذا الكائن (سجل قديم لم يُعدَّل بعد، أو صلاحية جديدة
   // أُضيفت للكود لاحقاً) يعني: استخدم DEFAULT_PERMISSIONS لتلك الصلاحية.
@@ -362,6 +369,8 @@ function seed(): DbShape {
     serviceCategories,
     expenseCategories,
     custodyInvoices: [],
+    employeeDeductions: [],
+    employeeViolations: [],
     permissions: {},
     permissionsOrder: [],
     leaves: [],
@@ -420,6 +429,8 @@ async function load(): Promise<DbShape> {
       parsed.expenseCategories.push({ id: 'ec-setup', name: 'تأسيس', is_active: true });
     }
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
+    if (!parsed.employeeDeductions) parsed.employeeDeductions = [];
+    if (!parsed.employeeViolations) parsed.employeeViolations = [];
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
@@ -905,6 +916,28 @@ export const store = {
       const idx = db.custodyInvoices.findIndex((i) => i.id === id);
       if (idx === -1) return false;
       db.custodyInvoices.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  employeeDeductions: {
+    list: () => db.employeeDeductions,
+    insert: (d: EmployeeDeduction) => { db.employeeDeductions.push(d); persist(); return d; },
+    remove: (id: string) => {
+      const idx = db.employeeDeductions.findIndex((d) => d.id === id);
+      if (idx === -1) return false;
+      db.employeeDeductions.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  employeeViolations: {
+    list: () => db.employeeViolations,
+    insert: (v: EmployeeViolation) => { db.employeeViolations.push(v); persist(); return v; },
+    remove: (id: string) => {
+      const idx = db.employeeViolations.findIndex((v) => v.id === id);
+      if (idx === -1) return false;
+      db.employeeViolations.splice(idx, 1);
       persist();
       return true;
     },

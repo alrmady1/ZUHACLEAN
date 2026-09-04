@@ -87,7 +87,8 @@ export type PermissionKey =
   | 'edit_landing_page'
   | 'view_activity_log'
   | 'create_customer_visits'
-  | 'view_employee_tracking';
+  | 'view_employee_tracking'
+  | 'view_employee_accounts';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -130,6 +131,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_activity_log: 'الاطلاع على سجل العمليات',
   create_customer_visits: 'إضافة زيارة للعميل',
   view_employee_tracking: 'تتبع مواقع الموظفين',
+  view_employee_accounts: 'الاطلاع على كشف حساب الموظفين (المحاسبة)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -198,6 +200,11 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // "في حساب المدير" بطلب صريح — المدير العام فقط افتراضياً، قابلة
   // للتوسيع لاحقاً (لمدير النظام مثلاً) من صفحة الصلاحيات نفسها.
   view_employee_tracking: ['general_manager'],
+  // يعرض راتب الموظف وعهدته ومخالفاته وخصمياته مجتمعةً — نفس فئة "الاطلاع
+  // على المبيعات والفواتير" الحسّاسة (GM_ADMIN)، قابلة للتوسيع لاحقاً من
+  // صفحة الصلاحيات نفسها. إضافة/حذف قيود الخصميات والمخالفات تبقى مقيَّدة
+  // بصلاحية edit_custody_expenses الحالية، لا صلاحية جديدة مستقلة.
+  view_employee_accounts: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -266,6 +273,12 @@ export const CUSTODY_CATEGORY_NAME = 'مصاريف عهدة';
 // العهدة، تبقى السلفية ضمن قائمة المصروفات الرئيسية العامة بلا تبويب أو
 // تسوية رصيد منفصلة (لا يوجد "سداد سلفية" مقابلها حالياً).
 export const ADVANCE_CATEGORY_NAME = 'سلفية';
+// اسم فئة مصروفات "رواتب" — نفس مطابقة الاسم أيضاً، ويُظهر نفس منتقي
+// "الموظف" في نموذج إضافة مصروف عام (كالعهدة والسلفية)، حتى يمكن ربط كل
+// راتب بموظف بعينه وعرضه لاحقاً في كشف حسابه (انظر EmployeeAccounts.tsx).
+// مصروفات "رواتب" مُسجَّلة قبل هذا التعديل بلا موظف محدَّد لن تظهر تحت أي
+// كشف حساب (لا يمكن ربطها بأثر رجعي).
+export const SALARY_CATEGORY_NAME = 'رواتب';
 
 export interface Profile {
   id: string;
@@ -694,9 +707,11 @@ export interface Expense {
   recorded_by_name?: string;
   supervisor_id?: string;
   supervisor_name?: string;
-  // Set when category === CUSTODY_CATEGORY_NAME (عهدة) or ADVANCE_CATEGORY_NAME
-  // (سلفية): which employee the cash was handed to. The name "custody_holder"
-  // predates the سلفية reuse — kept as-is to avoid a schema migration.
+  // Set when category === CUSTODY_CATEGORY_NAME (عهدة), ADVANCE_CATEGORY_NAME
+  // (سلفية), or SALARY_CATEGORY_NAME (رواتب): which employee the cash was
+  // handed to (or, for رواتب, whose salary this is). The name
+  // "custody_holder" predates both the سلفية and رواتب reuse — kept as-is
+  // to avoid a schema migration.
   custody_holder_id?: string;
   custody_holder_name?: string;
   payment_method: PaymentMethod;
@@ -809,6 +824,44 @@ export interface Invoice {
   // date; this is what the ZATCA QR code's timestamp field uses.
   created_at?: string;
   notes?: string;
+  // الموظف الذي أصدر/حصَّل هذه الفاتورة (المستخدم المسجِّل دخوله وقت
+  // الإصدار — من تحصيل دفعة موعد أو من نموذج فاتورة يدوية في المبيعات).
+  // غائب على أي فاتورة صدرت قبل إضافة هذا الحقل. يُستخدم في كشف حساب
+  // الموظف (انظر EmployeeAccounts.tsx) لعرض "الفواتير المدفوعة عن طريقه".
+  recorded_by?: string;
+  recorded_by_name?: string;
+}
+
+// خصم مالي على موظف (غير سلفية أو عهدة) — تأخير، نقص في العمل، أو أي خصم
+// إداري آخر. يُعرَض في كشف حساب الموظف فقط، ولا يؤثر على أي رصيد عهدة أو
+// سلفية قائم.
+export interface EmployeeDeduction {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  title: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  recorded_by?: string;
+  recorded_by_name?: string;
+  created_at: string;
+}
+
+// مخالفة إدارية على موظف — قد تحمل غرامة مالية (amount) أو تكون إنذاراً
+// بلا غرامة (amount غائب/صفر). مستقلة تماماً عن EmployeeDeduction رغم
+// تشابه الشكل، حتى يبقى لكل منهما سجل وتبويب خاص في كشف حساب الموظف.
+export interface EmployeeViolation {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  title: string;
+  amount?: number;
+  date: string;
+  notes?: string;
+  recorded_by?: string;
+  recorded_by_name?: string;
+  created_at: string;
 }
 
 // مسار العرض — تصنيف/عنوان فقط يظهر على المستند المطبوع، لا يُنشئ عقداً
