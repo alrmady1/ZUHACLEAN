@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams, Navigate } from 'react-router-dom';
-import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
+import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle, CalendarPlus } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource } from '../../shared/types.js';
+import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource, Service } from '../../shared/types.js';
 import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR } from '../../shared/types.js';
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
+import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
@@ -43,6 +44,7 @@ export default function Customers() {
   const canCreate = can('create_customers');
   const canEdit = can('edit_customers');
   const canDelete = can('delete_customers');
+  const canBook = can('create_appointments');
   const [searchParams] = useSearchParams();
   // فتح صفحة العملاء من "تفاصيل الموعد" (النقر على اسم العميل) يمرّر
   // ?customerId=... بدل نص بحث — يعزل هذا العميل تحديداً بمعرّفه الدقيق
@@ -51,6 +53,11 @@ export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  // العميل الذي طُلب حجز موعد جديد له مباشرة من بطاقته في هذه الصفحة —
+  // NewAppointmentModal تُفتَح مع initialLead مطابق لجواله فتختاره تلقائياً
+  // (نفس آلية تحويل "الطلبات الواردة" الموجودة أصلاً، بدل خاصية جديدة).
+  const [bookingForCustomer, setBookingForCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -71,7 +78,11 @@ export default function Customers() {
     refresh();
     api.get<Appointment[]>('/appointments').then(setAppointments);
     api.get<Rating[]>('/ratings').then(setRatings);
+    api.get<Service[]>('/services').then(setServices);
   }, []);
+
+  const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const technicians = allProfiles.filter((p) => p.role === 'technician');
 
   // Support deep-linking a search term from the global top bar (?q=...),
   // even when navigating here while already on this page.
@@ -281,6 +292,15 @@ export default function Customers() {
                     >
                       <Eye className="h-4 w-4" />
                     </button>
+                    {canBook && (
+                      <button
+                        onClick={() => setBookingForCustomer(c)}
+                        title={t('طلب نظافة جديد لهذا العميل')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
+                      >
+                        <CalendarPlus className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => toggleExpanded(c.id)}
                       className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline"
@@ -369,6 +389,15 @@ export default function Customers() {
                   {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
                 </button>
               </div>
+
+              {canBook && (
+                <button
+                  onClick={() => setBookingForCustomer(c)}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" /> {t('طلب نظافة جديد')}
+                </button>
+              )}
 
               {isOpen && (
                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
@@ -528,6 +557,21 @@ export default function Customers() {
           allProfiles={allProfiles}
           onClose={() => setViewingCustomer(null)}
           onSaved={refresh}
+        />
+      )}
+
+      {bookingForCustomer && (
+        <NewAppointmentModal
+          customers={customers}
+          services={services}
+          supervisors={supervisors}
+          technicians={technicians}
+          initialLead={{ name: bookingForCustomer.name, phone: bookingForCustomer.phone, area: bookingForCustomer.address }}
+          onClose={() => setBookingForCustomer(null)}
+          onCreated={() => {
+            setBookingForCustomer(null);
+            api.get<Appointment[]>('/appointments').then(setAppointments);
+          }}
         />
       )}
     </div>
