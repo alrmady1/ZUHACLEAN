@@ -21,12 +21,19 @@ interface QuoteLineItem {
 export default function NewQuoteFlow({
   customers,
   services,
+  initialQuote,
   onClose,
   onCreated,
   onCustomerCreated,
 }: {
   customers: Customer[];
   services: Service[];
+  // عند تمريره: نسخ عرض سعر قائم — نفس العميل/المسار/الخدمات/الأسعار/رسالة
+  // الدفع مبدئياً، لكن قابلة للتعديل بالكامل قبل الحفظ. الحفظ (submit
+  // أدناه) يمر عبر POST /quotes العادي دائماً، فيحصل تلقائياً على id
+  // ورقم عرض (quote_number) وتاريخ إصدار جديدَين — لا حاجة لأي منطق
+  // مختلف على الخادم.
+  initialQuote?: Quote;
   onClose: () => void;
   onCreated: (quote: Quote) => void;
   onCustomerCreated?: (customer: Customer) => void;
@@ -37,21 +44,23 @@ export default function NewQuoteFlow({
   const [allCustomers, setAllCustomers] = useState(customers);
   useEffect(() => setAllCustomers(customers), [customers]);
 
-  const [customerId, setCustomerId] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerId, setCustomerId] = useState(initialQuote?.customer_id ?? '');
+  const [customerSearch, setCustomerSearch] = useState(initialQuote?.customer_name_snapshot ?? '');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showAddCustomer, setShowAddCustomer] = useState(customers.length === 0);
+  const [showAddCustomer, setShowAddCustomer] = useState(customers.length === 0 && !initialQuote);
   const [addingCustomer, setAddingCustomer] = useState(false);
   const customerBoxRef = useRef<HTMLDivElement>(null);
   const newCustomerBoxRef = useRef<HTMLDivElement>(null);
 
-  const [pathType, setPathType] = useState<QuotePathType>('single_visit');
+  const [pathType, setPathType] = useState<QuotePathType>(initialQuote?.path_type ?? 'single_visit');
 
-  const [items, setItems] = useState<QuoteLineItem[]>([]);
+  const [items, setItems] = useState<QuoteLineItem[]>(
+    initialQuote ? initialQuote.items.map((it) => ({ service_id: it.service_id, service_name: it.service_name, price: it.price })) : [],
+  );
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
 
-  const [paymentNote, setPaymentNote] = useState(DEFAULT_QUOTE_PAYMENT_NOTE);
+  const [paymentNote, setPaymentNote] = useState(initialQuote?.payment_note || DEFAULT_QUOTE_PAYMENT_NOTE);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -141,8 +150,12 @@ export default function NewQuoteFlow({
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">{t('إنشاء عرض سعر')}</h2>
-            <p className="mt-0.5 text-xs text-slate-400">{t('اختر العميل والمسار والخدمات، ثم راجع السعر قبل الحفظ')}</p>
+            <h2 className="text-lg font-bold text-slate-800">{initialQuote ? t('نسخ عرض سعر كعرض جديد') : t('إنشاء عرض سعر')}</h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {initialQuote
+                ? t(`نسخة معبَّأة من عرض ${initialQuote.quote_number} — عدّل ما تحتاج ثم احفظ برقم عرض وتاريخ جديدَين`)
+                : t('اختر العميل والمسار والخدمات، ثم راجع السعر قبل الحفظ')}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />

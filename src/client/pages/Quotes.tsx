@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Eye, Trash2 } from 'lucide-react';
+import { Plus, Eye, Trash2, Copy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Quote } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
@@ -22,6 +22,9 @@ export default function Quotes() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [showNewQuote, setShowNewQuote] = useState(false);
   const [viewingQuote, setViewingQuote] = useState<Quote | null>(null);
+  // عرض السعر المطلوب نسخه كعرض جديد — يفتح NewQuoteFlow معبَّأً منه (انظر
+  // initialQuote هناك) بدل نموذج فارغ.
+  const [duplicatingQuote, setDuplicatingQuote] = useState<Quote | null>(null);
 
   function refreshQuotes() {
     api.get<Quote[]>('/quotes').then(setQuotes);
@@ -97,6 +100,18 @@ export default function Quotes() {
                         <Eye className="h-4 w-4" />
                       </button>
                     )}
+                    {canCreateQuote && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDuplicatingQuote(q);
+                        }}
+                        title={t('نسخ كعرض سعر جديد')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -122,14 +137,19 @@ export default function Quotes() {
         </table>
       </div>
 
-      {canCreateQuote && showNewQuote && (
+      {canCreateQuote && (showNewQuote || duplicatingQuote) && (
         <NewQuoteFlow
           customers={customers}
           services={services}
-          onClose={() => setShowNewQuote(false)}
+          initialQuote={duplicatingQuote ?? undefined}
+          onClose={() => {
+            setShowNewQuote(false);
+            setDuplicatingQuote(null);
+          }}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
           onCreated={(quote) => {
             setShowNewQuote(false);
+            setDuplicatingQuote(null);
             refreshQuotes();
             setViewingQuote(quote);
           }}
@@ -140,7 +160,20 @@ export default function Quotes() {
           create_quotes) يجب أن يرى مستنده فوراً للطباعة/الإرسال، حتى لو لم
           يملك صلاحية استعراض عروض الآخرين القائمة في الجدول (المقيَّدة
           أعلاه بزر العين والنقر على الصف). */}
-      {viewingQuote && <QuoteDocument quote={viewingQuote} onClose={() => setViewingQuote(null)} />}
+      {viewingQuote && (
+        <QuoteDocument
+          quote={viewingQuote}
+          onClose={() => setViewingQuote(null)}
+          onDuplicate={
+            canCreateQuote
+              ? () => {
+                  setDuplicatingQuote(viewingQuote);
+                  setViewingQuote(null);
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }

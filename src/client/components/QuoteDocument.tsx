@@ -1,4 +1,4 @@
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Copy } from 'lucide-react';
 import type { Quote } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 import { QUOTE_VALIDITY_DAYS } from '../../shared/documentDefaults.js';
@@ -9,7 +9,17 @@ import DocumentHeader from './DocumentHeader.js';
 // عرض السعر المطبوع — أسعار items مخزَّنة شاملة الضريبة (نفس اصطلاح
 // تسعير الخدمات في كل النظام)، تُفصَل هنا فقط للعرض إلى قبل الضريبة +
 // الضريبة + الإجمالي، بنفس طريقة الفاتورة (PayAppointmentModal).
-export default function QuoteDocument({ quote, onClose }: { quote: Quote; onClose: () => void }) {
+export default function QuoteDocument({
+  quote,
+  onClose,
+  onDuplicate,
+}: {
+  quote: Quote;
+  onClose: () => void;
+  // متاح فقط لمن يملك صلاحية إنشاء عروض أسعار — يفتح NewQuoteFlow معبَّأً
+  // بنفس بيانات هذا العرض (انظر Quotes.tsx)، بدل التكرار اليدوي.
+  onDuplicate?: () => void;
+}) {
   const { t } = useI18n();
   const subtotal = Math.round((quote.total / (1 + VAT_RATE)) * 100) / 100;
   const vatAmount = Math.round((quote.total - subtotal) * 100) / 100;
@@ -22,6 +32,14 @@ export default function QuoteDocument({ quote, onClose }: { quote: Quote; onClos
         <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
           <h2 className="text-sm font-bold text-slate-800">{t('عرض السعر')}</h2>
           <div className="flex items-center gap-2">
+            {onDuplicate && (
+              <button
+                onClick={onDuplicate}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <Copy className="h-3.5 w-3.5" /> {t('نسخ كعرض جديد')}
+              </button>
+            )}
             <button
               onClick={() => window.print()}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
