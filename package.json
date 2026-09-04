@@ -7,10 +7,17 @@
     "dev": "cross-env NODE_ENV=development tsx watch src/server/index.ts",
     "build": "vite build && esbuild src/server/index.ts --platform=node --bundle --packages=external --format=cjs --outfile=dist/server.cjs",
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
