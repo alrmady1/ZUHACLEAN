@@ -22,14 +22,14 @@ export default function StatCard({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm text-slate-400">{label}</span>
-        <span className={`rounded-lg p-1.5 ${iconTint}`}>
-          <Icon className="h-4 w-4" />
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-500">{label}</span>
+        <span className={`shrink-0 rounded-xl p-2.5 ${iconTint}`}>
+          <Icon className="h-5 w-5" />
         </span>
       </div>
-      <div className={`text-3xl font-bold ${valueTint}`}>{value}</div>
-      <div className={`mt-1 text-xs ${subTint}`}>{sub}</div>
+      <div className={`text-[28px] font-bold leading-none ${valueTint}`}>{value}</div>
+      <div className={`mt-2 text-xs ${subTint}`}>{sub}</div>
     </div>
   );
 }

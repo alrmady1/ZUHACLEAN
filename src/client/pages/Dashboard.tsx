@@ -42,7 +42,7 @@ const BAR_TINTS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-5
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { allProfiles, can } = useAuth();
+  const { user, allProfiles, can } = useAuth();
   const { t, tt } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -160,9 +160,16 @@ export default function Dashboard() {
         </div>
       )}
 
+      <div>
+        <p className="text-xs font-medium text-slate-400">{t('لوحة التحكم')}</p>
+        <h1 className="mt-0.5 text-xl font-bold text-slate-800">
+          {tt(`مرحباً بك${user?.full_name ? `، ${user.full_name}` : ''} في لوحة تحكم زهى`, `Welcome${user?.full_name ? `, ${user.full_name}` : ''} to the زهى dashboard`)}
+        </h1>
+      </div>
+
       <DayClock appointments={appointments} customers={customers} onSelectAppointment={setViewingAppt} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           icon={Clock}
           iconTint="bg-amber-100 text-amber-600"
@@ -190,9 +197,6 @@ export default function Dashboard() {
           sub={tt(`${apptDelta >= 0 ? '+' : ''}${apptDelta} عن أمس`, `${apptDelta >= 0 ? '+' : ''}${apptDelta} vs. yesterday`)}
           subTint="text-slate-400"
         />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           icon={Banknote}
           iconTint="bg-emerald-100 text-emerald-600"
@@ -239,11 +243,11 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('جدول مواعيد اليوم')}</h2>
+          <h2 className="mb-4 text-base font-semibold text-slate-800">{t('جدول مواعيد اليوم')}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-start text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-xs text-slate-400">
+                <tr className="border-b border-slate-100 text-xs font-medium text-slate-400">
                   <th className="py-2 text-start font-medium">{t('العميل')}</th>
                   <th className="py-2 text-start font-medium">{t('الخدمة')}</th>
                   <th className="py-2 text-start font-medium">{t('الوقت')}</th>
@@ -263,16 +267,16 @@ export default function Dashboard() {
                       allProfiles.find((p) => p.id === a.supervisor_id)?.full_name ??
                       '—';
                     return (
-                      <tr key={a.id} className="border-b border-slate-50 last:border-0">
-                        <td className="py-2.5">
+                      <tr key={a.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                        <td className="py-3">
                           <div className="font-medium text-slate-700">{a.customer_name_snapshot}</div>
                           {customer?.phone && <div className="text-xs text-slate-400">{customer.phone}</div>}
                         </td>
-                        <td className="py-2.5 text-slate-600">{a.service_name_snapshot}</td>
-                        <td className="py-2.5 text-slate-600">{formatTimeAr(a.scheduled_at)}</td>
-                        <td className="py-2.5 text-slate-600">{assignee}</td>
-                        <td className="py-2.5 text-slate-600">{formatMoney(a.amount)}</td>
-                        <td className="py-2.5">
+                        <td className="py-3 text-slate-600">{a.service_name_snapshot}</td>
+                        <td className="py-3 text-slate-600">{formatTimeAr(a.scheduled_at)}</td>
+                        <td className="py-3 text-slate-600">{assignee}</td>
+                        <td className="py-3 font-medium text-slate-700">{formatMoney(a.amount)}</td>
+                        <td className="py-3">
                           <div className="flex items-center gap-1.5">
                             <AppointmentStatusBadge status={a.status} />
                             {isAppointmentOverdue(a) && <OverdueIndicator />}
@@ -294,13 +298,13 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('توزيع الخدمات')}</h2>
+          <h2 className="mb-4 text-base font-semibold text-slate-800">{t('توزيع الخدمات')}</h2>
           <div className="space-y-4">
             {serviceDistribution.map((s, i) => (
               <div key={s.name}>
-                <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
                   <span>{s.pct}%</span>
-                  <span>{s.name}</span>
+                  <span className="truncate text-slate-700">{s.name}</span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                   <div className={`h-full rounded-full ${BAR_TINTS[i % BAR_TINTS.length]}`} style={{ width: `${s.pct}%` }} />
