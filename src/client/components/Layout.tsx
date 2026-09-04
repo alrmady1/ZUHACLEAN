@@ -44,7 +44,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
-  { to: '/appointments', label: 'المواعيد', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
+  { to: '/appointments', label: 'طلبات النظافة', icon: CalendarClock, roles: ['general_manager', 'admin', 'admin_supervisor', 'supervisor'] },
   // طلبات واردة من صفحة "اطلب الخدمة" العامة (OrderPage.tsx) — عملاء
   // محتملون لم يتحولوا بعد إلى موعد فعلي.
   { to: '/leads', label: 'طلبات جديدة', icon: Inbox, permissionKey: 'view_leads_page' },

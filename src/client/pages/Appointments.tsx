@@ -18,6 +18,11 @@ import {
   Printer,
   Star,
   X,
+  ListChecks,
+  Hourglass,
+  Navigation,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Service, AppointmentStatus, PaymentStatus, PaymentMethodOption, Rating, CustomerRating, Invoice } from '../../shared/types.js';
@@ -51,6 +56,18 @@ const STATUS_OPTIONS = (Object.entries(APPT_STATUS_STYLE) as [AppointmentStatus,
 // كخيار في فلتر حالة تبويب "المواعيد" (اختيارها لن يُظهر شيئاً أصلاً بعد
 // أن استُبعدت من filtered أدناه).
 const SCHEDULE_STATUS_OPTIONS = STATUS_OPTIONS.filter((o) => o.value !== 'completed' && o.value !== 'cancelled');
+// أيقونة بطاقة الاختصار السريع لكل حالة (انظر صف بطاقات الحالات أسفل
+// عنوان الصفحة) — لا علاقة لها بـ APPT_STATUS_STYLE (الألوان فقط)، فقط
+// اختيار أيقونة معبِّرة لكل حالة.
+const STATUS_QUICK_FILTER_ICON: Record<AppointmentStatus, typeof Clock> = {
+  pending_review: Hourglass,
+  scheduled: CalendarDays,
+  on_the_way: Navigation,
+  in_progress: Clock,
+  delayed: AlertTriangle,
+  completed: CheckCircle2,
+  cancelled: XCircle,
+};
 const PAYMENT_OPTIONS: { value: PaymentStatus; label: string }[] = [
   { value: 'unpaid', label: 'غير مسدد' },
   { value: 'partial', label: 'مسدد جزئياً' },
@@ -232,6 +249,25 @@ export default function Appointments() {
     return appointments.filter((a) => a.supervisor_id === scope);
   }, [appointments, scope, user, canSeeAllSchedules, allProfiles]);
 
+  // عدّاد كل حالة ضمن النطاق الحالي (scoped) — يغذّي صف بطاقات الاختصار
+  // السريع أسفل عنوان الصفحة، بصرف النظر عن فلاتر الحالة/الفترة/الدفع
+  // الحالية (يعكس النطاق فقط، حتى تبقى الأعداد ثابتة كمرجع أثناء التنقل
+  // بين الفلاتر).
+  const statusCounts = useMemo(() => {
+    const counts: Record<AppointmentStatus, number> = {
+      pending_review: 0,
+      scheduled: 0,
+      on_the_way: 0,
+      in_progress: 0,
+      completed: 0,
+      delayed: 0,
+      cancelled: 0,
+    };
+    for (const a of scoped) counts[a.status]++;
+    return counts;
+  }, [scoped]);
+  const activeTotalCount = scoped.length - statusCounts.completed - statusCounts.cancelled;
+
   // كل موعد له تقييم واحد على الأكثر (يمنعه الخادم، انظر POST
   // /public/ratings) — وكل موعد له فاتورة واحدة على الأكثر عملياً (تُصدَر
   // مرة واحدة عند التحصيل). تُستخدم داخل تبويب "المهام المكتملة".
@@ -323,7 +359,7 @@ export default function Appointments() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">{t('جدول المواعيد والمهام')}</h1>
+          <h1 className="text-xl font-bold text-slate-800">{t('طلبات النظافة')}</h1>
           <p className="text-sm text-slate-400">{t('إدارة ومتابعة المواعيد، مع فصل جداول المشرفين وإمكانية الاطلاع المتبادل')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -384,6 +420,80 @@ export default function Appointments() {
           </button>
         </div>
       )}
+
+      {/* اختصارات الحالات — نظرة سريعة على أعداد الطلبات لكل حالة، والضغط
+          على أي بطاقة يفلتر الجدول/التقويم/الساعة عليها مباشرة (مكتملة/
+          ملغاة تنقلان لتبويب "المهام المكتملة" بدل فلتر حالة، لأنهما أصلاً
+          مستبعدتان من تبويب "المواعيد" بصرف النظر عن الفلتر). */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => {
+            setMainTab('schedule');
+            setStatusFilter('all');
+          }}
+          className={`flex min-w-[104px] shrink-0 flex-col items-start gap-2 rounded-2xl border p-3 text-start transition ${
+            mainTab === 'schedule' && statusFilter === 'all'
+              ? 'border-brand-300 bg-brand-50'
+              : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}
+        >
+          <span className="rounded-lg bg-slate-100 p-1.5 text-slate-600">
+            <ListChecks className="h-3.5 w-3.5" />
+          </span>
+          <span className="text-lg font-bold text-slate-800">{activeTotalCount}</span>
+          <span className="text-[11px] font-medium text-slate-500">{t('جميع الطلبات')}</span>
+        </button>
+        {SCHEDULE_STATUS_OPTIONS.map(({ value, label }) => {
+          const Icon = STATUS_QUICK_FILTER_ICON[value];
+          const active = mainTab === 'schedule' && statusFilter === value;
+          return (
+            <button
+              key={value}
+              onClick={() => {
+                setMainTab('schedule');
+                setStatusFilter(value);
+              }}
+              className={`flex min-w-[104px] shrink-0 flex-col items-start gap-2 rounded-2xl border p-3 text-start transition ${
+                active ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <span className={`rounded-lg p-1.5 ${APPT_STATUS_STYLE[value].className}`}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-lg font-bold text-slate-800">{statusCounts[value]}</span>
+              <span className="text-[11px] font-medium text-slate-500">{t(label)}</span>
+            </button>
+          );
+        })}
+        {canViewCompletedTab && (
+          <>
+            <button
+              onClick={() => setMainTab('completed')}
+              className={`flex min-w-[104px] shrink-0 flex-col items-start gap-2 rounded-2xl border p-3 text-start transition ${
+                mainTab === 'completed' ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <span className={`rounded-lg p-1.5 ${APPT_STATUS_STYLE.completed.className}`}>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-lg font-bold text-slate-800">{statusCounts.completed}</span>
+              <span className="text-[11px] font-medium text-slate-500">{t(APPT_STATUS_STYLE.completed.label)}</span>
+            </button>
+            <button
+              onClick={() => setMainTab('completed')}
+              className={`flex min-w-[104px] shrink-0 flex-col items-start gap-2 rounded-2xl border p-3 text-start transition ${
+                mainTab === 'completed' ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <span className={`rounded-lg p-1.5 ${APPT_STATUS_STYLE.cancelled.className}`}>
+                <XCircle className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-lg font-bold text-slate-800">{statusCounts.cancelled}</span>
+              <span className="text-[11px] font-medium text-slate-500">{t(APPT_STATUS_STYLE.cancelled.label)}</span>
+            </button>
+          </>
+        )}
+      </div>
 
       {canSeeAllSchedules && user && (
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
