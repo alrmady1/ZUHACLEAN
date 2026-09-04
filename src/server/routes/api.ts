@@ -1326,6 +1326,17 @@ api.post('/invoices', (req, res) => {
   res.status(201).json(invoice);
 });
 
+// الفواتير سجل مالي دائم عادةً (بلا حذف يومي) — هذا المسار مخصَّص فقط
+// لمسح بيانات تجريبية كاملة قبل انطلاق فعلي (استُخدم بطلب صريح من
+// المدير)، وليس جزءاً من أي تدفق استخدام عادي في الواجهة.
+api.delete('/invoices/:id', (req, res) => {
+  const target = store.invoices.list().find((i) => i.id === req.params.id);
+  const removed = store.invoices.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف فاتورة "${target?.invoice_number ?? ''}"`);
+  res.status(204).end();
+});
+
 // ---------------------------------------------------------------------------
 // كشف حساب الموظف (تبويب داخل صفحة المحاسبة) — خصميات ومخالفات كل موظف.
 // راتبه وعهدته وفواتيره تُشتق من /expenses، /custody-invoices و/invoices

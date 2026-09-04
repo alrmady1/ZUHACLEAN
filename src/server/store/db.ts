@@ -965,6 +965,16 @@ export const store = {
   invoices: {
     list: () => db.invoices,
     insert: (i: Invoice) => { db.invoices.push(i); persist(); return i; },
+    // الفواتير أصلاً بلا حذف (سجل مالي دائم، انظر POST /invoices) — remove
+    // مضافة فقط لدعم مسح بيانات تجريبية كاملة قبل الانطلاق الفعلي (بطلب
+    // صريح من المدير)، وليست جزءاً من تدفق الاستخدام العادي.
+    remove: (id: string) => {
+      const idx = db.invoices.findIndex((i) => i.id === id);
+      if (idx === -1) return false;
+      db.invoices.splice(idx, 1);
+      persist();
+      return true;
+    },
   },
   paymentMethods: {
     list: () => db.paymentMethods,
