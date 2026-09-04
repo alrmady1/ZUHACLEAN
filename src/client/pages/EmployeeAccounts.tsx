@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { X, Plus, Trash2, Wallet, PiggyBank, Receipt, MinusCircle, ShieldAlert } from 'lucide-react';
+import { X, Plus, Trash2, Wallet, PiggyBank, HandCoins, Receipt, MinusCircle, ShieldAlert } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, CustodyInvoice, Invoice, EmployeeDeduction, EmployeeViolation, Profile } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { useAuth } from '../lib/auth.js';
@@ -12,6 +12,8 @@ interface EmployeeSummary {
   profile: Profile;
   salaryTotal: number;
   salaryEntries: Expense[];
+  advanceTotal: number;
+  advanceEntries: Expense[];
   custodyGiven: number;
   custodySpent: number;
   custodyRemaining: number;
@@ -24,13 +26,15 @@ interface EmployeeSummary {
 }
 
 // تبويب "كشف حساب الموظفين" داخل صفحة المحاسبة — يجمع لكل موظف: رواتبه
-// (Expense بفئة SALARY_CATEGORY_NAME)، رصيد عهدته (نفس منطق CustodyTab في
-// Custody.tsx)، الفواتير التي أصدرها/حصَّلها هو (Invoice.recorded_by)،
-// وخصمياته ومخالفاته (كيانان جديدان مستقلان — انظر شرحهما في
-// shared/types.ts). لا يعدّل أياً من مصادر البيانات هذه إلا الخصميات
-// والمخالفات أنفسهما؛ الرواتب والعهدة والفواتير تُعرَض هنا للقراءة فقط
-// وتُدار من أماكنها المعتادة (نموذج مصروف عام، تبويب العهد، وتحصيل
-// المواعيد/المبيعات على الترتيب).
+// وسلفياته (Expense بفئة SALARY_CATEGORY_NAME/ADVANCE_CATEGORY_NAME)،
+// رصيد عهدته (نفس منطق CustodyTab في Custody.tsx)، الفواتير التي
+// أصدرها/حصَّلها هو (Invoice.recorded_by)، وخصمياته ومخالفاته (كيانان
+// جديدان مستقلان — انظر شرحهما في shared/types.ts). لا يعدّل أياً من
+// مصادر البيانات هذه إلا الخصميات والمخالفات أنفسهما؛ الرواتب والسلفيات
+// والعهدة والفواتير تُعرَض هنا للقراءة فقط وتُدار من أماكنها المعتادة
+// (نموذج مصروف عام، تبويب العهد، وتحصيل المواعيد/المبيعات على الترتيب).
+// السلفية بلا رصيد أو تسوية منفصلة (كالعهدة) — مجرد سجل مبالغ صُرفت
+// (انظر تعليق ADVANCE_CATEGORY_NAME في shared/types.ts).
 export function EmployeeAccountsTab() {
   const { user, allProfiles, can } = useAuth();
   const { t } = useI18n();
@@ -55,6 +59,7 @@ export function EmployeeAccountsTab() {
     return allProfiles
       .map((p) => {
         const salaryEntries = expenses.filter((e) => e.category === SALARY_CATEGORY_NAME && e.custody_holder_id === p.id);
+        const advanceEntries = expenses.filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === p.id);
         const custodyGiven = expenses
           .filter((e) => e.category === CUSTODY_CATEGORY_NAME && e.custody_holder_id === p.id)
           .reduce((sum, e) => sum + e.amount, 0);
@@ -66,6 +71,8 @@ export function EmployeeAccountsTab() {
           profile: p,
           salaryEntries,
           salaryTotal: salaryEntries.reduce((sum, e) => sum + e.amount, 0),
+          advanceEntries,
+          advanceTotal: advanceEntries.reduce((sum, e) => sum + e.amount, 0),
           custodyGiven,
           custodySpent,
           custodyRemaining: custodyGiven - custodySpent,
@@ -89,7 +96,7 @@ export function EmployeeAccountsTab() {
       <div>
         <h2 className="text-lg font-bold text-slate-800">{t('كشف حساب الموظفين')}</h2>
         <p className="text-sm text-slate-400">
-          {t('الراتب والعهدة والفواتير المحصَّلة والخصميات والمخالفات لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل')}
+          {t('الراتب والسلفيات والعهدة والفواتير المحصَّلة والخصميات والمخالفات لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل')}
         </p>
       </div>
 
@@ -110,10 +117,14 @@ export function EmployeeAccountsTab() {
                   <div className="truncate text-sm font-semibold text-slate-800">{s.profile.full_name}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-xl bg-slate-50 px-2 py-2">
                   <div className="text-[11px] text-slate-400">{t('الرواتب')}</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(s.salaryTotal)}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-2 py-2">
+                  <div className="text-[11px] text-slate-400">{t('السلفيات')}</div>
+                  <div className="text-sm font-semibold text-slate-700">{formatMoney(s.advanceTotal)}</div>
                 </div>
                 <div className={`rounded-xl px-2 py-2 ${s.custodyRemaining >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
                   <div className="text-[11px] text-slate-400">{t('رصيد العهدة')}</div>
@@ -125,7 +136,7 @@ export function EmployeeAccountsTab() {
                   <div className="text-[11px] text-slate-400">{t('فواتير محصَّلة')}</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(s.invoicesTotal)}</div>
                 </div>
-                <div className={`rounded-xl px-2 py-2 ${deductedTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
+                <div className={`col-span-2 rounded-xl px-2 py-2 ${deductedTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
                   <div className="text-[11px] text-slate-400">{t('خصميات ومخالفات')}</div>
                   <div className={`text-sm font-semibold ${deductedTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}>
                     {formatMoney(deductedTotal)}
@@ -211,6 +222,15 @@ function EmployeeDetail({
             emptyLabel={t('لا توجد رواتب مسجَّلة لهذا الموظف')}
             headers={[t('التاريخ'), t('البيان'), t('المبلغ')]}
             rows={summary.salaryEntries.map((e) => [formatDateAr(e.date), e.title, formatMoney(e.amount)])}
+          />
+        </Section>
+
+        {/* السلفيات */}
+        <Section icon={<HandCoins className="h-4 w-4 text-brand-600" />} title={t('السلفيات')} total={formatMoney(summary.advanceTotal)}>
+          <SimpleTable
+            emptyLabel={t('لا توجد سلفيات مسجَّلة لهذا الموظف')}
+            headers={[t('التاريخ'), t('البيان'), t('المبلغ')]}
+            rows={summary.advanceEntries.map((e) => [formatDateAr(e.date), e.title, formatMoney(e.amount)])}
           />
         </Section>
 
