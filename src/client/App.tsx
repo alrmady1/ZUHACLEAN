@@ -7,8 +7,7 @@ import Contracts from './pages/Contracts.js';
 import Quotes from './pages/Quotes.js';
 import Leads from './pages/Leads.js';
 import OrderPage from './pages/OrderPage.js';
-import Expenses from './pages/Expenses.js';
-import Sales from './pages/Sales.js';
+import Accounting from './pages/Accounting.js';
 import Customers from './pages/Customers.js';
 import CustomerImport from './pages/CustomerImport.js';
 import TechnicianPortal from './pages/TechnicianPortal.js';
@@ -39,10 +38,12 @@ export default function App() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/quotes" element={<Quotes />} />
         <Route path="/leads" element={<Leads />} />
-        <Route path="/expenses" element={<Expenses />} />
-        {/* العهد أصبحت تبويباً داخل صفحة المصروفات */}
-        <Route path="/custody" element={<Navigate to="/expenses" replace />} />
-        <Route path="/sales" element={<Sales />} />
+        <Route path="/accounting" element={<Accounting />} />
+        {/* المبيعات والفواتير + المصروفات صارتا تبويبين داخل "المحاسبة" */}
+        <Route path="/expenses" element={<Navigate to="/accounting" replace />} />
+        <Route path="/sales" element={<Navigate to="/accounting" replace />} />
+        {/* العهد أصبحت تبويباً داخل صفحة المصروفات (الآن داخل المحاسبة) */}
+        <Route path="/custody" element={<Navigate to="/accounting" replace />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/customers/import" element={<CustomerImport />} />
         <Route path="/technician" element={<TechnicianPortal />} />

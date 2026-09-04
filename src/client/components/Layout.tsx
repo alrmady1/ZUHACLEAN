@@ -4,8 +4,7 @@ import {
   LayoutDashboard,
   CalendarClock,
   FileSignature,
-  Wallet,
-  Receipt,
+  Calculator,
   Tag,
   Inbox,
   Users,
@@ -34,10 +33,13 @@ interface NavItem {
   label: string;
   icon: typeof LayoutDashboard;
   // إما مصفوفة أدوار ثابتة (غير خاضعة لصفحة "الإعدادات ← الصلاحيات")، أو
-  // مفتاح صلاحية ديناميكي يُقرأ عبر useAuth().can(). عنصر واحد فقط من
-  // الاثنين لكل رابط.
+  // مفتاح/مفاتيح صلاحية ديناميكية تُقرأ عبر useAuth().can(). عنصر واحد فقط
+  // من roles/permissionKey/permissionKeys لكل رابط. permissionKeys تُظهر
+  // الرابط لمن يملك أي واحدة منها (أي-من) — تُستخدَم لرابط "المحاسبة"
+  // المدمج الذي يجمع صفحتين لهما صلاحيتان مستقلتان أصلاً.
   roles?: UserRole[];
   permissionKey?: PermissionKey;
+  permissionKeys?: PermissionKey[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -46,11 +48,12 @@ const NAV_ITEMS: NavItem[] = [
   // طلبات واردة من صفحة "اطلب الخدمة" العامة (OrderPage.tsx) — عملاء
   // محتملون لم يتحولوا بعد إلى موعد فعلي.
   { to: '/leads', label: 'طلبات جديدة', icon: Inbox, permissionKey: 'view_leads_page' },
-  { to: '/sales', label: 'المبيعات والفواتير', icon: Receipt, permissionKey: 'view_sales_invoices' },
+  // يجمع "المبيعات والفواتير" و"المصروفات" (كانتا رابطين مستقلين) في
+  // صفحة واحدة بتبويبين داخليين — انظر Accounting.tsx.
+  { to: '/accounting', label: 'المحاسبة', icon: Calculator, permissionKeys: ['view_sales_invoices', 'view_expenses_page'] },
   // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".
   { to: '/quotes', label: 'عرض سعر', icon: Tag, permissionKey: 'view_quotes_page' },
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },
-  { to: '/expenses', label: 'المصروفات', icon: Wallet, permissionKey: 'view_expenses_page' },
   { to: '/customers', label: 'العملاء', icon: Users, permissionKey: 'view_customer_history' },
   // في حساب المدير — يعرض آخر موقع أبلغ عنه كل موظف مفعِّل لمشاركة
   // موقعه بنفسه (زر "مشاركة موقعي" أسفل هذه القائمة).
@@ -117,7 +120,11 @@ export default function Layout() {
   }
   if (!user) return <Navigate to="/login" replace />;
 
-  const items = NAV_ITEMS.filter((item) => (item.permissionKey ? can(item.permissionKey) : item.roles!.includes(user.role)));
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.permissionKeys) return item.permissionKeys.some((k) => can(k));
+    if (item.permissionKey) return can(item.permissionKey);
+    return item.roles!.includes(user.role);
+  });
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
