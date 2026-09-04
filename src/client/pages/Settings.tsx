@@ -862,23 +862,29 @@ function ServiceFormModal({
   // مستويات تسعير اختيارية (مثال: تنظيف سطحي/عميق للكنب) — كل صف عبارة عن
   // نص مؤقّت (state) قبل تحويله لأرقام عند الإرسال، لتفادي مشاكل التحقق
   // أثناء الكتابة (مثلاً حقل سعر فارغ مؤقتاً بينما يكتب المستخدم).
-  const [tiers, setTiers] = useState<{ key: string; label: string; unit_price: string; unit_duration_seconds: string }[]>(
+  // مدة الوحدة (المستوى، وunit_duration_seconds العام أدناه) تُدخَل وتُعرَض
+  // بالدقيقة هنا (نفس وحدة "المدة التقريبية" الأخرى في هذا النموذج، أسهل
+  // للإدخال اليدوي من الثواني) — تُحوَّل لثوانٍ فقط عند الإرسال (× 60)؛
+  // التخزين الفعلي (Service.unit_duration_seconds/ServicePricingTier.
+  // unit_duration_seconds) يبقى بالثواني كما هو دون أي تغيير في الـschema
+  // أو في منطق حساب المدة عند الحجز (NewAppointmentModal.tsx).
+  const [tiers, setTiers] = useState<{ key: string; label: string; unit_price: string; unit_duration_minutes: string }[]>(
     () =>
       (editing?.pricing_tiers ?? []).map((tier) => ({
         key: tier.key,
         label: tier.label,
         unit_price: String(tier.unit_price),
-        unit_duration_seconds: tier.unit_duration_seconds ? String(tier.unit_duration_seconds) : '',
+        unit_duration_minutes: tier.unit_duration_seconds ? String(tier.unit_duration_seconds / 60) : '',
       })),
   );
 
   function addTier() {
     setTiers((prev) => [
       ...prev,
-      { key: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: '', unit_price: '', unit_duration_seconds: '' },
+      { key: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: '', unit_price: '', unit_duration_minutes: '' },
     ]);
   }
-  function updateTier(key: string, patch: Partial<{ label: string; unit_price: string; unit_duration_seconds: string }>) {
+  function updateTier(key: string, patch: Partial<{ label: string; unit_price: string; unit_duration_minutes: string }>) {
     setTiers((prev) => prev.map((tier) => (tier.key === key ? { ...tier, ...patch } : tier)));
   }
   function removeTier(key: string) {
@@ -890,7 +896,8 @@ function ServiceFormModal({
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     const priceValue = Number(form.get('price_value'));
-    const unitDurationRaw = form.get('unit_duration_seconds');
+    // مُدخَلة بالدقيقة (انظر تعليق tiers أعلاه) — تُحوَّل هنا لثوانٍ للتخزين.
+    const unitDurationMinutesRaw = form.get('unit_duration_minutes');
     const pricingTiers: ServicePricingTier[] | undefined =
       pricingModel !== 'fixed'
         ? tiers
@@ -899,7 +906,7 @@ function ServiceFormModal({
               key: tier.key,
               label: tier.label.trim(),
               unit_price: Number(tier.unit_price),
-              unit_duration_seconds: tier.unit_duration_seconds ? Number(tier.unit_duration_seconds) : undefined,
+              unit_duration_seconds: tier.unit_duration_minutes ? Math.round(Number(tier.unit_duration_minutes) * 60) : undefined,
             }))
         : undefined;
     const payload = {
@@ -912,7 +919,9 @@ function ServiceFormModal({
       pricing_model: pricingModel === 'fixed' ? undefined : pricingModel,
       unit_price: pricingModel === 'fixed' ? undefined : priceValue,
       unit_duration_seconds:
-        pricingModel !== 'fixed' && unitDurationRaw && Number(unitDurationRaw) > 0 ? Number(unitDurationRaw) : undefined,
+        pricingModel !== 'fixed' && unitDurationMinutesRaw && Number(unitDurationMinutesRaw) > 0
+          ? Math.round(Number(unitDurationMinutesRaw) * 60)
+          : undefined,
       pricing_tiers: pricingTiers && pricingTiers.length > 0 ? pricingTiers : undefined,
     };
     try {
@@ -1025,17 +1034,18 @@ function ServiceFormModal({
           <Field
             label={
               pricingModel === 'per_sqm'
-                ? t('مدة المتر المربع الواحد (ثانية) — اختياري')
-                : t('مدة المقعد الواحد (ثانية) — اختياري')
+                ? t('مدة المتر المربع الواحد (دقيقة) — اختياري')
+                : t('مدة المقعد الواحد (دقيقة) — اختياري')
             }
             icon={<Clock className="h-3.5 w-3.5 text-brand-500" />}
           >
             <input
               key={`dur-${pricingModel}`}
               type="number"
-              name="unit_duration_seconds"
+              name="unit_duration_minutes"
               min={0}
-              defaultValue={editing?.unit_duration_seconds}
+              step="0.5"
+              defaultValue={editing?.unit_duration_seconds ? editing.unit_duration_seconds / 60 : undefined}
               placeholder={t('اتركه فارغاً لتبقى المدة الكلية ثابتة (المدة التقريبية أعلاه)')}
               className="input"
             />
@@ -1077,9 +1087,10 @@ function ServiceFormModal({
                   <input
                     type="number"
                     min={0}
-                    value={tier.unit_duration_seconds}
-                    onChange={(e) => updateTier(tier.key, { unit_duration_seconds: e.target.value })}
-                    placeholder={t('المدة (ثانية)')}
+                    step="0.5"
+                    value={tier.unit_duration_minutes}
+                    onChange={(e) => updateTier(tier.key, { unit_duration_minutes: e.target.value })}
+                    placeholder={t('المدة (دقيقة)')}
                     className="input flex-1"
                   />
                   <button
