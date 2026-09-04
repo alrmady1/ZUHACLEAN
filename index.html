@@ -8,6 +8,13 @@
     <link rel="icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#2563eb" />
+    <!-- يُطبَّق قبل أول رسم للصفحة — يمنع "وميض" الوضع الفاتح لحظياً قبل
+         أن يقرأ React تفضيل الوضع الداكن المحفوظ (انظر src/client/lib/theme.ts). -->
+    <script>
+      try {
+        if (localStorage.getItem('zaha-ops:theme') === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

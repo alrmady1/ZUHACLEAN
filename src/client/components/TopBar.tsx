@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, Plus, Languages } from 'lucide-react';
+import { Menu, Search, Plus, Languages, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
+import { useDarkMode } from '../lib/theme.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 
@@ -15,6 +16,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { user, allProfiles, can } = useAuth();
   const { t, roleLabel, lang, toggleLang } = useI18n();
   const navigate = useNavigate();
+  const [isDark, toggleDark] = useDarkMode();
 
   const [query, setQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
@@ -110,6 +112,15 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
       >
         <Languages className="h-4 w-4" />
         {lang === 'ar' ? 'EN' : 'عربي'}
+      </button>
+
+      <button
+        type="button"
+        onClick={toggleDark}
+        title={isDark ? t('تعطيل الوضع الداكن') : t('تفعيل الوضع الداكن')}
+        className="flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+      >
+        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
 
       {canBook && (
