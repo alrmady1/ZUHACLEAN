@@ -553,6 +553,11 @@ export interface Customer {
   // الصادر الذي جلب هذا العميل (من allProfiles)، وليس بالضرورة الموظف
   // الذي أنشأ سجل العميل في النظام.
   source_call_profile_id?: string;
+  // الحقول الثلاثة التالية خاصة بعملاء الشركات فقط — تظهر في الواجهة
+  // فقط عندما customer_type === 'company'، وتبقى undefined لعملاء الأفراد.
+  tax_number?: string;
+  national_address?: string;
+  commercial_registration_number?: string;
   created_at: string;
 }
 

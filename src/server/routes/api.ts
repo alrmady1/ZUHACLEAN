@@ -462,10 +462,25 @@ api.post('/push/unsubscribe', (req, res) => {
 api.get('/customers', (_req, res) => res.json(store.customers.list()));
 
 api.post('/customers', (req, res) => {
-  const { name, phone, address, district, city, location_url, notes, customer_type, source, source_call_profile_id } = req.body ?? {};
+  const {
+    name,
+    phone,
+    address,
+    district,
+    city,
+    location_url,
+    notes,
+    customer_type,
+    source,
+    source_call_profile_id,
+    tax_number,
+    national_address,
+    commercial_registration_number,
+  } = req.body ?? {};
   if (!name || !phone || !address) {
     return res.status(400).json({ error: 'name, phone و address مطلوبة' });
   }
+  const isCompany = customer_type === 'company';
   const customer = store.customers.insert({
     id: store.id(),
     name,
@@ -478,6 +493,9 @@ api.post('/customers', (req, res) => {
     customer_type: customer_type || undefined,
     source: source || undefined,
     source_call_profile_id: source === 'outbound_call' ? source_call_profile_id || undefined : undefined,
+    tax_number: isCompany ? tax_number || undefined : undefined,
+    national_address: isCompany ? national_address || undefined : undefined,
+    commercial_registration_number: isCompany ? commercial_registration_number || undefined : undefined,
     created_at: new Date().toISOString(),
   });
   logActivity(req, `تم إضافة عميل "${customer.name}"`);
@@ -497,6 +515,9 @@ api.patch('/customers/:id', (req, res) => {
     customer_type?: CustomerType;
     source?: CustomerSource;
     source_call_profile_id?: string;
+    tax_number?: string;
+    national_address?: string;
+    commercial_registration_number?: string;
   }> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.phone !== undefined) patch.phone = normalizeSaudiPhone(body.phone);
@@ -509,6 +530,12 @@ api.patch('/customers/:id', (req, res) => {
   if (body.source !== undefined) {
     patch.source = body.source || undefined;
     patch.source_call_profile_id = body.source === 'outbound_call' ? body.source_call_profile_id || undefined : undefined;
+  }
+  if (body.customer_type !== undefined || body.tax_number !== undefined || body.national_address !== undefined || body.commercial_registration_number !== undefined) {
+    const isCompany = (body.customer_type !== undefined ? body.customer_type : store.customers.get(req.params.id)?.customer_type) === 'company';
+    patch.tax_number = isCompany ? body.tax_number || undefined : undefined;
+    patch.national_address = isCompany ? body.national_address || undefined : undefined;
+    patch.commercial_registration_number = isCompany ? body.commercial_registration_number || undefined : undefined;
   }
 
   const updated = store.customers.update(req.params.id, patch);

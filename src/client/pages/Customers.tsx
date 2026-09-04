@@ -85,6 +85,10 @@ export default function Customers() {
   // defaultValue فقط) لأن ظهور حقل "الموظف الذي أجرى الاتصال" يعتمد عليه
   // مباشرة أثناء الاختيار.
   const [newCustomerSource, setNewCustomerSource] = useState<CustomerSource | ''>('');
+  // نوع العميل في نفس النموذج — متحكَّم به لنفس سبب newCustomerSource:
+  // ظهور حقول الشركة (الرقم الضريبي، العنوان الوطني، السجل التجاري)
+  // يعتمد عليه مباشرة أثناء الاختيار.
+  const [newCustomerType, setNewCustomerType] = useState<CustomerType | ''>('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
@@ -179,6 +183,8 @@ export default function Customers() {
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     const source = (form.get('source') as CustomerSource | '') || undefined;
+    const customerType = (form.get('customer_type') as CustomerType | '') || undefined;
+    const isCompany = customerType === 'company';
     const payload = {
       name: form.get('name'),
       phone: form.get('phone'),
@@ -186,9 +192,12 @@ export default function Customers() {
       district: form.get('district') || undefined,
       city: form.get('city') || undefined,
       location_url: form.get('location_url') || undefined,
-      customer_type: (form.get('customer_type') as CustomerType | '') || undefined,
+      customer_type: customerType,
       source,
       source_call_profile_id: source === 'outbound_call' ? (form.get('source_call_profile_id') || undefined) : undefined,
+      tax_number: isCompany ? form.get('tax_number') || undefined : undefined,
+      national_address: isCompany ? form.get('national_address') || undefined : undefined,
+      commercial_registration_number: isCompany ? form.get('commercial_registration_number') || undefined : undefined,
     };
     try {
       if (editing) {
@@ -221,6 +230,7 @@ export default function Customers() {
               onClick={() => {
                 setEditing(null);
                 setNewCustomerSource('');
+                setNewCustomerType('');
                 setShowForm(true);
               }}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -516,7 +526,12 @@ export default function Customers() {
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('نوع العميل')}</span>
                   <div className="relative">
-                    <select name="customer_type" defaultValue={editing?.customer_type ?? ''} className="input appearance-none pe-9">
+                    <select
+                      name="customer_type"
+                      value={newCustomerType}
+                      onChange={(e) => setNewCustomerType(e.target.value as CustomerType | '')}
+                      className="input appearance-none pe-9"
+                    >
                       <option value="">{t('غير محدد')}</option>
                       {(Object.keys(CUSTOMER_TYPE_LABELS_AR) as CustomerType[]).map((k) => (
                         <option key={k} value={k}>
@@ -562,6 +577,23 @@ export default function Customers() {
                     <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   </div>
                 </label>
+              )}
+              {newCustomerType === 'company' && (
+                <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-500">{t('بيانات الشركة')}</p>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('الرقم الضريبي')}</span>
+                    <input name="tax_number" defaultValue={editing?.tax_number} className="input" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('العنوان الوطني')}</span>
+                    <input name="national_address" defaultValue={editing?.national_address} className="input" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('رقم السجل التجاري')}</span>
+                    <input name="commercial_registration_number" defaultValue={editing?.commercial_registration_number} className="input" />
+                  </label>
+                </div>
               )}
             </div>
             <button
@@ -640,9 +672,13 @@ function CustomerDetailModal({
   const [customerType, setCustomerType] = useState<CustomerType | ''>(customer.customer_type ?? '');
   const [source, setSource] = useState<CustomerSource | ''>(customer.source ?? '');
   const [sourceCallProfileId, setSourceCallProfileId] = useState(customer.source_call_profile_id ?? '');
+  const [taxNumber, setTaxNumber] = useState(customer.tax_number ?? '');
+  const [nationalAddress, setNationalAddress] = useState(customer.national_address ?? '');
+  const [commercialRegNumber, setCommercialRegNumber] = useState(customer.commercial_registration_number ?? '');
 
   async function save() {
     setSubmitting(true);
+    const isCompany = customerType === 'company';
     try {
       await api.patch(`/customers/${customer.id}`, {
         name,
@@ -654,6 +690,9 @@ function CustomerDetailModal({
         customer_type: customerType || undefined,
         source: source || undefined,
         source_call_profile_id: source === 'outbound_call' ? sourceCallProfileId || undefined : undefined,
+        tax_number: isCompany ? taxNumber || undefined : undefined,
+        national_address: isCompany ? nationalAddress || undefined : undefined,
+        commercial_registration_number: isCompany ? commercialRegNumber || undefined : undefined,
       });
       onSaved();
       setEditing(false);
@@ -691,6 +730,9 @@ function CustomerDetailModal({
                       setCustomerType(customer.customer_type ?? '');
                       setSource(customer.source ?? '');
                       setSourceCallProfileId(customer.source_call_profile_id ?? '');
+                      setTaxNumber(customer.tax_number ?? '');
+                      setNationalAddress(customer.national_address ?? '');
+                      setCommercialRegNumber(customer.commercial_registration_number ?? '');
                       setEditing(true);
                     }}
                     title={t('تعديل بيانات العميل')}
@@ -841,6 +883,23 @@ function CustomerDetailModal({
                     <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   </div>
                 </label>
+              )}
+              {customerType === 'company' && (
+                <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-500">{t('بيانات الشركة')}</p>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('الرقم الضريبي')}</span>
+                    <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} className="input" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('العنوان الوطني')}</span>
+                    <input value={nationalAddress} onChange={(e) => setNationalAddress(e.target.value)} className="input" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('رقم السجل التجاري')}</span>
+                    <input value={commercialRegNumber} onChange={(e) => setCommercialRegNumber(e.target.value)} className="input" />
+                  </label>
+                </div>
               )}
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('رابط الموقع (خرائط جوجل)')}</span>
