@@ -239,10 +239,12 @@ export const AR_TO_EN: Record<string, string> = {
   "المبيعات والفواتير": "Sales and Invoices",
   "المبيعات": "Sales",
   "كشف حساب الموظفين": "Employee Accounts",
-  "الراتب والعهدة والفواتير المحصَّلة والخصميات والمخالفات لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل":
-    "Salary, custody, collected invoices, deductions, and violations for each employee — click any employee for details",
+  "الراتب والسلفيات والعهدة والفواتير المحصَّلة والخصميات والمخالفات لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل":
+    "Salary, advances, custody, collected invoices, deductions, and violations for each employee — click any employee for details",
   "المبيعات والفواتير والمصروفات وكشف حساب الموظفين في مكان واحد": "Sales, invoices, expenses, and employee accounts in one place",
   "الرواتب": "Salaries",
+  "السلفيات": "Advances",
+  "لا توجد سلفيات مسجَّلة لهذا الموظف": "No advances recorded for this employee",
   "رصيد العهدة": "Custody Balance",
   "فواتير محصَّلة": "Collected Invoices",
   "خصميات ومخالفات": "Deductions & Violations",
