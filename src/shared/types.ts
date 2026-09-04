@@ -515,6 +515,26 @@ export interface LandingService {
   created_at: string;
 }
 
+// نوع العميل — فرد أو شركة. اختياري (عملاء قدامى بلا قيمة يبقون كما هم).
+export type CustomerType = 'individual' | 'company';
+
+export const CUSTOMER_TYPE_LABELS_AR: Record<CustomerType, string> = {
+  individual: 'فرد',
+  company: 'شركة',
+};
+
+// مصدر العميل — من أين وصلنا هذا العميل أول مرة. اختياري لنفس سبب
+// customer_type أعلاه.
+export type CustomerSource = 'whatsapp' | 'external_orders_page' | 'outbound_call' | 'inbound_call' | 'social_media';
+
+export const CUSTOMER_SOURCE_LABELS_AR: Record<CustomerSource, string> = {
+  whatsapp: 'واتساب',
+  external_orders_page: 'صفحة الطلبات الخارجية',
+  outbound_call: 'اتصال صادر',
+  inbound_call: 'اتصال وارد',
+  social_media: 'وسائل التواصل الاجتماعي',
+};
+
 export interface Customer {
   id: string;
   name: string;
@@ -524,6 +544,12 @@ export interface Customer {
   city?: string;
   location_url?: string;
   notes?: string;
+  customer_type?: CustomerType;
+  source?: CustomerSource;
+  // فقط عندما source === 'outbound_call' — معرّف الموظف الذي أجرى الاتصال
+  // الصادر الذي جلب هذا العميل (من allProfiles)، وليس بالضرورة الموظف
+  // الذي أنشأ سجل العميل في النظام.
+  source_call_profile_id?: string;
   created_at: string;
 }
 

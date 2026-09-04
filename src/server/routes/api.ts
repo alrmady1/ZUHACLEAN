@@ -28,6 +28,8 @@ import type {
   LandingService,
   VisitOutcome,
   ServicePricingTier,
+  CustomerType,
+  CustomerSource,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -459,7 +461,7 @@ api.post('/push/unsubscribe', (req, res) => {
 api.get('/customers', (_req, res) => res.json(store.customers.list()));
 
 api.post('/customers', (req, res) => {
-  const { name, phone, address, district, city, location_url, notes } = req.body ?? {};
+  const { name, phone, address, district, city, location_url, notes, customer_type, source, source_call_profile_id } = req.body ?? {};
   if (!name || !phone || !address) {
     return res.status(400).json({ error: 'name, phone و address مطلوبة' });
   }
@@ -472,6 +474,9 @@ api.post('/customers', (req, res) => {
     city,
     location_url,
     notes,
+    customer_type: customer_type || undefined,
+    source: source || undefined,
+    source_call_profile_id: source === 'outbound_call' ? source_call_profile_id || undefined : undefined,
     created_at: new Date().toISOString(),
   });
   logActivity(req, `تم إضافة عميل "${customer.name}"`);
@@ -480,7 +485,18 @@ api.post('/customers', (req, res) => {
 
 api.patch('/customers/:id', (req, res) => {
   const body = req.body ?? {};
-  const patch: Partial<{ name: string; phone: string; address: string; district?: string; city?: string; location_url?: string; notes?: string }> = {};
+  const patch: Partial<{
+    name: string;
+    phone: string;
+    address: string;
+    district?: string;
+    city?: string;
+    location_url?: string;
+    notes?: string;
+    customer_type?: CustomerType;
+    source?: CustomerSource;
+    source_call_profile_id?: string;
+  }> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.phone !== undefined) patch.phone = normalizeSaudiPhone(body.phone);
   if (body.address !== undefined) patch.address = body.address;
@@ -488,6 +504,11 @@ api.patch('/customers/:id', (req, res) => {
   if (body.city !== undefined) patch.city = body.city || undefined;
   if (body.location_url !== undefined) patch.location_url = body.location_url || undefined;
   if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  if (body.customer_type !== undefined) patch.customer_type = body.customer_type || undefined;
+  if (body.source !== undefined) {
+    patch.source = body.source || undefined;
+    patch.source_call_profile_id = body.source === 'outbound_call' ? body.source_call_profile_id || undefined : undefined;
+  }
 
   const updated = store.customers.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });

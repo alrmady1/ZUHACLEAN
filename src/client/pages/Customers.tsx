@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams, Navigate } from 'react-router-dom';
 import { Plus, X, Phone, MapPin, Trash2, Pencil, Eye, Check, Search, ChevronLeft, ChevronDown, Rows3, LayoutGrid, Map as MapIcon, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Appointment, Rating } from '../../shared/types.js';
+import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource } from '../../shared/types.js';
+import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR } from '../../shared/types.js';
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
@@ -38,7 +39,7 @@ function VisitRow({ visit, rating }: { visit: Appointment; rating?: Rating }) {
 
 export default function Customers() {
   const { t, tt, lang } = useI18n();
-  const { user, can } = useAuth();
+  const { user, allProfiles, can } = useAuth();
   const canCreate = can('create_customers');
   const canEdit = can('edit_customers');
   const canDelete = can('delete_customers');
@@ -54,6 +55,10 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // مصدر العميل في نموذج "إضافة عميل جديد" — state متحكَّم به (لا
+  // defaultValue فقط) لأن ظهور حقل "الموظف الذي أجرى الاتصال" يعتمد عليه
+  // مباشرة أثناء الاختيار.
+  const [newCustomerSource, setNewCustomerSource] = useState<CustomerSource | ''>('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
@@ -143,6 +148,7 @@ export default function Customers() {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
+    const source = (form.get('source') as CustomerSource | '') || undefined;
     const payload = {
       name: form.get('name'),
       phone: form.get('phone'),
@@ -150,6 +156,9 @@ export default function Customers() {
       district: form.get('district') || undefined,
       city: form.get('city') || undefined,
       location_url: form.get('location_url') || undefined,
+      customer_type: (form.get('customer_type') as CustomerType | '') || undefined,
+      source,
+      source_call_profile_id: source === 'outbound_call' ? (form.get('source_call_profile_id') || undefined) : undefined,
     };
     try {
       if (editing) {
@@ -181,6 +190,7 @@ export default function Customers() {
             <button
               onClick={() => {
                 setEditing(null);
+                setNewCustomerSource('');
                 setShowForm(true);
               }}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -445,6 +455,57 @@ export default function Customers() {
                   </a>
                 </div>
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('نوع العميل')}</span>
+                  <div className="relative">
+                    <select name="customer_type" defaultValue={editing?.customer_type ?? ''} className="input appearance-none pe-9">
+                      <option value="">{t('غير محدد')}</option>
+                      {(Object.keys(CUSTOMER_TYPE_LABELS_AR) as CustomerType[]).map((k) => (
+                        <option key={k} value={k}>
+                          {t(CUSTOMER_TYPE_LABELS_AR[k])}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المصدر')}</span>
+                  <div className="relative">
+                    <select
+                      name="source"
+                      value={newCustomerSource}
+                      onChange={(e) => setNewCustomerSource(e.target.value as CustomerSource | '')}
+                      className="input appearance-none pe-9"
+                    >
+                      <option value="">{t('غير محدد')}</option>
+                      {(Object.keys(CUSTOMER_SOURCE_LABELS_AR) as CustomerSource[]).map((k) => (
+                        <option key={k} value={k}>
+                          {t(CUSTOMER_SOURCE_LABELS_AR[k])}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+              </div>
+              {newCustomerSource === 'outbound_call' && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الموظف الذي أجرى الاتصال')}</span>
+                  <div className="relative">
+                    <select name="source_call_profile_id" defaultValue={editing?.source_call_profile_id ?? ''} className="input appearance-none pe-9">
+                      <option value="">{t('-- اختر الموظف --')}</option>
+                      {allProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+              )}
             </div>
             <button
               type="submit"
@@ -464,6 +525,7 @@ export default function Customers() {
           ratingByAppointment={ratingByAppointment}
           ratingSummary={ratingSummaryByCustomer.get(viewingCustomer.id) ?? { avg: 0, count: 0 }}
           canEdit={canEdit}
+          allProfiles={allProfiles}
           onClose={() => setViewingCustomer(null)}
           onSaved={refresh}
         />
@@ -481,6 +543,7 @@ function CustomerDetailModal({
   ratingByAppointment,
   ratingSummary,
   canEdit,
+  allProfiles,
   onClose,
   onSaved,
 }: {
@@ -489,6 +552,7 @@ function CustomerDetailModal({
   ratingByAppointment: Map<string, Rating>;
   ratingSummary: { avg: number; count: number };
   canEdit: boolean;
+  allProfiles: Profile[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -501,6 +565,9 @@ function CustomerDetailModal({
   const [district, setDistrict] = useState(customer.district ?? '');
   const [city, setCity] = useState(customer.city ?? '');
   const [locationUrl, setLocationUrl] = useState(customer.location_url ?? '');
+  const [customerType, setCustomerType] = useState<CustomerType | ''>(customer.customer_type ?? '');
+  const [source, setSource] = useState<CustomerSource | ''>(customer.source ?? '');
+  const [sourceCallProfileId, setSourceCallProfileId] = useState(customer.source_call_profile_id ?? '');
 
   async function save() {
     setSubmitting(true);
@@ -512,6 +579,9 @@ function CustomerDetailModal({
         district: district || undefined,
         city: city || undefined,
         location_url: locationUrl || undefined,
+        customer_type: customerType || undefined,
+        source: source || undefined,
+        source_call_profile_id: source === 'outbound_call' ? sourceCallProfileId || undefined : undefined,
       });
       onSaved();
       setEditing(false);
@@ -546,6 +616,9 @@ function CustomerDetailModal({
                       setDistrict(customer.district ?? '');
                       setCity(customer.city ?? '');
                       setLocationUrl(customer.location_url ?? '');
+                      setCustomerType(customer.customer_type ?? '');
+                      setSource(customer.source ?? '');
+                      setSourceCallProfileId(customer.source_call_profile_id ?? '');
                       setEditing(true);
                     }}
                     title={t('تعديل بيانات العميل')}
@@ -570,6 +643,23 @@ function CustomerDetailModal({
                   </div>
                 )}
               </div>
+              {(customer.customer_type || customer.source) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {customer.customer_type && (
+                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      {t(CUSTOMER_TYPE_LABELS_AR[customer.customer_type])}
+                    </span>
+                  )}
+                  {customer.source && (
+                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      {t(CUSTOMER_SOURCE_LABELS_AR[customer.source])}
+                      {customer.source === 'outbound_call' &&
+                        customer.source_call_profile_id &&
+                        ` — ${allProfiles.find((p) => p.id === customer.source_call_profile_id)?.full_name ?? ''}`}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-2">
                 <a
                   href={`tel:${customer.phone}`}
@@ -622,6 +712,64 @@ function CustomerDetailModal({
                   <input value={city} onChange={(e) => setCity(e.target.value)} className="input" />
                 </label>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('نوع العميل')}</span>
+                  <div className="relative">
+                    <select
+                      value={customerType}
+                      onChange={(e) => setCustomerType(e.target.value as CustomerType | '')}
+                      className="input appearance-none pe-9"
+                    >
+                      <option value="">{t('غير محدد')}</option>
+                      {(Object.keys(CUSTOMER_TYPE_LABELS_AR) as CustomerType[]).map((k) => (
+                        <option key={k} value={k}>
+                          {t(CUSTOMER_TYPE_LABELS_AR[k])}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المصدر')}</span>
+                  <div className="relative">
+                    <select
+                      value={source}
+                      onChange={(e) => setSource(e.target.value as CustomerSource | '')}
+                      className="input appearance-none pe-9"
+                    >
+                      <option value="">{t('غير محدد')}</option>
+                      {(Object.keys(CUSTOMER_SOURCE_LABELS_AR) as CustomerSource[]).map((k) => (
+                        <option key={k} value={k}>
+                          {t(CUSTOMER_SOURCE_LABELS_AR[k])}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+              </div>
+              {source === 'outbound_call' && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الموظف الذي أجرى الاتصال')}</span>
+                  <div className="relative">
+                    <select
+                      value={sourceCallProfileId}
+                      onChange={(e) => setSourceCallProfileId(e.target.value)}
+                      className="input appearance-none pe-9"
+                    >
+                      <option value="">{t('-- اختر الموظف --')}</option>
+                      {allProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </label>
+              )}
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('رابط الموقع (خرائط جوجل)')}</span>
                 <div className="flex gap-2">
