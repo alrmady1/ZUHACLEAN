@@ -30,7 +30,7 @@ export default function Accounting() {
             onClick={() => setTab('sales')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'sales' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <SalesIcon className="h-4 w-4" /> {t('المبيعات والفواتير')}
+            <SalesIcon className="h-4 w-4" /> {t('المبيعات')}
           </button>
           <button
             onClick={() => setTab('expenses')}
