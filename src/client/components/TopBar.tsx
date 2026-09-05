@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
+import type { Lang } from '../lib/date.js';
 import { useDarkMode } from '../lib/theme.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
@@ -14,7 +15,8 @@ import { phoneMatchesQuery } from '../../shared/phone.js';
 // page without needing extra sticky/fixed CSS.
 export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { user, allProfiles, can } = useAuth();
-  const { t, roleLabel, lang, toggleLang } = useI18n();
+  const { t, roleLabel, lang, toggleLang, setLang } = useI18n();
+  const isTechnician = user?.role === 'technician';
   const navigate = useNavigate();
   const [isDark, toggleDark] = useDarkMode();
 
@@ -104,15 +106,33 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={toggleLang}
-        title={lang === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
-        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-      >
-        <Languages className="h-4 w-4" />
-        {lang === 'ar' ? 'EN' : 'عربي'}
-      </button>
+      {isTechnician ? (
+        // خيار لغة ثالثة (بنغالية) مخصَّص للفنيين الميدانيين تحديداً — قائمة
+        // منسدلة بدل زر التبديل الثنائي المعتاد، بقية المستخدمين لا يرونها.
+        <div className="relative flex shrink-0 items-center">
+          <Languages className="pointer-events-none absolute start-2.5 h-4 w-4 text-slate-400" />
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+            title="Language"
+            className="appearance-none rounded-xl border border-slate-200 bg-white py-2 ps-8 pe-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <option value="ar">العربية</option>
+            <option value="en">English</option>
+            <option value="bn">বাংলা</option>
+          </select>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={toggleLang}
+          title={lang === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          <Languages className="h-4 w-4" />
+          {lang === 'ar' ? 'EN' : 'عربي'}
+        </button>
+      )}
 
       <button
         type="button"

@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import type { Appointment, Customer } from '../../shared/types.js';
-import { weekdayAr, formatTimeAr } from '../lib/date.js';
+import { weekdayAr, formatTimeAr, type Lang } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 
 // تاريخ ميلادي صراحةً بغضّ النظر عن التقويم الافتراضي — بعض المتصفحات
 // (خاصة على الجوال) تعرض التقويم الهجري افتراضياً مع locale "ar-SA" ما
 // لم يُفرَض التقويم الميلادي (gregory) صراحةً هكذا.
-function formatGregorianDate(d: Date, lang: 'ar' | 'en'): string {
-  const locale = lang === 'en' ? 'en-US' : 'ar-SA';
+function formatGregorianDate(d: Date, lang: Lang): string {
+  const locale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
   return d.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' });
 }
 

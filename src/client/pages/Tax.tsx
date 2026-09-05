@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Receipt, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, Invoice } from '../../shared/types.js';
-import { formatMoney, formatDateAr } from '../lib/date.js';
+import { formatMoney, formatDateAr, type Lang } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { useI18n } from '../lib/i18n.js';
 
@@ -19,7 +19,7 @@ function quarterRange(key: string): { start: Date; end: Date } {
 const QUARTER_MONTH_RANGES_AR = ['يناير - مارس', 'أبريل - يونيو', 'يوليو - سبتمبر', 'أكتوبر - ديسمبر'];
 const QUARTER_MONTH_RANGES_EN = ['Jan - Mar', 'Apr - Jun', 'Jul - Sep', 'Oct - Dec'];
 
-function quarterLabel(key: string, lang: 'ar' | 'en'): string {
+function quarterLabel(key: string, lang: Lang): string {
   const [year, qStr] = key.split('-Q');
   const q = Number(qStr);
   const range = (lang === 'ar' ? QUARTER_MONTH_RANGES_AR : QUARTER_MONTH_RANGES_EN)[q - 1];

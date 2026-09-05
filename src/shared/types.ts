@@ -26,6 +26,16 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
   technician: 'Technician',
 };
 
+// للغة البنغالية (خيار واجهة يظهر للفنيين الميدانيين تحديداً — انظر
+// TopBar.tsx وuseI18n().roleLabel() في lib/i18n.tsx).
+export const ROLE_LABELS_BN: Record<UserRole, string> = {
+  general_manager: 'জেনারেল ম্যানেজার',
+  admin: 'অ্যাডমিন',
+  admin_supervisor: 'অ্যাডমিন সুপারভাইজার',
+  supervisor: 'সুপারভাইজার',
+  technician: 'টেকনিশিয়ান',
+};
+
 // Centralized role-permission groups. This app has no real session/token
 // auth (login just returns the matching profile), so these gate the UI
 // only — not a server-enforced security boundary.

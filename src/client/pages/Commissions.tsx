@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TrendingUp, Users as MarketersIcon, ShieldCheck as SupervisorsIcon, PartyPopper, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { formatMoney } from '../lib/date.js';
+import { formatMoney, type Lang } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 
 interface CommissionPersonRow {
@@ -49,9 +49,10 @@ function recentMonths(): string[] {
   return months;
 }
 
-function monthLabel(month: string, lang: 'ar' | 'en'): string {
+function monthLabel(month: string, lang: Lang): string {
   const [y, m] = month.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { month: 'long', year: 'numeric', calendar: 'gregory' });
+  const locale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+  return new Date(y, m - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric', calendar: 'gregory' });
 }
 
 // تبويب "العمولات" داخل صفحة المحاسبة — تقرير محسوب شهرياً من الخادم
