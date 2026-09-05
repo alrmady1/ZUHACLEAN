@@ -19,6 +19,7 @@ import { useAuth } from '../lib/auth.js';
 import type { UserRole, PermissionKey } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import TopBar from './TopBar.js';
+import AdminLiveChatWidget from './AdminLiveChatWidget.js';
 import { ensurePushSubscribed } from '../lib/push.js';
 import { api } from '../lib/api.js';
 import { startLocationSharing, stopLocationSharing } from '../lib/locationSharing.js';
@@ -253,6 +254,8 @@ export default function Layout() {
           </div>
         </div>
       )}
+
+      <AdminLiveChatWidget />
     </div>
   );
 }
