@@ -1145,3 +1145,27 @@ export const COMPANY_PHONE = '0582464181';
 // يُضاف هنا لاحقاً، وتُخفي مستندات العقد وعرض السعر هذا السطر تلقائياً
 // طالما فارغ (انظر DocumentHeader.tsx) بدل طباعة رقم غير صحيح.
 export const COMPANY_CR_NUMBER = '';
+
+// بيانات الحساب البنكي للشركة — سجل واحد فقط (وليس قائمة)، يُقرأ/يُعدَّل عبر
+// GET/PATCH /company-bank-account. تُدخَل من الإعدادات ← طرق الدفع (خلف
+// صلاحية edit_payment_methods) بدل تثبيتها كنص برمجي، لأنها بيانات حساسة
+// لا ينبغي حفظها داخل الكود المصدري المنشور علناً على GitHub، وحتى تُعدَّل
+// دون الحاجة لنشر نسخة جديدة من التطبيق. تُستخدَم لإنشاء صورة قابلة
+// للمشاركة (واتساب/إيميل) عند اختيار "حوالة بنكية" كطريقة دفع.
+export interface CompanyBankAccount {
+  account_holder_name: string;
+  bank_name: string;
+  iban: string;
+  account_number: string;
+  swift_code: string;
+  updated_at: string;
+}
+
+export const DEFAULT_COMPANY_BANK_ACCOUNT: CompanyBankAccount = {
+  account_holder_name: COMPANY_LEGAL_NAME,
+  bank_name: '',
+  iban: '',
+  account_number: '',
+  swift_code: '',
+  updated_at: new Date(0).toISOString(),
+};

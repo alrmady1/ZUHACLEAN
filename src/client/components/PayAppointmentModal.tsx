@@ -1,12 +1,13 @@
-import { useState, type FormEvent } from 'react';
-import { X, Wallet } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { X, Wallet, Share2, Landmark } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Invoice, PaymentMethodOption } from '../../shared/types.js';
-import { VAT_RATE } from '../../shared/types.js';
+import type { Appointment, Customer, Invoice, PaymentMethodOption, CompanyBankAccount } from '../../shared/types.js';
+import { VAT_RATE, COMPANY_LEGAL_NAME } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from './InvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { generateBankAccountImage, shareOrDownloadImage } from '../lib/bankAccountShare.js';
 
 export default function PayAppointmentModal({
   appointment,
@@ -28,6 +29,31 @@ export default function PayAppointmentModal({
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [issuedInvoice, setIssuedInvoice] = useState<Invoice | null>(null);
+  const [bankAccount, setBankAccount] = useState<CompanyBankAccount | null>(null);
+  const [sharingBankAccount, setSharingBankAccount] = useState(false);
+
+  // تُجلَب بيانات الحساب البنكي فقط عند اختيار "حوالة بنكية" — لا داعي
+  // لطلبها إن لم يحتَجها المستخدم إطلاقاً.
+  useEffect(() => {
+    if (method !== 'bank_transfer' || bankAccount) return;
+    api.get<CompanyBankAccount>('/company-bank-account').then(setBankAccount);
+  }, [method, bankAccount]);
+
+  async function handleShareBankAccount() {
+    if (!bankAccount) return;
+    setSharingBankAccount(true);
+    try {
+      const blob = await generateBankAccountImage(bankAccount, COMPANY_LEGAL_NAME);
+      await shareOrDownloadImage(
+        blob,
+        'بيانات-الحساب-البنكي.png',
+        t('بيانات الحساب البنكي'),
+        t('بيانات الحساب البنكي لإتمام الحوالة'),
+      );
+    } finally {
+      setSharingBankAccount(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -129,6 +155,31 @@ export default function PayAppointmentModal({
               ))}
             </select>
           </label>
+
+          {method === 'bank_transfer' && (
+            <div className="rounded-xl bg-slate-50 p-3">
+              {!bankAccount ? (
+                <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <Landmark className="h-3.5 w-3.5" /> {t('جارِ التحميل…')}
+                </p>
+              ) : !bankAccount.iban ? (
+                <p className="flex items-center gap-1.5 text-xs text-amber-600">
+                  <Landmark className="h-3.5 w-3.5 shrink-0" />
+                  {t('لم يتم إدخال بيانات الحساب البنكي بعد — أضفها من الإعدادات ← طرق الدفع')}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleShareBankAccount}
+                  disabled={sharingBankAccount}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  {sharingBankAccount ? t('جارِ التجهيز…') : t('مشاركة بيانات الحساب البنكي')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <button

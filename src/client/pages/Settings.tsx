@@ -65,6 +65,7 @@ import type {
   CommissionConfig,
   CommissionTier,
   CommissionEligibility,
+  CompanyBankAccount,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
@@ -1416,6 +1417,82 @@ function PaymentMethodsTab() {
           </form>
         </Modal>
       )}
+
+      <BankAccountSettingsCard />
+    </div>
+  );
+}
+
+// بيانات الحساب البنكي للشركة — تُستخدَم لإنشاء صورة قابلة للمشاركة (واتساب/
+// إيميل) عند اختيار "حوالة بنكية" عند تحصيل دفعة (انظر PayAppointmentModal
+// وsrc/client/lib/bankAccountShare.ts). سجل واحد فقط (singleton)، بلا
+// إضافة/حذف — فقط تعديل الحقول الخمسة.
+function BankAccountSettingsCard() {
+  const { t } = useI18n();
+  const [account, setAccount] = useState<CompanyBankAccount | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.get<CompanyBankAccount>('/company-bank-account').then(setAccount);
+  }, []);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    setSaved(false);
+    const form = new FormData(e.currentTarget);
+    const payload = {
+      account_holder_name: form.get('account_holder_name'),
+      bank_name: form.get('bank_name'),
+      iban: form.get('iban'),
+      account_number: form.get('account_number'),
+      swift_code: form.get('swift_code'),
+    };
+    try {
+      const updated = await api.patch<CompanyBankAccount>('/company-bank-account', payload);
+      setAccount(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!account) return null;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <h3 className="mb-1 text-sm font-bold text-slate-800">{t('بيانات الحساب البنكي')}</h3>
+      <p className="mb-4 text-xs text-slate-400">
+        {t('تُستخدَم لإنشاء صورة قابلة للمشاركة عبر واتساب أو الإيميل عند اختيار "حوالة بنكية" كطريقة دفع')}
+      </p>
+      <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('اسم الحساب')}>
+          <input name="account_holder_name" defaultValue={account.account_holder_name} className="input" />
+        </Field>
+        <Field label={t('اسم البنك')}>
+          <input name="bank_name" defaultValue={account.bank_name} className="input" placeholder={t('مثال: البنك الأهلي')} />
+        </Field>
+        <Field label={t('رقم الآيبان (IBAN)')}>
+          <input name="iban" defaultValue={account.iban} className="input" dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" />
+        </Field>
+        <Field label={t('رقم الحساب')}>
+          <input name="account_number" defaultValue={account.account_number} className="input" dir="ltr" />
+        </Field>
+        <Field label={t('رمز السويفت (SWIFT)')}>
+          <input name="swift_code" defaultValue={account.swift_code} className="input" dir="ltr" />
+        </Field>
+        <div className="flex items-end">
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50 sm:w-auto sm:px-6"
+          >
+            {saving ? t('جارِ الحفظ…') : saved ? t('تم الحفظ ✓') : t('حفظ بيانات الحساب')}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

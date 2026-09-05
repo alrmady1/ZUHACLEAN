@@ -41,6 +41,7 @@ import type {
   RiyadhZone,
   NeighborhoodZoneAssignment,
   WorkersHousingLocation,
+  CompanyBankAccount,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -2020,6 +2021,24 @@ api.patch('/workers-housing-location', (req, res) => {
   if (typeof body.label === 'string' && body.label.trim()) patch.label = body.label.trim();
   const updated = store.workersHousingLocation.set(patch);
   logActivity(req, `تم تحديث موقع "${updated.label}" على خريطة مناطق الرياض`);
+  res.json(updated);
+});
+
+// بيانات الحساب البنكي للشركة — سجل واحد، تُدار من الإعدادات ← طرق الدفع
+// وتُستخدَم لإنشاء صورة قابلة للمشاركة عند اختيار "حوالة بنكية" كطريقة دفع
+// (انظر CompanyBankAccount).
+api.get('/company-bank-account', (_req, res) => res.json(store.companyBankAccount.get()));
+
+api.patch('/company-bank-account', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<CompanyBankAccount> = {};
+  if (typeof body.account_holder_name === 'string') patch.account_holder_name = body.account_holder_name.trim();
+  if (typeof body.bank_name === 'string') patch.bank_name = body.bank_name.trim();
+  if (typeof body.iban === 'string') patch.iban = body.iban.trim();
+  if (typeof body.account_number === 'string') patch.account_number = body.account_number.trim();
+  if (typeof body.swift_code === 'string') patch.swift_code = body.swift_code.trim();
+  const updated = store.companyBankAccount.set(patch);
+  logActivity(req, 'تم تحديث بيانات الحساب البنكي للشركة');
   res.json(updated);
 });
 

@@ -39,13 +39,20 @@ import type {
   RiyadhZone,
   NeighborhoodZoneAssignment,
   WorkersHousingLocation,
+  CompanyBankAccount,
   LandingPageSettings,
   LandingService,
   CommissionConfig,
   CommissionTier,
   CommissionEligibility,
 } from '../../shared/types.js';
-import { DEFAULT_PERMISSIONS, DEFAULT_LANDING_SETTINGS, DEFAULT_COMMISSION_CONFIG, DEFAULT_WORKERS_HOUSING_LOCATION } from '../../shared/types.js';
+import {
+  DEFAULT_PERMISSIONS,
+  DEFAULT_LANDING_SETTINGS,
+  DEFAULT_COMMISSION_CONFIG,
+  DEFAULT_WORKERS_HOUSING_LOCATION,
+  DEFAULT_COMPANY_BANK_ACCOUNT,
+} from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
 // Server-only: carries the password hash alongside the public Profile
@@ -122,6 +129,10 @@ interface DbShape {
   // نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) على نفس الخريطة —
   // انظر WorkersHousingLocation في src/shared/types.ts.
   workersHousingLocation: WorkersHousingLocation;
+  // بيانات الحساب البنكي للشركة (سجل واحد) — تُستخدَم لإنشاء صورة مشاركة
+  // عند اختيار "حوالة بنكية" كطريقة دفع. انظر CompanyBankAccount في
+  // src/shared/types.ts.
+  companyBankAccount: CompanyBankAccount;
   // نظام العمولات — سجل إعدادات واحد (singleton) + شرائح تصاعدية + من
   // يستحق فعلياً. انظر src/shared/types.ts.
   commissionConfig: CommissionConfig;
@@ -421,6 +432,7 @@ function seed(): DbShape {
     riyadhZones: defaultRiyadhZones(now),
     neighborhoodZoneAssignments: defaultNeighborhoodAssignments(),
     workersHousingLocation: { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: now },
+    companyBankAccount: { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: now },
     commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
     // نقطة بداية مقترحة (نسب تصاعدية معقولة، معدَّلة بالكامل لاحقاً من
     // الإعدادات ← العمولات): 20-25 ألف 5%/2%، 25-30 ألف 7%/3%، فوق 30
@@ -563,6 +575,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.riyadhZones) parsed.riyadhZones = defaultRiyadhZones(new Date().toISOString());
     if (!parsed.neighborhoodZoneAssignments) parsed.neighborhoodZoneAssignments = defaultNeighborhoodAssignments();
     if (!parsed.workersHousingLocation) parsed.workersHousingLocation = { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: new Date().toISOString() };
+    if (!parsed.companyBankAccount) parsed.companyBankAccount = { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: new Date().toISOString() };
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
     if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
@@ -1022,6 +1035,14 @@ export const store = {
       db.workersHousingLocation = { ...db.workersHousingLocation, ...next, updated_at: new Date().toISOString() };
       persist();
       return db.workersHousingLocation;
+    },
+  },
+  companyBankAccount: {
+    get: () => db.companyBankAccount,
+    set: (next: Partial<CompanyBankAccount>) => {
+      db.companyBankAccount = { ...db.companyBankAccount, ...next, updated_at: new Date().toISOString() };
+      persist();
+      return db.companyBankAccount;
     },
   },
   landingSettings: {
