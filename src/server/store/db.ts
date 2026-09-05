@@ -36,6 +36,8 @@ import type {
   WhatsappMessage,
   LiveChatThread,
   LiveChatMessage,
+  RiyadhZone,
+  NeighborhoodZoneAssignment,
   LandingPageSettings,
   LandingService,
   CommissionConfig,
@@ -112,6 +114,10 @@ interface DbShape {
   // محادثات دردشة مباشرة (بشرية، بلا ذكاء اصطناعي) من أيقونة صفحة "اطلب
   // الخدمة" العامة — انظر LiveChatThread في src/shared/types.ts.
   liveChatThreads: LiveChatThread[];
+  // تقسيم مدينة الرياض إلى مناطق (شمال/جنوب/شرق/غرب/وسط) + ربط الأحياء
+  // بها — انظر RiyadhZone/NeighborhoodZoneAssignment في src/shared/types.ts.
+  riyadhZones: RiyadhZone[];
+  neighborhoodZoneAssignments: NeighborhoodZoneAssignment[];
   // نظام العمولات — سجل إعدادات واحد (singleton) + شرائح تصاعدية + من
   // يستحق فعلياً. انظر src/shared/types.ts.
   commissionConfig: CommissionConfig;
@@ -408,6 +414,8 @@ function seed(): DbShape {
       })),
     whatsappThreads: [],
     liveChatThreads: [],
+    riyadhZones: defaultRiyadhZones(now),
+    neighborhoodZoneAssignments: defaultNeighborhoodAssignments(),
     commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
     // نقطة بداية مقترحة (نسب تصاعدية معقولة، معدَّلة بالكامل لاحقاً من
     // الإعدادات ← العمولات): 20-25 ألف 5%/2%، 25-30 ألف 7%/3%، فوق 30
@@ -426,6 +434,75 @@ function seed(): DbShape {
 // store.id() instead).
 function seedCategoryId(name: string): string {
   return `cat-${name.replace(/\s+/g, '-')}`;
+}
+
+// نقطة بداية معقولة لتقسيم الرياض إلى 5 مناطق (مستطيلات تقريبية حول وسط
+// المدينة تغطي أغلب أحياء الرياض المعروفة، بلا تداخل بينها) — يُعدِّل
+// المدير العام حدود كل منطقة لاحقاً بالسحب من الإعدادات ← مناطق الرياض،
+// هذه فقط قيمة ابتدائية غير نهائية إطلاقاً.
+function defaultRiyadhZones(now: string): RiyadhZone[] {
+  const zone = (id: string, name: string, color: string, boundary: [number, number][], preferred_weekdays: string[]): RiyadhZone => ({
+    id,
+    name,
+    color,
+    boundary,
+    preferred_weekdays,
+    created_at: now,
+    updated_at: now,
+  });
+  return [
+    zone('zone-north', 'شمال الرياض', '#3B82F6', [[24.85, 46.35], [24.85, 47.05], [25.05, 47.05], [25.05, 46.35]], ['sunday']),
+    zone('zone-south', 'جنوب الرياض', '#F59E0B', [[24.45, 46.35], [24.45, 47.05], [24.65, 47.05], [24.65, 46.35]], ['monday']),
+    zone('zone-east', 'شرق الرياض', '#10B981', [[24.65, 46.80], [24.65, 47.05], [24.85, 47.05], [24.85, 46.80]], ['tuesday']),
+    zone('zone-west', 'غرب الرياض', '#EF4444', [[24.65, 46.35], [24.65, 46.60], [24.85, 46.60], [24.85, 46.35]], ['wednesday']),
+    zone('zone-center', 'وسط الرياض', '#8B5CF6', [[24.65, 46.60], [24.65, 46.80], [24.85, 46.80], [24.85, 46.60]], ['thursday']),
+  ];
+}
+
+// ربط تقريبي لأحياء رياض معروفة بمناطقها — نقطة بداية للمراجعة والتصحيح
+// من جدول الأحياء في الإعدادات ← مناطق الرياض، وليس مرجعاً جغرافياً
+// دقيقاً. أي حي مطلوب غير موجود هنا يُضاف يدوياً بسهولة من نفس الجدول.
+function defaultNeighborhoodAssignments(): NeighborhoodZoneAssignment[] {
+  const rows: [string, string][] = [
+    ['الملقا', 'zone-north'],
+    ['الصحافة', 'zone-north'],
+    ['النرجس', 'zone-north'],
+    ['حطين', 'zone-north'],
+    ['الياسمين', 'zone-north'],
+    ['العارض', 'zone-north'],
+    ['الوادي', 'zone-north'],
+    ['العقيق', 'zone-north'],
+    ['النخيل', 'zone-north'],
+    ['الغدير', 'zone-north'],
+    ['الشفا', 'zone-south'],
+    ['العزيزية', 'zone-south'],
+    ['منفوحة', 'zone-south'],
+    ['السلي', 'zone-south'],
+    ['الفيصلية', 'zone-south'],
+    ['العريجاء', 'zone-south'],
+    ['السويدي', 'zone-south'],
+    ['الشميسي', 'zone-south'],
+    ['النسيم', 'zone-east'],
+    ['الرمال', 'zone-east'],
+    ['الروضة', 'zone-east'],
+    ['قرطبة', 'zone-east'],
+    ['الريان', 'zone-east'],
+    ['الجنادرية', 'zone-east'],
+    ['المونسية', 'zone-east'],
+    ['الخليج', 'zone-east'],
+    ['عرقة', 'zone-west'],
+    ['ظهرة لبن', 'zone-west'],
+    ['الدار البيضاء', 'zone-west'],
+    ['نمار', 'zone-west'],
+    ['شبرا', 'zone-west'],
+    ['الملز', 'zone-center'],
+    ['المربع', 'zone-center'],
+    ['الديرة', 'zone-center'],
+    ['العليا', 'zone-center'],
+    ['السليمانية', 'zone-center'],
+    ['المعذر', 'zone-center'],
+  ];
+  return rows.map(([neighborhood, zone_id], i) => ({ id: `nz-${i + 1}`, neighborhood, zone_id }));
 }
 
 async function load(): Promise<DbShape> {
@@ -478,6 +555,8 @@ async function load(): Promise<DbShape> {
     }
     if (!parsed.whatsappThreads) parsed.whatsappThreads = [];
     if (!parsed.liveChatThreads) parsed.liveChatThreads = [];
+    if (!parsed.riyadhZones) parsed.riyadhZones = defaultRiyadhZones(new Date().toISOString());
+    if (!parsed.neighborhoodZoneAssignments) parsed.neighborhoodZoneAssignments = defaultNeighborhoodAssignments();
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
     if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
@@ -886,6 +965,47 @@ export const store = {
       const idx = db.liveChatThreads.findIndex((t) => t.id === id);
       if (idx === -1) return false;
       db.liveChatThreads.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  riyadhZones: {
+    list: () => db.riyadhZones,
+    get: (id: string) => db.riyadhZones.find((z) => z.id === id),
+    insert: (z: RiyadhZone) => { db.riyadhZones.push(z); persist(); return z; },
+    update: (id: string, patch: Partial<RiyadhZone>) => {
+      const idx = db.riyadhZones.findIndex((z) => z.id === id);
+      if (idx === -1) return undefined;
+      db.riyadhZones[idx] = { ...db.riyadhZones[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.riyadhZones[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.riyadhZones.findIndex((z) => z.id === id);
+      if (idx === -1) return false;
+      db.riyadhZones.splice(idx, 1);
+      // حذف منطقة يترك أي حي كان مربوطاً بها بلا منطقة (بلا اقتراح يوم عند
+      // الحجز) بدل الإشارة لمنطقة لم تعد موجودة — يُصحَّح لاحقاً بإعادة
+      // ربطه من جدول الأحياء إن رغب المدير.
+      db.neighborhoodZoneAssignments = db.neighborhoodZoneAssignments.filter((n) => n.zone_id !== id);
+      persist();
+      return true;
+    },
+  },
+  neighborhoodZoneAssignments: {
+    list: () => db.neighborhoodZoneAssignments,
+    insert: (n: NeighborhoodZoneAssignment) => { db.neighborhoodZoneAssignments.push(n); persist(); return n; },
+    update: (id: string, patch: Partial<NeighborhoodZoneAssignment>) => {
+      const idx = db.neighborhoodZoneAssignments.findIndex((n) => n.id === id);
+      if (idx === -1) return undefined;
+      db.neighborhoodZoneAssignments[idx] = { ...db.neighborhoodZoneAssignments[idx], ...patch };
+      persist();
+      return db.neighborhoodZoneAssignments[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.neighborhoodZoneAssignments.findIndex((n) => n.id === id);
+      if (idx === -1) return false;
+      db.neighborhoodZoneAssignments.splice(idx, 1);
       persist();
       return true;
     },

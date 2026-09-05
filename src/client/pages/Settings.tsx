@@ -44,6 +44,7 @@ import {
   ShieldAlert,
   UserCheck,
   MessageCircle as LiveChatIcon,
+  Map as RiyadhZonesIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
@@ -80,6 +81,7 @@ import { WEEKDAYS } from '../../shared/weekdays.js';
 import { leaveTypeDisplay } from '../../shared/leaves.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
+import RiyadhZonesTab from './RiyadhZonesTab.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
 
@@ -3279,6 +3281,7 @@ export default function Settings() {
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
+  const canRiyadhZones = can('manage_riyadh_zones');
 
   type SettingsTab =
     | 'users'
@@ -3290,6 +3293,7 @@ export default function Settings() {
     | 'landing_page'
     | 'permissions'
     | 'commissions'
+    | 'riyadh_zones'
     | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
@@ -3303,6 +3307,7 @@ export default function Settings() {
     if (canLandingPage) return 'landing_page';
     if (canPermissions) return 'permissions';
     if (canCommissions) return 'commissions';
+    if (canRiyadhZones) return 'riyadh_zones';
     return 'activity_log';
   });
 
@@ -3391,6 +3396,14 @@ export default function Settings() {
             <CommissionsIcon className="h-4 w-4" /> {t('العمولات')}
           </button>
         )}
+        {canRiyadhZones && (
+          <button
+            onClick={() => setTab('riyadh_zones')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'riyadh_zones' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <RiyadhZonesIcon className="h-4 w-4" /> {t('مناطق الرياض')}
+          </button>
+        )}
         {canActivityLog && (
           <button
             onClick={() => setTab('activity_log')}
@@ -3419,6 +3432,8 @@ export default function Settings() {
         <PermissionsTab />
       ) : tab === 'commissions' && canCommissions ? (
         <CommissionsTab />
+      ) : tab === 'riyadh_zones' && canRiyadhZones ? (
+        <RiyadhZonesTab />
       ) : canActivityLog ? (
         <ActivityLogTab />
       ) : null}

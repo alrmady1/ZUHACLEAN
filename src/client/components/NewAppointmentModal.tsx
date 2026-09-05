@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile, Appointment, LeaveRecord } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
-import { findDayOffConflicts } from '../../shared/weekdays.js';
+import { findDayOffConflicts, WEEKDAYS } from '../../shared/weekdays.js';
 import { findLeaveConflicts } from '../../shared/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
+import { findZoneForNeighborhood } from '../../shared/riyadhZones.js';
 
 // السعر/المدة الفعليان للوحدة الواحدة لخدمة مسعَّرة بالوحدة: إن كان لديها
 // مستويات تسعير (pricing_tiers)، تُستخدَم قيم المستوى المختار (أو المستوى
@@ -121,6 +122,14 @@ export default function NewAppointmentModal({
   const matchedLeadService = initialLead?.serviceName ? services.find((s) => s.name === initialLead.serviceName) : undefined;
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
+  // تقسيم مناطق الرياض — لاقتراح أفضل أيام الأسبوع لحيّ العميل المختار
+  // (انظر بانر الاقتراح أسفل حقل التاريخ، وshared/riyadhZones.ts).
+  const [riyadhZones, setRiyadhZones] = useState<RiyadhZone[]>([]);
+  const [neighborhoodZones, setNeighborhoodZones] = useState<NeighborhoodZoneAssignment[]>([]);
+  useEffect(() => {
+    api.get<RiyadhZone[]>('/riyadh-zones').then(setRiyadhZones).catch(() => {});
+    api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setNeighborhoodZones).catch(() => {});
+  }, []);
   const [customerId, setCustomerId] = useState<string>(matchedLeadCustomer?.id ?? '');
   const [customerSearch, setCustomerSearch] = useState(matchedLeadCustomer?.name ?? initialLead?.name ?? '');
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
@@ -262,6 +271,26 @@ export default function NewAppointmentModal({
     const end = new Date(start.getTime() + Number(duration) * 60000);
     return { time: formatTimeAr(end.toISOString()), duration: formatDuration(Number(duration)) };
   })();
+
+  // منطقة الرياض المقترحة لحيّ العميل المختار (إن كان حيّه مربوطاً بمنطقة
+  // من الإعدادات ← مناطق الرياض) — تُعرض كبانر تحت حقل التاريخ يقترح أفضل
+  // أيام الأسبوع لتجميع عملاء نفس المنطقة، مع اقتراح أقرب تاريخ فعلي لكل
+  // يوم مفضَّل ليختاره الموظف مباشرة قبل التنسيق مع العميل.
+  const selectedCustomer = allCustomers.find((c) => c.id === customerId);
+  const suggestedZone = findZoneForNeighborhood(selectedCustomer?.district, riyadhZones, neighborhoodZones);
+  const suggestedDatesByWeekday = useMemo(() => {
+    if (!suggestedZone) return [];
+    const jsDayByKey = WEEKDAYS.map((w) => w.key);
+    return suggestedZone.preferred_weekdays.map((key) => {
+      const targetDay = jsDayByKey.indexOf(key);
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      let delta = (targetDay - d.getDay() + 7) % 7;
+      if (delta === 0) delta = 7; // أقرب حدوث قادم لنفس اليوم، وليس اليوم نفسه.
+      d.setDate(d.getDate() + delta);
+      return { key, label: WEEKDAYS.find((w) => w.key === key)?.label ?? key, iso: d.toISOString().slice(0, 10) };
+    });
+  }, [suggestedZone]);
 
   // The same supervisor's other bookings that day — used both for the
   // mini availability schedule and to block an overlapping new one.
@@ -694,6 +723,36 @@ export default function NewAppointmentModal({
             {previewEnd && (
               <div className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
                 {t('الوقت المتوقع لإنهاء العمل:')} {previewEnd.time} ({previewEnd.duration})
+              </div>
+            )}
+            {suggestedZone && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-700">
+                <div className="font-semibold">
+                  {tt(`حي "${selectedCustomer?.district}" ضمن ${suggestedZone.name}`, `"${selectedCustomer?.district}" is in ${suggestedZone.name}`)}
+                </div>
+                {suggestedDatesByWeekday.length > 0 ? (
+                  <>
+                    <div className="mt-1">
+                      {t('الأيام المفضَّلة لهذه المنطقة — نسِّق مع العميل قبل التأكيد:')}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {suggestedDatesByWeekday.map((d) => (
+                        <button
+                          key={d.key}
+                          type="button"
+                          onClick={() => setDate(d.iso)}
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                            date === d.iso ? 'bg-violet-600 text-white' : 'bg-white text-violet-700 ring-1 ring-violet-300 hover:bg-violet-100'
+                          }`}
+                        >
+                          {t(d.label)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-1">{t('لا توجد أيام مفضَّلة مضبوطة لهذه المنطقة بعد (الإعدادات ← مناطق الرياض).')}</div>
+                )}
               </div>
             )}
           </Section>

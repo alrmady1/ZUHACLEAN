@@ -103,7 +103,8 @@ export type PermissionKey =
   | 'manage_commissions'
   | 'edit_delete_expenses'
   | 'view_tax_page'
-  | 'view_live_chat';
+  | 'view_live_chat'
+  | 'manage_riyadh_zones';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -155,6 +156,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   // (AdminLiveChatWidget.tsx) — لا تخفي قسمها داخل الإعدادات ← الطلبات
   // الخارجية، ذاك يبقى تابعاً لصلاحية edit_landing_page كالمعتاد.
   view_live_chat: 'إظهار أيقونة الدردشة المباشرة العائمة',
+  manage_riyadh_zones: 'التحكم بتقسيم مناطق الرياض والأحياء التابعة لها',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -239,6 +241,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   edit_delete_expenses: GM_ADMIN,
   view_tax_page: GM_ADMIN,
   view_live_chat: GM_ADMIN_ADMINSUP,
+  manage_riyadh_zones: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -544,6 +547,39 @@ export interface LiveChatThread {
   unread: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// تقسيم مدينة الرياض إلى مناطق جغرافية (شمال/جنوب/شرق/غرب/وسط افتراضياً)
+// — يُدار من الإعدادات ← مناطق الرياض عبر خريطة تفاعلية (OpenStreetMap)،
+// ويُستخدم عند حجز موعد جديد لاقتراح أفضل أيام الأسبوع لعميل حسب حيّه
+// (تجميع عملاء المنطقة الواحدة في نفس اليوم/الأيام يقلل تنقّل الفريق
+// الميداني). حدود المنطقة (boundary) للعرض/التعديل على الخريطة فقط —
+// ربط حيّ بعينه بمنطقة يتم يدوياً عبر NeighborhoodZoneAssignment أدناه،
+// وليس حسابياً من الإحداثيات، لتفادي الحاجة لخدمة جيوكودينغ دقيقة لكل حي.
+export interface RiyadhZone {
+  id: string;
+  name: string;
+  // لون تمييز المنطقة على الخريطة وفي شارات الأحياء التابعة لها.
+  color: string;
+  // مضلع حدود المنطقة على الخريطة — مصفوفة نقاط [خط العرض، خط الطول]،
+  // معدَّلة بالسحب من الإعدادات ← مناطق الرياض. اختياري: منطقة جديدة قد
+  // تُنشأ بلا حدود مرسومة بعد.
+  boundary?: [number, number][];
+  // مفاتيح أيام الأسبوع المفضَّلة لجدولة عملاء هذه المنطقة — نفس مفاتيح
+  // WEEKDAYS في shared/weekdays.ts (مثال: ['sunday', 'tuesday']).
+  preferred_weekdays: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+// ربط اسم حيّ واحد (كما يُكتب حرفياً في Customer.district) بمنطقة —
+// قائمة يدوية صريحة بدل حساب جغرافي، فتبقى دقيقة حتى بلا إحداثيات مضبوطة
+// لكل حي على حدة. عدة أسماء قد تُربط بنفس المنطقة؛ اسم واحد لا يظهر هنا
+// يبقى بلا منطقة مقترَحة (لا خطأ، فقط لا اقتراح يوم عند الحجز).
+export interface NeighborhoodZoneAssignment {
+  id: string;
+  neighborhood: string;
+  zone_id: string;
 }
 
 // ألوان الهوية البصرية المعتمدة لصفحة "اطلب الخدمة" العامة — قابلة للتعديل

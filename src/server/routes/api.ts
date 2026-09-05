@@ -38,6 +38,8 @@ import type {
   CommissionEligibility,
   Expense,
   LiveChatThread,
+  RiyadhZone,
+  NeighborhoodZoneAssignment,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -1925,6 +1927,82 @@ api.patch('/chat/threads/:id', (req, res) => {
 
 api.delete('/chat/threads/:id', (req, res) => {
   const removed = store.liveChatThreads.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// مناطق الرياض — تقسيم جغرافي (شمال/جنوب/شرق/غرب/وسط افتراضياً) يُدار من
+// الإعدادات ← مناطق الرياض (خلف صلاحية manage_riyadh_zones)، ويُستخدم عند
+// حجز موعد جديد لاقتراح أفضل أيام الأسبوع حسب حيّ العميل. انظر RiyadhZone/
+// NeighborhoodZoneAssignment في src/shared/types.ts.
+// ---------------------------------------------------------------------------
+api.get('/riyadh-zones', (_req, res) => res.json(store.riyadhZones.list()));
+
+api.post('/riyadh-zones', (req, res) => {
+  const body = req.body ?? {};
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'اسم المنطقة مطلوب' });
+  const now = new Date().toISOString();
+  const zone: RiyadhZone = {
+    id: store.id(),
+    name,
+    color: typeof body.color === 'string' && body.color ? body.color : '#64748B',
+    boundary: Array.isArray(body.boundary) ? body.boundary : undefined,
+    preferred_weekdays: Array.isArray(body.preferred_weekdays) ? body.preferred_weekdays : [],
+    created_at: now,
+    updated_at: now,
+  };
+  store.riyadhZones.insert(zone);
+  logActivity(req, `تم إضافة منطقة "${zone.name}" إلى تقسيم الرياض`);
+  res.status(201).json(zone);
+});
+
+api.patch('/riyadh-zones/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<RiyadhZone> = {};
+  if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim();
+  if (typeof body.color === 'string' && body.color) patch.color = body.color;
+  if (Array.isArray(body.boundary)) patch.boundary = body.boundary;
+  if (Array.isArray(body.preferred_weekdays)) patch.preferred_weekdays = body.preferred_weekdays;
+  const updated = store.riyadhZones.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم تعديل منطقة "${updated.name}"`);
+  res.json(updated);
+});
+
+api.delete('/riyadh-zones/:id', (req, res) => {
+  const target = store.riyadhZones.get(req.params.id);
+  const removed = store.riyadhZones.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف منطقة "${target?.name ?? ''}" من تقسيم الرياض`);
+  res.status(204).end();
+});
+
+api.get('/neighborhood-zones', (_req, res) => res.json(store.neighborhoodZoneAssignments.list()));
+
+api.post('/neighborhood-zones', (req, res) => {
+  const body = req.body ?? {};
+  const neighborhood = typeof body.neighborhood === 'string' ? body.neighborhood.trim() : '';
+  const zone_id = typeof body.zone_id === 'string' ? body.zone_id : '';
+  if (!neighborhood || !zone_id) return res.status(400).json({ error: 'اسم الحي والمنطقة مطلوبان' });
+  const row = store.neighborhoodZoneAssignments.insert({ id: store.id(), neighborhood, zone_id });
+  logActivity(req, `تم ربط حي "${neighborhood}" بمنطقة "${store.riyadhZones.get(zone_id)?.name ?? ''}"`);
+  res.status(201).json(row);
+});
+
+api.patch('/neighborhood-zones/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<NeighborhoodZoneAssignment> = {};
+  if (typeof body.neighborhood === 'string' && body.neighborhood.trim()) patch.neighborhood = body.neighborhood.trim();
+  if (typeof body.zone_id === 'string' && body.zone_id) patch.zone_id = body.zone_id;
+  const updated = store.neighborhoodZoneAssignments.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/neighborhood-zones/:id', (req, res) => {
+  const removed = store.neighborhoodZoneAssignments.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
 });
