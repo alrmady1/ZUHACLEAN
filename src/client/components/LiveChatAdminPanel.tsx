@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, ChevronRight } from 'lucide-react';
+import { Send, ChevronRight, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { LiveChatThread } from '../../shared/types.js';
 import { formatDateAr, formatTimeAr } from '../lib/date.js';
@@ -7,6 +7,13 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
 const SENDER_NAME_STORAGE_KEY = 'zaha-live-chat-sender-name';
+
+// اسم أساسي مختصر خاص بعبدالله السقاف فقط في الدردشة تحديداً — طلب صريح
+// (سائر الموظفين يظهر اسمهم الكامل كما هو من full_name كالمعتاد).
+function defaultSenderName(fullName: string | undefined): string {
+  if (fullName === 'عبدالله السقاف') return 'عبدالله';
+  return fullName ?? '';
+}
 
 // لوحة مراسلة "الدردشة المباشرة" الإدارية — قائمة المحادثات + محادثة
 // مفتوحة + رد يدوي، مستخدَمة في مكانين: كبطاقة كاملة العرض داخل الإعدادات
@@ -21,7 +28,7 @@ export default function LiveChatAdminPanel({
   compact?: boolean;
   onUnreadChange?: (count: number) => void;
 }) {
-  const { t } = useI18n();
+  const { t, tt } = useI18n();
   const { user } = useAuth();
   const [threads, setThreads] = useState<LiveChatThread[] | null>(null);
   const [openThread, setOpenThread] = useState<LiveChatThread | null>(null);
@@ -34,9 +41,9 @@ export default function LiveChatAdminPanel({
   // المرة القادمة.
   const [senderName, setSenderName] = useState(() => {
     try {
-      return localStorage.getItem(SENDER_NAME_STORAGE_KEY) || user?.full_name || '';
+      return localStorage.getItem(SENDER_NAME_STORAGE_KEY) || defaultSenderName(user?.full_name);
     } catch {
-      return user?.full_name || '';
+      return defaultSenderName(user?.full_name);
     }
   });
 
@@ -83,7 +90,7 @@ export default function LiveChatAdminPanel({
     try {
       const updated = await api.post<LiveChatThread>(`/chat/threads/${openThread.id}/reply`, {
         text: reply.trim(),
-        sender_name: senderName.trim() || user?.full_name,
+        sender_name: senderName.trim() || defaultSenderName(user?.full_name),
       });
       setOpenThread(updated);
       setReply('');
@@ -97,6 +104,16 @@ export default function LiveChatAdminPanel({
     const updated = await api.patch<LiveChatThread>(`/chat/threads/${th.id}`, { status: th.status === 'open' ? 'closed' : 'open' });
     setThreads((prev) => prev && prev.map((x) => (x.id === updated.id ? updated : x)));
     if (openThread?.id === th.id) setOpenThread(updated);
+  }
+
+  async function deleteThread(th: LiveChatThread) {
+    const name = th.customer_name || t('زائر');
+    if (!window.confirm(tt(`حذف محادثة "${name}" نهائياً بكل رسائلها؟ لا يمكن التراجع عن هذا الإجراء.`, `Permanently delete the conversation with "${name}" and all its messages? This can't be undone.`))) {
+      return;
+    }
+    await api.del(`/chat/threads/${th.id}`);
+    setThreads((prev) => prev && prev.filter((x) => x.id !== th.id));
+    if (openThread?.id === th.id) setOpenThread(null);
   }
 
   const list = (
@@ -148,9 +165,18 @@ export default function LiveChatAdminPanel({
             {openThread.customer_phone && <div dir="ltr" className="text-end text-[11px] text-slate-400">{openThread.customer_phone}</div>}
           </div>
         </div>
-        <button onClick={() => toggleStatus(openThread)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
-          {openThread.status === 'open' ? t('إغلاق المحادثة') : t('إعادة فتح المحادثة')}
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => toggleStatus(openThread)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+            {openThread.status === 'open' ? t('إغلاق المحادثة') : t('إعادة فتح المحادثة')}
+          </button>
+          <button
+            onClick={() => void deleteThread(openThread)}
+            title={t('حذف المحادثة نهائياً')}
+            className="text-slate-400 hover:text-red-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div ref={listRef} className={`flex-1 space-y-2 overflow-y-auto bg-slate-50 p-3 ${compact ? '' : 'max-h-80'}`}>
         {openThread.messages.map((m) => (
