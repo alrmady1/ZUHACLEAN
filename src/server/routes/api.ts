@@ -1115,6 +1115,14 @@ api.delete('/contracts/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/expenses', (_req, res) => res.json(store.expenses.list()));
 
+// مبلغ الضريبة على فاتورة مصروف — يُحتسَب من amount نفسه بافتراض أنه شامل
+// الضريبة (نفس اصطلاح كل تسعير في هذا النظام، انظر VAT_RATE)، وليس حقلاً
+// يُدخله المستخدم يدوياً؛ يُحتسَب فقط عند وسم الفاتورة كـ"ضريبية".
+function computeExpenseTax(isTaxInvoice: boolean, amount: number): number | undefined {
+  if (!isTaxInvoice) return undefined;
+  return Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
+}
+
 api.post('/expenses', async (req, res) => {
   const body = req.body ?? {};
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
@@ -1136,14 +1144,17 @@ api.post('/expenses', async (req, res) => {
       return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
     }
   }
+  const amount = Number(body.amount ?? 0);
+  const isTaxInvoice = Boolean(body.is_tax_invoice);
   const expense = store.expenses.insert({
     id: expenseId,
     title: body.title,
     category: body.category,
     sub_category: body.sub_category || undefined,
     period_type: body.period_type ?? 'daily',
-    amount: Number(body.amount ?? 0),
-    tax_amount: body.tax_amount ? Number(body.tax_amount) : undefined,
+    amount,
+    is_tax_invoice: isTaxInvoice,
+    tax_amount: computeExpenseTax(isTaxInvoice, amount),
     date: body.date ?? new Date().toISOString().slice(0, 10),
     invoice_number: body.invoice_number,
     unit_or_vehicle_ref: body.unit_or_vehicle_ref,
@@ -1195,6 +1206,14 @@ api.patch('/expenses/:id', async (req, res) => {
     const holderId = linksEmployee ? body.custody_holder_id ?? target.custody_holder_id : undefined;
     patch.custody_holder_id = holderId || undefined;
     patch.custody_holder_name = holderId ? store.profiles.get(holderId)?.full_name : undefined;
+  }
+  // إعادة احتساب ضريبة الفاتورة كلما تغيّر أحد مدخليها (الوسم أو المبلغ)
+  // — نفس دالة POST أعلاه، بحيث تبقى tax_amount متسقة دوماً مع amount.
+  if (body.is_tax_invoice !== undefined || body.amount !== undefined) {
+    const isTaxInvoice = body.is_tax_invoice !== undefined ? Boolean(body.is_tax_invoice) : Boolean(target.is_tax_invoice);
+    const amount = patch.amount ?? target.amount;
+    patch.is_tax_invoice = isTaxInvoice;
+    patch.tax_amount = computeExpenseTax(isTaxInvoice, amount);
   }
   // استبدال/إرفاق ملف فاتورة جديد — نفس منطق POST أعلاه؛ ملف قديم على
   // Supabase Storage يبقى يتيماً بلا مشكلة (نفس منطق حذف صور المواعيد).

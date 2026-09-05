@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -13,6 +13,11 @@ import { CustodyTab } from './Custody.js';
 // امتداد رابط ملف الفاتورة يحدد أهو صورة (تُعرض كمصغّرة) أو PDF (يُعرض
 // كرابط/أيقونة فقط) — لا يوجد حقل نوع منفصل، فنشتقه من الرابط نفسه.
 const isPdfInvoiceFile = (url: string) => /\.pdf(\?|$)/i.test(url);
+
+// نفس منطق احتساب الضريبة في computeExpenseTax على السيرفر (server/routes/api.ts)
+// بالضبط — يُستخدم هنا فقط لعرض معاينة حيّة قبل الحفظ؛ القيمة الفعلية
+// المحفوظة تُحتسَب من جديد على السيرفر دائماً.
+const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 
 export default function Expenses() {
   const { user, can } = useAuth();
@@ -122,6 +127,26 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
   }, [expenses]);
   const categoryGrandTotal = categoryTotals.reduce((sum, c) => sum + c.total, 0);
 
+  // ضريبة المشتريات (input VAT) — إجمالي tax_amount لكل مصروف مُعلَّم كفاتورة
+  // ضريبية (is_tax_invoice)، لتُحتسب لاحقاً ضمن أي إقرار ضريبي (مقابل ضريبة
+  // المبيعات المحتسبة أصلاً في تبويب المبيعات — انظر VAT_RATE/vat_amount).
+  const purchaseVatTotals = useMemo(() => {
+    const today = new Date().toDateString();
+    const thisMonth = new Date().getMonth();
+    const thisYear = new Date().getFullYear();
+    let daily = 0,
+      monthly = 0,
+      annual = 0;
+    for (const e of expenses) {
+      if (!e.is_tax_invoice || !e.tax_amount) continue;
+      const d = new Date(e.date);
+      if (d.toDateString() === today) daily += e.tax_amount;
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.tax_amount;
+      if (d.getFullYear() === thisYear) annual += e.tax_amount;
+    }
+    return { daily, monthly, annual };
+  }, [expenses]);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <button
@@ -194,6 +219,18 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
           </div>
         )}
       </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 lg:col-span-2">
+        <div className="mb-4 flex items-center justify-between">
+          <span className="text-sm font-semibold text-slate-800">{t('ضريبة القيمة المضافة على المشتريات')}</span>
+          <span className="text-xs text-slate-400">{t('من الفواتير الضريبية فقط')}</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <OverviewStat label={t('اليوم')} value={formatMoney(purchaseVatTotals.daily)} />
+          <OverviewStat label={t('هذا الشهر')} value={formatMoney(purchaseVatTotals.monthly)} />
+          <OverviewStat label={t('هذه السنة')} value={formatMoney(purchaseVatTotals.annual)} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -218,6 +255,8 @@ function GeneralExpensesTab() {
   const [subCategory, setSubCategory] = useState('');
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [amount, setAmount] = useState('');
+  const [isTaxInvoice, setIsTaxInvoice] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
@@ -274,7 +313,8 @@ function GeneralExpensesTab() {
         title: form.get('title'),
         category,
         sub_category: subCategory || undefined,
-        amount: Number(form.get('amount')),
+        amount: Number(amount),
+        is_tax_invoice: isTaxInvoice,
         date: form.get('date'),
         invoice_number: form.get('invoice_number') || undefined,
         payment_method: form.get('payment_method'),
@@ -289,6 +329,8 @@ function GeneralExpensesTab() {
       setSubCategory('');
       setAdvanceEmployeeId('');
       setInvoiceFile(null);
+      setAmount('');
+      setIsTaxInvoice(false);
       refresh();
     } finally {
       setSubmitting(false);
@@ -348,7 +390,14 @@ function GeneralExpensesTab() {
                     </span>
                     {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
                   </td>
-                  <td className="p-3 text-slate-600">{formatMoney(e.amount)}</td>
+                  <td className="p-3 text-slate-600">
+                    {formatMoney(e.amount)}
+                    {e.is_tax_invoice && (
+                      <div className="mt-0.5 text-[10px] font-medium text-brand-600">
+                        {t('ضريبية')} · {formatMoney(e.tax_amount ?? 0)}
+                      </div>
+                    )}
+                  </td>
                   <td className="p-3 text-slate-600">{methodName(e.payment_method)}</td>
                   <td className="p-3 text-slate-600">{e.recorded_by_name ?? '—'}</td>
                   {canEditDelete && (
@@ -388,6 +437,8 @@ function GeneralExpensesTab() {
                 onClick={() => {
                   setShowForm(false);
                   setInvoiceFile(null);
+                  setAmount('');
+                  setIsTaxInvoice(false);
                 }}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -454,7 +505,15 @@ function GeneralExpensesTab() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
-                  <input type="number" name="amount" min={0} step="0.01" required className="input" />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    required
+                    className="input"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
@@ -477,6 +536,20 @@ function GeneralExpensesTab() {
                 <span className="mb-1 block font-medium text-slate-600">{t('رقم الفاتورة (اختياري)')}</span>
                 <input name="invoice_number" className="input" />
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isTaxInvoice}
+                  onChange={(e) => setIsTaxInvoice(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                />
+                <span className="font-medium text-slate-600">{t('فاتورة ضريبية (تُحتسب ضمن ضريبة القيمة المضافة)')}</span>
+              </label>
+              {isTaxInvoice && Number(amount) > 0 && (
+                <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+                  {t('قيمة الضريبة المحتسبة')}: {formatMoney(previewExpenseTax(Number(amount)))}
+                </div>
+              )}
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('ملف الفاتورة (صورة أو PDF، اختياري)')}</span>
                 <input
@@ -565,6 +638,7 @@ function ExpenseDetailModal({
   const [holderId, setHolderId] = useState(expense.custody_holder_id ?? '');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
+  const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
 
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
@@ -579,6 +653,7 @@ function ExpenseDetailModal({
         category,
         sub_category: subCategory || undefined,
         amount,
+        is_tax_invoice: isTaxInvoice,
         date,
         invoice_number: invoiceNumber || undefined,
         payment_method: paymentMethod,
@@ -632,6 +707,11 @@ function ExpenseDetailModal({
               <div className="mt-2 space-y-1.5 text-sm text-slate-600">
                 <div>{t('التصنيف')}: {expense.category}{expense.sub_category ? ` — ${expense.sub_category}` : ''}</div>
                 <div>{t('المبلغ')}: {formatMoney(expense.amount)}</div>
+                {expense.is_tax_invoice && (
+                  <div className="font-medium text-brand-600">
+                    {t('فاتورة ضريبية')} — {t('قيمة الضريبة')}: {formatMoney(expense.tax_amount ?? 0)}
+                  </div>
+                )}
                 <div>{t('التاريخ')}: {expense.date}</div>
                 <div>{t('طريقة الدفع')}: {methodName(expense.payment_method)}</div>
                 {expense.invoice_number && <div>{t('رقم الفاتورة')}: {expense.invoice_number}</div>}
@@ -739,6 +819,20 @@ function ExpenseDetailModal({
               <span className="mb-1 block font-medium text-slate-600">{t('رقم الفاتورة (اختياري)')}</span>
               <input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className="input" />
             </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isTaxInvoice}
+                onChange={(e) => setIsTaxInvoice(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600"
+              />
+              <span className="font-medium text-slate-600">{t('فاتورة ضريبية (تُحتسب ضمن ضريبة القيمة المضافة)')}</span>
+            </label>
+            {isTaxInvoice && amount > 0 && (
+              <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+                {t('قيمة الضريبة المحتسبة')}: {formatMoney(previewExpenseTax(amount))}
+              </div>
+            )}
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{t('ملف الفاتورة (صورة أو PDF)')}</span>
               {expense.invoice_file_url && !removeInvoiceFile && !invoiceFile && (

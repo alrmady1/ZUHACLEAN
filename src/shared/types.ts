@@ -724,6 +724,12 @@ export interface Expense {
   sub_category?: string;
   period_type: 'daily' | 'monthly' | 'annual';
   amount: number;
+  // هل فاتورة هذا المصروف "فاتورة ضريبية" (صادرة من مورد مسجَّل في ضريبة
+  // القيمة المضافة)؟ عند تفعيلها يُحتسَب tax_amount تلقائياً من amount
+  // (بافتراض أن amount شامل الضريبة — نفس اصطلاح كل تسعير في هذا النظام،
+  // انظر VAT_RATE)، ليدخل ضمن ملخص "ضريبة القيمة المضافة على المشتريات"
+  // في نظرة عامة المصروفات (Expenses.tsx).
+  is_tax_invoice?: boolean;
   tax_amount?: number;
   date: string;
   invoice_number?: string;
