@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Receipt as SalesIcon, Wallet as ExpensesIcon, Users as EmployeesIcon, Percent as CommissionsIcon } from 'lucide-react';
+import { Receipt as SalesIcon, Wallet as ExpensesIcon, Users as EmployeesIcon, Percent as CommissionsIcon, Landmark as TaxIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import Sales from './Sales.js';
 import Expenses from './Expenses.js';
 import { EmployeeAccountsTab } from './EmployeeAccounts.js';
 import { CommissionsDashboardTab } from './Commissions.js';
+import { TaxTab } from './Tax.js';
 
-type Tab = 'sales' | 'expenses' | 'employees' | 'commissions';
+type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax';
 
 // صفحة "المحاسبة" — تجمع "المبيعات والفواتير" و"المصروفات" (كانتا
 // صفحتين مستقلتين في القائمة الجانبية) وتبويبي "كشف حساب الموظفين"
@@ -21,14 +22,17 @@ export default function Accounting() {
   const canExpenses = can('view_expenses_page');
   const canEmployees = can('view_employee_accounts');
   const canCommissions = can('view_commissions');
-  const availableCount = [canSales, canExpenses, canEmployees, canCommissions].filter(Boolean).length;
-  const [tab, setTab] = useState<Tab>(canSales ? 'sales' : canExpenses ? 'expenses' : canEmployees ? 'employees' : 'commissions');
+  const canTax = can('view_tax_page');
+  const availableCount = [canSales, canExpenses, canEmployees, canCommissions, canTax].filter(Boolean).length;
+  const [tab, setTab] = useState<Tab>(
+    canSales ? 'sales' : canExpenses ? 'expenses' : canEmployees ? 'employees' : canCommissions ? 'commissions' : 'tax',
+  );
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-slate-800">{t('المحاسبة')}</h1>
-        <p className="text-sm text-slate-400">{t('المبيعات والفواتير والمصروفات وكشف حساب الموظفين والعمولات في مكان واحد')}</p>
+        <p className="text-sm text-slate-400">{t('المبيعات والفواتير والمصروفات وكشف حساب الموظفين والعمولات والضريبة في مكان واحد')}</p>
       </div>
 
       {availableCount > 1 && (
@@ -65,6 +69,14 @@ export default function Accounting() {
               <CommissionsIcon className="h-4 w-4" /> {t('العمولات')}
             </button>
           )}
+          {canTax && (
+            <button
+              onClick={() => setTab('tax')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'tax' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <TaxIcon className="h-4 w-4" /> {t('الضريبة')}
+            </button>
+          )}
         </div>
       )}
 
@@ -72,6 +84,7 @@ export default function Accounting() {
       {tab === 'expenses' && canExpenses && <Expenses />}
       {tab === 'employees' && canEmployees && <EmployeeAccountsTab />}
       {tab === 'commissions' && canCommissions && <CommissionsDashboardTab />}
+      {tab === 'tax' && canTax && <TaxTab />}
     </div>
   );
 }

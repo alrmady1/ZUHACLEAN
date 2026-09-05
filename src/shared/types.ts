@@ -91,7 +91,8 @@ export type PermissionKey =
   | 'view_employee_accounts'
   | 'view_commissions'
   | 'manage_commissions'
-  | 'edit_delete_expenses';
+  | 'edit_delete_expenses'
+  | 'view_tax_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -138,6 +139,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_commissions: 'الاطلاع على تبويب العمولات (المحاسبة)',
   manage_commissions: 'تعديل إعدادات العمولات (النسب، المستهدفات، المستحقين)',
   edit_delete_expenses: 'الاطلاع على تفاصيل المصروفات وتعديلها وحذفها',
+  view_tax_page: 'الاطلاع على تبويب الضريبة (المحاسبة)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -220,6 +222,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // العام ومدير النظام فقط افتراضياً (لا المشرف الإداري رغم امتلاكه
   // edit_custody_expenses الذي يتحكم فقط بإضافة مصروف جديد).
   edit_delete_expenses: GM_ADMIN,
+  view_tax_page: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
