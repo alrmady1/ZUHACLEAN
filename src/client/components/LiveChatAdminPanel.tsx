@@ -6,6 +6,8 @@ import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
+const SENDER_NAME_STORAGE_KEY = 'zaha-live-chat-sender-name';
+
 // لوحة مراسلة "الدردشة المباشرة" الإدارية — قائمة المحادثات + محادثة
 // مفتوحة + رد يدوي، مستخدَمة في مكانين: كبطاقة كاملة العرض داخل الإعدادات
 // ← الطلبات الخارجية (compact=false)، وداخل نافذة الأيقونة العائمة
@@ -26,6 +28,17 @@ export default function LiveChatAdminPanel({
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  // الاسم الذي يظهر للعميل مع كل رد — يبدأ باسم الحساب المسجَّل دخوله،
+  // لكنه قابل للتعديل يدوياً (مثلاً لكتابة "فريق الدعم" بدل اسم شخصي، أو
+  // لو أكثر من موظف يشارك نفس الحساب) ويُحفظ في المتصفح ليبقى كما هو في
+  // المرة القادمة.
+  const [senderName, setSenderName] = useState(() => {
+    try {
+      return localStorage.getItem(SENDER_NAME_STORAGE_KEY) || user?.full_name || '';
+    } catch {
+      return user?.full_name || '';
+    }
+  });
 
   function refresh() {
     api.get<LiveChatThread[]>('/chat/threads').then((list) => {
@@ -55,13 +68,22 @@ export default function LiveChatAdminPanel({
     }
   }
 
+  function updateSenderName(value: string) {
+    setSenderName(value);
+    try {
+      localStorage.setItem(SENDER_NAME_STORAGE_KEY, value);
+    } catch {
+      // غير حرِج — الاسم يبقى صحيحاً لهذه الجلسة حتى لو تعذَّر حفظه.
+    }
+  }
+
   async function sendReply() {
     if (!openThread || !reply.trim() || sending) return;
     setSending(true);
     try {
       const updated = await api.post<LiveChatThread>(`/chat/threads/${openThread.id}/reply`, {
         text: reply.trim(),
-        sender_name: user?.full_name,
+        sender_name: senderName.trim() || user?.full_name,
       });
       setOpenThread(updated);
       setReply('');
@@ -121,7 +143,10 @@ export default function LiveChatAdminPanel({
               <ChevronRight className="h-4 w-4" />
             </button>
           )}
-          <span className="text-sm font-semibold text-slate-800">{openThread.customer_name || t('زائر')}</span>
+          <div>
+            <div className="text-sm font-bold text-slate-800">{openThread.customer_name || t('زائر')}</div>
+            {openThread.customer_phone && <div dir="ltr" className="text-end text-[11px] text-slate-400">{openThread.customer_phone}</div>}
+          </div>
         </div>
         <button onClick={() => toggleStatus(openThread)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
           {openThread.status === 'open' ? t('إغلاق المحادثة') : t('إعادة فتح المحادثة')}
@@ -141,26 +166,34 @@ export default function LiveChatAdminPanel({
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 border-t border-slate-100 p-2.5">
+      <div className="border-t border-slate-100 p-2.5">
         <input
-          value={reply}
-          onChange={(e) => setReply(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              void sendReply();
-            }
-          }}
-          placeholder={t('اكتب ردك…')}
-          className="input flex-1"
+          value={senderName}
+          onChange={(e) => updateSenderName(e.target.value)}
+          placeholder={t('اسمك الظاهر للعميل')}
+          className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none"
         />
-        <button
-          onClick={() => void sendReply()}
-          disabled={!reply.trim() || sending}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
-        >
-          <Send className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void sendReply();
+              }
+            }}
+            placeholder={t('اكتب ردك…')}
+            className="input flex-1"
+          />
+          <button
+            onClick={() => void sendReply()}
+            disabled={!reply.trim() || sending}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white disabled:opacity-40"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </>
   );
