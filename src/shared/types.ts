@@ -92,7 +92,8 @@ export type PermissionKey =
   | 'view_commissions'
   | 'manage_commissions'
   | 'edit_delete_expenses'
-  | 'view_tax_page';
+  | 'view_tax_page'
+  | 'view_live_chat';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -140,6 +141,10 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   manage_commissions: 'تعديل إعدادات العمولات (النسب، المستهدفات، المستحقين)',
   edit_delete_expenses: 'الاطلاع على تفاصيل المصروفات وتعديلها وحذفها',
   view_tax_page: 'الاطلاع على تبويب الضريبة (المحاسبة)',
+  // تتحكم فقط بظهور أيقونة "الدردشة المباشرة" العائمة في كل صفحات النظام
+  // (AdminLiveChatWidget.tsx) — لا تخفي قسمها داخل الإعدادات ← الطلبات
+  // الخارجية، ذاك يبقى تابعاً لصلاحية edit_landing_page كالمعتاد.
+  view_live_chat: 'إظهار أيقونة الدردشة المباشرة العائمة',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -223,6 +228,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // edit_custody_expenses الذي يتحكم فقط بإضافة مصروف جديد).
   edit_delete_expenses: GM_ADMIN,
   view_tax_page: GM_ADMIN,
+  view_live_chat: GM_ADMIN_ADMINSUP,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير

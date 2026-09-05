@@ -11,13 +11,14 @@ const UNREAD_POLL_MS = 15000;
 // أيقونة عائمة ظاهرة في كل صفحات النظام (مركَّبة في Layout.tsx) — وصول
 // سريع لمحادثات "الدردشة المباشرة" (LiveChatWidget.tsx على صفحة "اطلب
 // الخدمة" العامة) دون الحاجة للذهاب للإعدادات ← الطلبات الخارجية في كل
-// مرة. نفس صلاحية عرض/إدارة تلك المحادثات هناك (edit_landing_page).
+// مرة. صلاحية مستقلة (view_live_chat) قابلة للتعديل من الإعدادات ←
+// الصلاحيات — افتراضياً مخفية عن المشرف الميداني والفنيين.
 export default function AdminLiveChatWidget() {
   const { can } = useAuth();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const allowed = can('edit_landing_page');
+  const allowed = can('view_live_chat');
 
   // يستطلع عدد المحادثات غير المقروءة دورياً حتى والنافذة مغلقة، لتظهر
   // الشارة الحمراء فوراً دون فتح النافذة — اللوحة نفسها (LiveChatAdminPanel)
