@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
 import StatCard from '../components/StatCard.js';
 import { api } from '../lib/api.js';
-import type { Appointment } from '../../shared/types.js';
+import type { Appointment, Customer } from '../../shared/types.js';
 import { AppointmentStatusBadge } from '../components/Badge.js';
 import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
+import DayClock from '../components/DayClock.js';
 
 function AppointmentCard({
   appt,
@@ -272,32 +273,40 @@ function AppointmentRow({ appt, expanded, onToggle }: { appt: Appointment; expan
   );
 }
 
-type TechView = 'all' | 'day' | 'month';
+type TechView = 'clock' | 'all' | 'day' | 'month';
 type TechDisplay = 'cards' | 'rows';
 
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
   const { t, tt } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
     user?.role === 'technician' ? user.id : undefined,
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  // خيارات إضافية لعرض المواعيد: "الكل" (السلوك الحالي، قائمة زمنية كاملة)،
-  // أو جدول "يومي"، أو جدول "شهري" — الأخيران يستخدمان نفس بطاقة الموعد
-  // الكاملة (صور، رفع...) لكن مقسّمة على تاريخ محدد بدل قائمة واحدة طويلة.
-  const [view, setView] = useState<TechView>('all');
+  // خيارات عرض المواعيد: "ساعة" (الافتراضي — قرص ساعة تفاعلي لمواعيد يوم
+  // واحد، انظر DayClock.tsx)، "الكل" (قائمة زمنية كاملة)، أو جدول "يومي"،
+  // أو جدول "شهري" — الأخيران يستخدمان نفس بطاقة الموعد الكاملة (صور،
+  // رفع...) لكن مقسّمة على تاريخ محدد بدل قائمة واحدة طويلة.
+  const [view, setView] = useState<TechView>('clock');
   const [calDate, setCalDate] = useState(new Date());
   // عرض "بطاقات" (الحالي) أو "أسطر" (سطر واحد مضغوط لكل موعد، يُفتح
   // بالنقر لإظهار البطاقة الكاملة تحته) — ينطبق على عرضي "الكل" و"يومي".
   const [display, setDisplay] = useState<TechDisplay>('cards');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // الموعد المختار من قرص الساعة (عرض "ساعة") — تُعرض بطاقته الكاملة تحت
+  // القرص مباشرة، بنفس بطاقة عرضي "الكل"/"يومي" (صور، حالة...).
+  const [clockSelectedId, setClockSelectedId] = useState<string | null>(null);
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
   }
 
   useEffect(refresh, []);
+  useEffect(() => {
+    api.get<Customer[]>('/customers').then(setCustomers);
+  }, []);
 
   const technicians = allProfiles.filter((p) => p.role === 'technician');
   const effectiveId = asTechnician ?? technicians[0]?.id;
@@ -431,6 +440,7 @@ export default function TechnicianPortal() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
           {([
+            ['clock', 'عرض الساعة'],
             ['all', 'الكل'],
             ['day', 'يومي'],
             ['month', 'شهري'],
@@ -444,7 +454,7 @@ export default function TechnicianPortal() {
             </button>
           ))}
         </div>
-        {view !== 'month' && (
+        {view !== 'month' && view !== 'clock' && (
           <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
             <button
               onClick={() => setDisplay('cards')}
@@ -463,6 +473,23 @@ export default function TechnicianPortal() {
           </div>
         )}
       </div>
+
+      {view === 'clock' && (
+        <div className="space-y-3">
+          <DayClock
+            appointments={mine}
+            customers={customers}
+            onSelectAppointment={(appt) => setClockSelectedId(appt.id)}
+          />
+          {clockSelectedId &&
+            (() => {
+              const selected = appointments.find((a) => a.id === clockSelectedId);
+              return selected ? (
+                <AppointmentCard appt={selected} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+              ) : null;
+            })()}
+        </div>
+      )}
 
       {view === 'all' && (
         <>
