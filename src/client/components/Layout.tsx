@@ -11,7 +11,6 @@ import {
   Smartphone,
   Settings as SettingsIcon,
   LogOut,
-  Sparkles,
   MapPin,
   X,
 } from 'lucide-react';
@@ -159,7 +158,7 @@ export default function Layout() {
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-brand-400" />
+            <img src="/icon-192.png" alt="زهى" className="h-8 w-8 rounded-lg" />
             <div>
               <div className="text-lg font-bold text-white">{t('زهى')}</div>
               <div className="text-xs text-slate-400">{t('نظام التشغيل والصيانة')}</div>

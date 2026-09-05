@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Sparkles, Star, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Star, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 
 // صفحة تقييم عامة — بلا تسجيل دخول عمداً — يفتحها العميل من رابط واتساب
@@ -61,9 +61,7 @@ export default function RatePage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-900 p-6">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600">
-            <Sparkles className="h-7 w-7 text-white" />
-          </div>
+          <img src="/icon-192.png" alt="زهى" className="mb-4 h-14 w-14 rounded-2xl" />
           <h1 className="text-xl font-bold text-slate-800">زهى</h1>
           <p className="mt-1 text-sm text-slate-400">لأعمال الصيانة والتنظيف</p>
         </div>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Sparkles, User, Lock, AlertCircle, Languages } from 'lucide-react';
+import { User, Lock, AlertCircle, Languages } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import type { Lang } from '../lib/date.js';
@@ -59,9 +59,7 @@ export default function Login() {
       </div>
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600">
-            <Sparkles className="h-7 w-7 text-white" />
-          </div>
+          <img src="/icon-192.png" alt="زهى" className="mb-4 h-14 w-14 rounded-2xl" />
           <h1 className="text-xl font-bold text-slate-800">{t('مرحباً بك في زهى')}</h1>
           <p className="mt-1 text-sm text-slate-400">{t('لأعمال الصيانة والتنظيف')}</p>
         </div>
