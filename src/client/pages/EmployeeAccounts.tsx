@@ -58,8 +58,15 @@ export function EmployeeAccountsTab() {
   const summaries = useMemo<EmployeeSummary[]>(() => {
     return allProfiles
       .map((p) => {
-        const salaryEntries = expenses.filter((e) => e.category === SALARY_CATEGORY_NAME && e.custody_holder_id === p.id);
-        const advanceEntries = expenses.filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === p.id);
+        // الأحدث أولاً — نفس ترتيب كل عرض آخر لمصروفات في هذا التطبيق
+        // (جدول المصروفات العامة، الجدول الزمني للعهد في Custody.tsx).
+        const byDateDesc = (a: Expense, b: Expense) => new Date(b.date).getTime() - new Date(a.date).getTime();
+        const salaryEntries = expenses
+          .filter((e) => e.category === SALARY_CATEGORY_NAME && e.custody_holder_id === p.id)
+          .sort(byDateDesc);
+        const advanceEntries = expenses
+          .filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === p.id)
+          .sort(byDateDesc);
         const custodyGiven = expenses
           .filter((e) => e.category === CUSTODY_CATEGORY_NAME && e.custody_holder_id === p.id)
           .reduce((sum, e) => sum + e.amount, 0);
