@@ -59,7 +59,7 @@ function ReportStat({
 }
 
 export default function Sales() {
-  const { t, tt } = useI18n();
+  const { t, tt, lang } = useI18n();
   const { user } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -103,11 +103,14 @@ export default function Sales() {
     const sorted = periodAppts.slice().sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
     const map = new Map<string, number>();
     for (const a of sorted) {
-      const key = new Date(a.scheduled_at).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
+      // كانت مثبَّتة على 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — نفس
+      // العلة المصحَّحة في TechnicianPortal.tsx/Appointments.tsx.
+      const chartLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+      const key = new Date(a.scheduled_at).toLocaleDateString(chartLocale, { day: 'numeric', month: 'short' });
       map.set(key, (map.get(key) ?? 0) + a.amount);
     }
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [periodAppts]);
+  }, [periodAppts, lang]);
 
   const paymentBreakdown = useMemo(() => {
     const map = new Map<string, number>();

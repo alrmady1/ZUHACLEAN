@@ -278,7 +278,7 @@ type TechDisplay = 'cards' | 'rows';
 
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
@@ -346,10 +346,15 @@ export default function TechnicianPortal() {
     setCalDate(d);
   }
 
+  // "-u-nu-latn" يُبقي الأرقام لاتينية بالبنغالية، مطابقةً لنفس نمط
+  // formatGregorianDate في DayClock.tsx (كانت هذه السطور مثبَّتة على
+  // 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — سبب ظهور اسم اليوم/الشهر
+  // بالعربي حتى في وضع الإنجليزي/البنغالي).
+  const calLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
   const calLabel =
     view === 'day'
-      ? calDate.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })
-      : calDate.toLocaleDateString('ar-SA', { month: 'long', year: 'numeric' });
+      ? calDate.toLocaleDateString(calLocale, { weekday: 'long', day: 'numeric', month: 'long' })
+      : calDate.toLocaleDateString(calLocale, { month: 'long', year: 'numeric' });
 
   const dayAppts = apptsByDate.get(calDate.toDateString()) ?? [];
 
