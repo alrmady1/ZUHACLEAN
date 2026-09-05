@@ -278,7 +278,7 @@ type TechDisplay = 'cards' | 'rows';
 
 export default function TechnicianPortal() {
   const { user, allProfiles } = useAuth();
-  const { t, tt } = useI18n();
+  const { t } = useI18n();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
@@ -406,7 +406,7 @@ export default function TechnicianPortal() {
           label={t('مكتملة اليوم')}
           value={String(completedTodayCount)}
           valueTint="text-emerald-600"
-          sub={tt(`${completionRate}% نسبة الإنجاز`, `${completionRate}% Completion rate`)}
+          sub={`${completionRate}% ${t('نسبة الإنجاز')}`}
           subTint="text-emerald-600"
         />
         <StatCard
