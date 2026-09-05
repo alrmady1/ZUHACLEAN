@@ -107,8 +107,9 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
       </div>
 
       {isTechnician ? (
-        // خيار لغة ثالثة (بنغالية) مخصَّص للفنيين الميدانيين تحديداً — قائمة
-        // منسدلة بدل زر التبديل الثنائي المعتاد، بقية المستخدمين لا يرونها.
+        // خيارات لغة إضافية (بنغالية وأردية) مخصَّصة للفنيين الميدانيين
+        // تحديداً — قائمة منسدلة بدل زر التبديل الثنائي المعتاد، بقية
+        // المستخدمين لا يرونها.
         <div className="relative flex shrink-0 items-center">
           <Languages className="pointer-events-none absolute start-2.5 h-4 w-4 text-slate-400" />
           <select
@@ -120,6 +121,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
             <option value="ar">العربية</option>
             <option value="en">English</option>
             <option value="bn">বাংলা</option>
+            <option value="ur">اردو</option>
           </select>
         </div>
       ) : (

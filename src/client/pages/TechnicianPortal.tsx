@@ -350,7 +350,7 @@ export default function TechnicianPortal() {
   // formatGregorianDate في DayClock.tsx (كانت هذه السطور مثبَّتة على
   // 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — سبب ظهور اسم اليوم/الشهر
   // بالعربي حتى في وضع الإنجليزي/البنغالي).
-  const calLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+  const calLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-US';
   const calLabel =
     view === 'day'
       ? calDate.toLocaleDateString(calLocale, { weekday: 'long', day: 'numeric', month: 'long' })

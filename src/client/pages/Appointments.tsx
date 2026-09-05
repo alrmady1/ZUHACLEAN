@@ -352,7 +352,7 @@ export default function Appointments() {
 
   // كانت هذه مثبَّتة على 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — نفس
   // العلة المصحَّحة في TechnicianPortal.tsx/DayClock.tsx.
-  const calendarLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+  const calendarLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-US';
   const calendarHeaderLabel =
     calSubView === 'day'
       ? calendarDate.toLocaleDateString(calendarLocale, { day: 'numeric', month: 'long', year: 'numeric' })

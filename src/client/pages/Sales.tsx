@@ -105,7 +105,7 @@ export default function Sales() {
     for (const a of sorted) {
       // كانت مثبَّتة على 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — نفس
       // العلة المصحَّحة في TechnicianPortal.tsx/Appointments.tsx.
-      const chartLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+      const chartLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-US';
       const key = new Date(a.scheduled_at).toLocaleDateString(chartLocale, { day: 'numeric', month: 'short' });
       map.set(key, (map.get(key) ?? 0) + a.amount);
     }

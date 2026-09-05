@@ -53,6 +53,7 @@ export default function Login() {
             <option value="ar">العربية</option>
             <option value="en">English</option>
             <option value="bn">বাংলা</option>
+            <option value="ur">اردو</option>
           </select>
         </div>
       </div>

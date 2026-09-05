@@ -51,7 +51,7 @@ function recentMonths(): string[] {
 
 function monthLabel(month: string, lang: Lang): string {
   const [y, m] = month.split('-').map(Number);
-  const locale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : 'en-US';
+  const locale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-US';
   return new Date(y, m - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric', calendar: 'gregory' });
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, PenLine, Eraser } from 'lucide-react';
+import { Plus, Trash2, PenLine, Eraser, Search, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { RiyadhZone, NeighborhoodZoneAssignment, WorkersHousingLocation } from '../../shared/types.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
@@ -26,6 +26,13 @@ export default function RiyadhZonesTab() {
   const [newNeighborhood, setNewNeighborhood] = useState('');
   const [newNeighborhoodZone, setNewNeighborhoodZone] = useState('');
   const [drawingForZoneId, setDrawingForZoneId] = useState<string | null>(null);
+  // البحث عن حيّ على الخريطة (Nominatim، بحث OpenStreetMap المجاني —
+  // بلا مفتاح API، متوافق مع اختيار الخريطة المجانية أصلاً) — لتحديد موقع
+  // حيّ بصرياً قبل تحديد منطقته من الجدول أسفل الخريطة.
+  const [neighborhoodQuery, setNeighborhoodQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -33,6 +40,7 @@ export default function RiyadhZonesTab() {
   const featureGroup = useRef<any>(null);
   const drawHandler = useRef<any>(null);
   const housingMarker = useRef<any>(null);
+  const searchMarker = useRef<any>(null);
 
   function refresh() {
     api.get<RiyadhZone[]>('/riyadh-zones').then(setZones);
@@ -192,6 +200,48 @@ export default function RiyadhZonesTab() {
     setHousingLocation(updated);
   }
 
+  async function searchNeighborhood() {
+    const query = neighborhoodQuery.trim();
+    if (!query) return;
+    setSearching(true);
+    setSearchError('');
+    setSearchResults([]);
+    try {
+      // إضافة "الرياض، السعودية" للبحث نفسه (وليس فقط كمعامل منفصل) تحيّز
+      // النتائج فعلياً لمدينة الرياض بدل أي حيّ بنفس الاسم في مدينة أخرى.
+      const q = encodeURIComponent(`${query}, الرياض, السعودية`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=5&accept-language=ar`);
+      const data: { display_name: string; lat: string; lon: string }[] = await res.json();
+      if (data.length === 0) {
+        setSearchError(tt('لم يُعثر على نتائج لهذا الحي', 'No results found for this neighborhood'));
+      } else if (data.length === 1) {
+        selectSearchResult(data[0]);
+      } else {
+        setSearchResults(data);
+      }
+    } catch {
+      setSearchError(tt('تعذّر البحث — تأكد من الاتصال بالإنترنت', 'Search failed — check your internet connection'));
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function selectSearchResult(result: { display_name: string; lat: string; lon: string }) {
+    const map = mapInstance.current;
+    if (!map) return;
+    const lat = Number(result.lat);
+    const lon = Number(result.lon);
+    map.setView([lat, lon], 14);
+    if (searchMarker.current) map.removeLayer(searchMarker.current);
+    const marker = L.marker([lat, lon]).addTo(map);
+    marker.bindPopup(result.display_name).openPopup();
+    searchMarker.current = marker;
+    setSearchResults([]);
+    // تعبئة سريعة لحقل "إضافة حي" أسفل الخريطة — يبقى للمستخدم فقط اختيار
+    // المنطقة والضغط "إضافة حي" بعد تأكيد الموقع بصرياً.
+    setNewNeighborhood((prev) => prev || neighborhoodQuery.trim());
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -200,6 +250,63 @@ export default function RiyadhZonesTab() {
           {t('قسِّم الرياض إلى مناطق واربط كل حيّ بمنطقته — عند حجز موعد جديد يقترح النظام أفضل أيام الأسبوع لحيّ العميل تلقائياً، لتجميع عملاء المنطقة الواحدة وتقليل تنقّل الفريق الميداني')}
         </p>
       </div>
+
+      <div className="relative flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={neighborhoodQuery}
+            onChange={(e) => {
+              setNeighborhoodQuery(e.target.value);
+              setSearchError('');
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                searchNeighborhood();
+              }
+            }}
+            placeholder={t('ابحث عن حيّ لتحديد موقعه على الخريطة...')}
+            className="input ps-9 pe-9"
+          />
+          {neighborhoodQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setNeighborhoodQuery('');
+                setSearchResults([]);
+                setSearchError('');
+              }}
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {searchResults.length > 1 && (
+            <div className="absolute inset-x-0 top-full z-[1000] mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+              {searchResults.map((r, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => selectSearchResult(r)}
+                  className="block w-full truncate px-3 py-2 text-start text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  {r.display_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={searchNeighborhood}
+          disabled={searching || !neighborhoodQuery.trim()}
+          className="shrink-0 rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {searching ? t('جارِ البحث…') : t('بحث')}
+        </button>
+      </div>
+      {searchError && <p className="text-xs text-red-600">{searchError}</p>}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200">
         <div ref={mapRef} style={{ height: 420 }} />

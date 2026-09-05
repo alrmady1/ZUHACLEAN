@@ -1,4 +1,4 @@
-export type Lang = 'ar' | 'en' | 'bn';
+export type Lang = 'ar' | 'en' | 'bn' | 'ur';
 
 // حالة اللغة الحالية على مستوى الوحدة (module-level) بدل تمرير lang كمعامل
 // لكل نداء — هذه الدوال تُستدعى من عشرات الأماكن في كل صفحة، فتمرير معامل
@@ -10,24 +10,33 @@ export function setDateLang(lang: Lang): void {
   currentLang = lang;
 }
 
+// العربية والأردية كلتاهما تُقرآن من اليمين لليسار (نفس الرسم الأساسي،
+// الأردية تضيف حروفاً إضافية عليه) — يُستخدم في أكثر من دالة أدناه.
+function isRtlLang(lang: Lang): boolean {
+  return lang === 'ar' || lang === 'ur';
+}
+
 const WEEKDAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEKDAYS_BN = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+const WEEKDAYS_UR = ['اتوار', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ'];
 
 export function weekdayAr(iso: string): string {
   const day = new Date(iso).getDay();
   if (currentLang === 'en') return WEEKDAYS_EN[day];
   if (currentLang === 'bn') return WEEKDAYS_BN[day];
+  if (currentLang === 'ur') return WEEKDAYS_UR[day];
   return WEEKDAYS_AR[day];
 }
 
 // "-u-nu-latn" يُبقي الأرقام لاتينية (١٢٣ بدل ١٢٣ عربية-هندية أو ১২৩
-// بنغالية) — الفنيون البنغاليون في السعودية معتادون على الأرقام اللاتينية
-// في الاستخدام اليومي أكثر من الأرقام البنغالية الأصلية، فتبقى موحّدة عبر
-// كل اللغات، وتتغيّر فقط أسماء الأشهر/الأيام فعلياً.
+// بنغالية/اردو) — الفنيون معتادون على الأرقام اللاتينية في الاستخدام
+// اليومي أكثر من أرقام لغتهم الأصلية، فتبقى موحّدة عبر كل اللغات، وتتغيّر
+// فقط أسماء الأشهر/الأيام فعلياً.
 function localeFor(lang: Lang): string {
   if (lang === 'en') return 'en-US';
   if (lang === 'bn') return 'bn-BD-u-nu-latn';
+  if (lang === 'ur') return 'ur-PK-u-nu-latn';
   return 'ar-SA';
 }
 
@@ -44,14 +53,16 @@ export function formatDateAr(iso: string): string {
 // "2 hours" into "hours 2" on screen even though the DOM text is correct.
 // Word-first strings (formatMoney's "SAR 250", formatDateAr's "August 23,
 // 2026") already establish an LTR run on their own and don't need this.
-// Applies the same to Bengali — it also reads left-to-right.
+// Applies the same to Bengali — it also reads left-to-right. Not needed for
+// Urdu — it's RTL like Arabic, so a number-first run doesn't fight the page's
+// own direction the way it does for English/Bengali.
 function ltrIsolate(s: string): string {
   return `⁦${s}⁩`;
 }
 
 export function formatTimeAr(iso: string): string {
   const formatted = new Date(iso).toLocaleTimeString(localeFor(currentLang), { hour: '2-digit', minute: '2-digit' });
-  return currentLang === 'ar' ? formatted : ltrIsolate(formatted);
+  return isRtlLang(currentLang) ? formatted : ltrIsolate(formatted);
 }
 
 export function formatMoney(n: number): string {
@@ -79,6 +90,12 @@ function bengaliCounted(n: number, word: string): string {
   return `${n} ${word}`;
 }
 
+// الأردية تفرّق فقط بين المفرد (1) والجمع (غير ذلك) — أبسط من العربية،
+// أدقّ من نموذج البنغالية بلا تفريق إطلاقاً.
+function urduCounted(n: number, singular: string, plural: string): string {
+  return n === 1 ? `1 ${singular}` : `${n} ${plural}`;
+}
+
 export function formatDuration(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -92,6 +109,11 @@ export function formatDuration(totalMinutes: number): string {
     if (hours > 0) parts.push(bengaliCounted(hours, 'ঘণ্টা'));
     if (minutes > 0) parts.push(bengaliCounted(minutes, 'মিনিট'));
     return ltrIsolate(parts.length > 0 ? parts.join(' ') : '0 মিনিট');
+  }
+  if (currentLang === 'ur') {
+    if (hours > 0) parts.push(urduCounted(hours, 'گھنٹہ', 'گھنٹے'));
+    if (minutes > 0) parts.push(urduCounted(minutes, 'منٹ', 'منٹ'));
+    return parts.length > 0 ? parts.join(' اور ') : '0 منٹ';
   }
   if (hours > 0) parts.push(arabicCounted(hours, 'ساعة واحدة', 'ساعتان', 'ساعات', 'ساعة'));
   if (minutes > 0) parts.push(arabicCounted(minutes, 'دقيقة واحدة', 'دقيقتان', 'دقائق', 'دقيقة'));

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Cairo", "Noto Sans Bengali", "Segoe UI", Tahoma, sans-serif;
+  --font-sans: "Cairo", "Noto Sans Bengali", "Noto Nastaliq Urdu", "Segoe UI", Tahoma, sans-serif;
   /* Brand blue: matches the reference dashboard's primary buttons and
      accents. Every brand-colored utility class in the app reads from
      these tokens, so changing them here re-themes the whole site. */
