@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText } from 'lucide-react';
+import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile } from '../../shared/types.js';
 import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
@@ -18,6 +18,67 @@ const isPdfInvoiceFile = (url: string) => /\.pdf(\?|$)/i.test(url);
 // بالضبط — يُستخدم هنا فقط لعرض معاينة حيّة قبل الحفظ؛ القيمة الفعلية
 // المحفوظة تُحتسَب من جديد على السيرفر دائماً.
 const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
+
+// إعادة ترتيب/عرض جدول المصروفات العامة — حسب أي عمود ينقر عليه المستخدم
+// (التاريخ افتراضياً، أو المبلغ، أو نوع طريقة الدفع، أو الشخص المسجِّل،
+// أو نوع/تصنيف المصروف)، تصاعدياً أو تنازلياً (تبديل النقر على نفس العمود).
+type ExpenseSortField = 'date' | 'amount' | 'payment_method' | 'recorded_by' | 'category';
+type SortDir = 'asc' | 'desc';
+
+function sortExpenses(
+  list: Expense[],
+  field: ExpenseSortField,
+  dir: SortDir,
+  methodName: (id: string) => string,
+): Expense[] {
+  const cmp = (a: Expense, b: Expense): number => {
+    switch (field) {
+      case 'amount':
+        return a.amount - b.amount;
+      case 'payment_method':
+        return methodName(a.payment_method).localeCompare(methodName(b.payment_method), 'ar');
+      case 'recorded_by':
+        return (a.recorded_by_name ?? '').localeCompare(b.recorded_by_name ?? '', 'ar');
+      case 'category':
+        return a.category.localeCompare(b.category, 'ar');
+      case 'date':
+      default:
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+    }
+  };
+  return list.slice().sort((a, b) => (dir === 'asc' ? cmp(a, b) : -cmp(a, b)));
+}
+
+// رأس عمود قابل للنقر لإعادة الترتيب — سهم تصاعدي/تنازلي عند كونه العمود
+// النشط، وسهم محايد بلا لون عند غيره.
+function SortableHeader({
+  label,
+  field,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  field: ExpenseSortField;
+  active: ExpenseSortField;
+  dir: SortDir;
+  onClick: (field: ExpenseSortField) => void;
+}) {
+  const isActive = active === field;
+  const Icon = !isActive ? ArrowUpDown : dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className="p-3 text-start font-medium">
+      <button
+        type="button"
+        onClick={() => onClick(field)}
+        className={`flex items-center gap-1 ${isActive ? 'text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+      >
+        {label}
+        <Icon className="h-3 w-3" />
+      </button>
+    </th>
+  );
+}
 
 export default function Expenses() {
   const { user, can } = useAuth();
@@ -257,6 +318,8 @@ function GeneralExpensesTab() {
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [amount, setAmount] = useState('');
   const [isTaxInvoice, setIsTaxInvoice] = useState(false);
+  const [sortField, setSortField] = useState<ExpenseSortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
@@ -286,6 +349,15 @@ function GeneralExpensesTab() {
   }, []);
 
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
+
+  function handleSort(field: ExpenseSortField) {
+    if (field === sortField) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  }
 
   const totals = useMemo(() => {
     const today = new Date().toDateString();
@@ -366,20 +438,17 @@ function GeneralExpensesTab() {
         <table className="w-full text-start text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
+              <SortableHeader label={t('التاريخ')} field="date" active={sortField} dir={sortDir} onClick={handleSort} />
               <th className="p-3 text-start font-medium">{t('البند')}</th>
-              <th className="p-3 text-start font-medium">{t('التصنيف')}</th>
-              <th className="p-3 text-start font-medium">{t('المبلغ')}</th>
-              <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
-              <th className="p-3 text-start font-medium">{t('سجّله')}</th>
+              <SortableHeader label={t('التصنيف')} field="category" active={sortField} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label={t('المبلغ')} field="amount" active={sortField} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label={t('طريقة الدفع')} field="payment_method" active={sortField} dir={sortDir} onClick={handleSort} />
+              <SortableHeader label={t('سجّله')} field="recorded_by" active={sortField} dir={sortDir} onClick={handleSort} />
               {canEditDelete && <th className="p-3 text-start font-medium">{t('إجراء')}</th>}
             </tr>
           </thead>
           <tbody>
-            {generalExpenses
-              .slice()
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .map((e) => (
+            {sortExpenses(generalExpenses, sortField, sortDir, methodName).map((e) => (
                 <tr key={e.id} className="border-b border-slate-50 last:border-0">
                   <td className="p-3 text-slate-600">{e.date}</td>
                   <td className="p-3 font-medium text-slate-700">{e.title}</td>
