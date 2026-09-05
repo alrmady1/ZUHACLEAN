@@ -500,6 +500,36 @@ export interface WhatsappThread {
   updated_at: string;
 }
 
+// دردشة مباشرة (بشرية بالكامل، بلا ذكاء اصطناعي عمداً) من أيقونة عائمة في
+// صفحة "اطلب الخدمة" العامة (OrderPage.tsx) — بديل/تكملة لواتساب يبقى تحت
+// سيطرة الموظف الكاملة: كل رسالة عميل تُنبِّه الإدارة (leadNotifyProfileIds
+// في server/lib/push.ts)، والرد يكتبه موظف يدوياً من الإعدادات ← الطلبات
+// الخارجية (خلف نفس صلاحية edit_landing_page)، وليس أي رد آلي.
+export interface LiveChatMessage {
+  id: string;
+  direction: 'in' | 'out';
+  text: string;
+  created_at: string;
+  // اسم الموظف الذي أرسل الرد — direction: 'out' فقط.
+  sender_name?: string;
+}
+
+export type LiveChatThreadStatus = 'open' | 'closed';
+
+export interface LiveChatThread {
+  id: string;
+  // يُعبَّآن اختيارياً من العميل عند أول رسالة، إن رغب.
+  customer_name?: string;
+  customer_phone?: string;
+  messages: LiveChatMessage[];
+  status: LiveChatThreadStatus;
+  // true إذا وصلت رسالة عميل لم يطّلع عليها موظف بعد (تُصفَّر عند فتح
+  // الموظف للمحادثة من لوحة الإدارة) — تُستخدم لعرض شارة "جديد".
+  unread: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ألوان الهوية البصرية المعتمدة لصفحة "اطلب الخدمة" العامة — قابلة للتعديل
 // من الإعدادات ← الطلبات الخارجية (خلف صلاحية edit_landing_page).
 export interface LandingColors {

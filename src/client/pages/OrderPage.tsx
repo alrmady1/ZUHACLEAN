@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
+import LiveChatWidget from '../components/LiveChatWidget.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -445,6 +446,8 @@ export default function OrderPage() {
         </div>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
       </footer>
+
+      <LiveChatWidget />
     </div>
   );
 }

@@ -34,6 +34,8 @@ import type {
   Lead,
   WhatsappThread,
   WhatsappMessage,
+  LiveChatThread,
+  LiveChatMessage,
   LandingPageSettings,
   LandingService,
   CommissionConfig,
@@ -107,6 +109,9 @@ interface DbShape {
   // محادثات واتساب مع الرد الآلي (WhatsApp Cloud API webhook) — انظر
   // WhatsappThread في src/shared/types.ts وsrc/server/lib/whatsappBot.ts.
   whatsappThreads: WhatsappThread[];
+  // محادثات دردشة مباشرة (بشرية، بلا ذكاء اصطناعي) من أيقونة صفحة "اطلب
+  // الخدمة" العامة — انظر LiveChatThread في src/shared/types.ts.
+  liveChatThreads: LiveChatThread[];
   // نظام العمولات — سجل إعدادات واحد (singleton) + شرائح تصاعدية + من
   // يستحق فعلياً. انظر src/shared/types.ts.
   commissionConfig: CommissionConfig;
@@ -402,6 +407,7 @@ function seed(): DbShape {
         created_at: new Date().toISOString(),
       })),
     whatsappThreads: [],
+    liveChatThreads: [],
     commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
     // نقطة بداية مقترحة (نسب تصاعدية معقولة، معدَّلة بالكامل لاحقاً من
     // الإعدادات ← العمولات): 20-25 ألف 5%/2%، 25-30 ألف 7%/3%، فوق 30
@@ -471,6 +477,7 @@ async function load(): Promise<DbShape> {
         }));
     }
     if (!parsed.whatsappThreads) parsed.whatsappThreads = [];
+    if (!parsed.liveChatThreads) parsed.liveChatThreads = [];
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
     if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
@@ -848,6 +855,37 @@ export const store = {
       const idx = db.whatsappThreads.findIndex((t) => t.id === id);
       if (idx === -1) return false;
       db.whatsappThreads.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  liveChatThreads: {
+    // الأحدث تحديثاً أولاً — الأنسب للوحة "دردشة مباشرة" الإدارية (محادثة
+    // فيها رد جديد تصعد للأعلى)، بخلاف whatsappThreads التي تُرتَّب بترتيب
+    // الإدراج فقط.
+    list: () => [...db.liveChatThreads].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    get: (id: string) => db.liveChatThreads.find((t) => t.id === id),
+    insert: (t: LiveChatThread) => { db.liveChatThreads.push(t); persist(); return t; },
+    update: (id: string, patch: Partial<LiveChatThread>) => {
+      const idx = db.liveChatThreads.findIndex((t) => t.id === id);
+      if (idx === -1) return undefined;
+      db.liveChatThreads[idx] = { ...db.liveChatThreads[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.liveChatThreads[idx];
+    },
+    appendMessage: (id: string, message: LiveChatMessage, opts?: { unread?: boolean }) => {
+      const thread = db.liveChatThreads.find((t) => t.id === id);
+      if (!thread) return undefined;
+      thread.messages.push(message);
+      thread.updated_at = new Date().toISOString();
+      if (opts?.unread !== undefined) thread.unread = opts.unread;
+      persist();
+      return thread;
+    },
+    remove: (id: string) => {
+      const idx = db.liveChatThreads.findIndex((t) => t.id === id);
+      if (idx === -1) return false;
+      db.liveChatThreads.splice(idx, 1);
       persist();
       return true;
     },

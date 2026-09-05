@@ -37,6 +37,7 @@ import type {
   CommissionTier,
   CommissionEligibility,
   Expense,
+  LiveChatThread,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -1841,6 +1842,91 @@ api.post('/public/leads', (req, res) => {
     url: '/leads',
     tag: `lead-${lead.id}`,
   }).catch((err) => console.error('❌ فشل إرسال تنبيه الطلب الجديد:', err));
+});
+
+// ---------------------------------------------------------------------------
+// دردشة مباشرة — أيقونة عائمة في صفحة "اطلب الخدمة" العامة (بلا تسجيل
+// دخول)، بديل/تكملة لواتساب لكن بشرية بالكامل عمداً (بلا ذكاء اصطناعي):
+// كل رسالة عميل تُنبِّه الإدارة فوراً (نفس leadNotifyProfileIds أعلاه)،
+// والرد يكتبه موظف يدوياً من الإعدادات ← الطلبات الخارجية (LandingPageTab
+// في Settings.tsx، خلف صلاحية edit_landing_page). نقطتا POST/GET أدناه
+// عامتان (نفس مستوى حماية /public/leads)، والباقي للاستخدام الداخلي فقط.
+// ---------------------------------------------------------------------------
+api.post('/public/chat/messages', (req, res) => {
+  const body = req.body ?? {};
+  const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
+  if (!text) return res.status(400).json({ error: 'نص الرسالة مطلوب' });
+
+  const threadId = typeof body.thread_id === 'string' ? body.thread_id : undefined;
+  let thread = threadId ? store.liveChatThreads.get(threadId) : undefined;
+  const isNewThread = !thread;
+  if (!thread) {
+    const now = new Date().toISOString();
+    thread = store.liveChatThreads.insert({
+      id: store.id(),
+      customer_name: typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 200) : undefined,
+      customer_phone: typeof body.phone === 'string' && body.phone.trim() ? normalizeSaudiPhone(body.phone.trim()) : undefined,
+      messages: [],
+      status: 'open',
+      unread: false,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+
+  const updated = store.liveChatThreads.appendMessage(
+    thread.id,
+    { id: store.id(), direction: 'in', text, created_at: new Date().toISOString() },
+    { unread: true },
+  );
+  if (isNewThread) logActivity(req, `محادثة دردشة مباشرة جديدة${thread.customer_name ? ` من "${thread.customer_name}"` : ''}`);
+  res.status(201).json({ thread_id: thread.id, messages: updated?.messages ?? [] });
+
+  sendPushToProfiles(leadNotifyProfileIds(), {
+    title: 'رسالة دردشة مباشرة جديدة',
+    body: `${thread.customer_name ?? 'زائر'}: ${text.slice(0, 80)}`,
+    url: '/settings',
+    tag: `live-chat-${thread.id}`,
+  }).catch((err) => console.error('❌ فشل إرسال تنبيه الدردشة المباشرة:', err));
+});
+
+// يستطلعها العميل (polling) بعد إرسال أول رسالة ليرى ردود الموظف.
+api.get('/public/chat/:id/messages', (req, res) => {
+  const thread = store.liveChatThreads.get(req.params.id);
+  if (!thread) return res.status(404).json({ error: 'not found' });
+  res.json({ messages: thread.messages, status: thread.status });
+});
+
+api.get('/chat/threads', (_req, res) => res.json(store.liveChatThreads.list()));
+
+api.post('/chat/threads/:id/reply', (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, 2000) : '';
+  if (!text) return res.status(400).json({ error: 'نص الرد مطلوب' });
+  const thread = store.liveChatThreads.get(req.params.id);
+  if (!thread) return res.status(404).json({ error: 'not found' });
+  const senderName = typeof req.body?.sender_name === 'string' ? req.body.sender_name : undefined;
+  const updated = store.liveChatThreads.appendMessage(
+    thread.id,
+    { id: store.id(), direction: 'out', text, sender_name: senderName, created_at: new Date().toISOString() },
+    { unread: false },
+  );
+  res.json(updated);
+});
+
+// إغلاق/إعادة فتح محادثة، أو تعليمها كمقروءة بلا رد (فتح الموظف لها فقط).
+api.patch('/chat/threads/:id', (req, res) => {
+  const patch: Partial<LiveChatThread> = {};
+  if (req.body?.status === 'open' || req.body?.status === 'closed') patch.status = req.body.status;
+  if (req.body?.unread === false) patch.unread = false;
+  const updated = store.liveChatThreads.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'not found' });
+  res.json(updated);
+});
+
+api.delete('/chat/threads/:id', (req, res) => {
+  const removed = store.liveChatThreads.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
 });
 
 api.get('/leads', (_req, res) => res.json(store.leads.list()));
