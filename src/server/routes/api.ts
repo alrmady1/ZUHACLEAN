@@ -40,6 +40,7 @@ import type {
   LiveChatThread,
   RiyadhZone,
   NeighborhoodZoneAssignment,
+  WorkersHousingLocation,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -2005,6 +2006,21 @@ api.delete('/neighborhood-zones/:id', (req, res) => {
   const removed = store.neighborhoodZoneAssignments.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
+});
+
+// نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) — نفس خريطة مناطق
+// الرياض، علامة واحدة قابلة للسحب وإعادة التموضع (انظر WorkersHousingLocation).
+api.get('/workers-housing-location', (_req, res) => res.json(store.workersHousingLocation.get()));
+
+api.patch('/workers-housing-location', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<WorkersHousingLocation> = {};
+  if (typeof body.lat === 'number') patch.lat = body.lat;
+  if (typeof body.lng === 'number') patch.lng = body.lng;
+  if (typeof body.label === 'string' && body.label.trim()) patch.label = body.label.trim();
+  const updated = store.workersHousingLocation.set(patch);
+  logActivity(req, `تم تحديث موقع "${updated.label}" على خريطة مناطق الرياض`);
+  res.json(updated);
 });
 
 api.get('/leads', (_req, res) => res.json(store.leads.list()));

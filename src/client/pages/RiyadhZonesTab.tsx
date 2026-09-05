@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, PenLine, Eraser } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { RiyadhZone, NeighborhoodZoneAssignment } from '../../shared/types.js';
+import type { RiyadhZone, NeighborhoodZoneAssignment, WorkersHousingLocation } from '../../shared/types.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
 import { useI18n } from '../lib/i18n.js';
 
@@ -22,6 +22,7 @@ export default function RiyadhZonesTab() {
   const { t, tt } = useI18n();
   const [zones, setZones] = useState<RiyadhZone[]>([]);
   const [assignments, setAssignments] = useState<NeighborhoodZoneAssignment[]>([]);
+  const [housingLocation, setHousingLocation] = useState<WorkersHousingLocation | null>(null);
   const [newNeighborhood, setNewNeighborhood] = useState('');
   const [newNeighborhoodZone, setNewNeighborhoodZone] = useState('');
   const [drawingForZoneId, setDrawingForZoneId] = useState<string | null>(null);
@@ -31,10 +32,12 @@ export default function RiyadhZonesTab() {
   const layersByZoneId = useRef<Map<string, any>>(new Map());
   const featureGroup = useRef<any>(null);
   const drawHandler = useRef<any>(null);
+  const housingMarker = useRef<any>(null);
 
   function refresh() {
     api.get<RiyadhZone[]>('/riyadh-zones').then(setZones);
     api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setAssignments);
+    api.get<WorkersHousingLocation>('/workers-housing-location').then(setHousingLocation);
   }
   useEffect(refresh, []);
 
@@ -106,6 +109,30 @@ export default function RiyadhZonesTab() {
     }
   }, [zones]);
 
+  // نقطة انطلاق الفريق الميداني (سكن العمال) — علامة قابلة للسحب منفصلة عن
+  // مضلعات المناطق، تُحدَّث بمجرد توفر الموقع أو تغيّره (سحب على الخريطة).
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !housingLocation) return;
+    if (housingMarker.current) {
+      housingMarker.current.setLatLng([housingLocation.lat, housingLocation.lng]);
+      return;
+    }
+    const icon = L.divIcon({
+      html: '<div style="background:#0f172a;color:#fff;border-radius:9999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,.4)">🏠</div>',
+      className: '',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+    const marker = L.marker([housingLocation.lat, housingLocation.lng], { icon, draggable: true }).addTo(map);
+    marker.bindTooltip(housingLocation.label, { permanent: true, direction: 'top', offset: [0, -16], className: 'font-bold' });
+    marker.on('dragend', () => {
+      const pos = marker.getLatLng();
+      api.patch<WorkersHousingLocation>('/workers-housing-location', { lat: pos.lat, lng: pos.lng }).then(setHousingLocation);
+    });
+    housingMarker.current = marker;
+  }, [housingLocation]);
+
   function startDrawing(zoneId: string) {
     if (drawHandler.current) drawHandler.current.disable();
     setDrawingForZoneId(zoneId);
@@ -160,6 +187,11 @@ export default function RiyadhZonesTab() {
     setAssignments((prev) => prev.filter((a) => a.id !== id));
   }
 
+  async function saveHousingLocation(patch: Partial<WorkersHousingLocation>) {
+    const updated = await api.patch<WorkersHousingLocation>('/workers-housing-location', patch);
+    setHousingLocation(updated);
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -172,6 +204,48 @@ export default function RiyadhZonesTab() {
       <div className="overflow-hidden rounded-2xl border border-slate-200">
         <div ref={mapRef} style={{ height: 420 }} />
       </div>
+
+      {housingLocation && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h3 className="mb-1 text-sm font-semibold text-slate-700">{t('نقطة انطلاق الفريق الميداني')}</h3>
+          <p className="mb-3 text-xs text-slate-400">
+            {t('اسحب العلامة 🏠 على الخريطة لتغيير الموقع، أو أدخل الإحداثيات مباشرة هنا')}
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('الاسم')}</span>
+              <input
+                value={housingLocation.label}
+                onChange={(e) => setHousingLocation({ ...housingLocation, label: e.target.value })}
+                onBlur={(e) => saveHousingLocation({ label: e.target.value })}
+                className="input"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('خط العرض (Latitude)')}</span>
+              <input
+                type="number"
+                step="any"
+                value={housingLocation.lat}
+                onChange={(e) => setHousingLocation({ ...housingLocation, lat: Number(e.target.value) })}
+                onBlur={(e) => saveHousingLocation({ lat: Number(e.target.value) })}
+                className="input w-40"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('خط الطول (Longitude)')}</span>
+              <input
+                type="number"
+                step="any"
+                value={housingLocation.lng}
+                onChange={(e) => setHousingLocation({ ...housingLocation, lng: Number(e.target.value) })}
+                onBlur={(e) => saveHousingLocation({ lng: Number(e.target.value) })}
+                className="input w-40"
+              />
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-4 flex items-center justify-between">

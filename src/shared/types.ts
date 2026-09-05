@@ -582,6 +582,24 @@ export interface NeighborhoodZoneAssignment {
   zone_id: string;
 }
 
+// نقطة بداية الفريق الميداني على خريطة مناطق الرياض (الإعدادات ← مناطق
+// الرياض) — سجل واحد (singleton) بنفس نمط LandingPageSettings/
+// CommissionConfig أدناه، وليس قائمة: نقطة انطلاق واحدة فقط (سكن العمال
+// افتراضياً)، قابلة للسحب وإعادة التموضع مباشرة على الخريطة.
+export interface WorkersHousingLocation {
+  lat: number;
+  lng: number;
+  label: string;
+  updated_at: string;
+}
+
+export const DEFAULT_WORKERS_HOUSING_LOCATION: WorkersHousingLocation = {
+  lat: 24.821917,
+  lng: 46.850056,
+  label: 'سكن العمال',
+  updated_at: new Date(0).toISOString(),
+};
+
 // ألوان الهوية البصرية المعتمدة لصفحة "اطلب الخدمة" العامة — قابلة للتعديل
 // من الإعدادات ← الطلبات الخارجية (خلف صلاحية edit_landing_page).
 export interface LandingColors {
