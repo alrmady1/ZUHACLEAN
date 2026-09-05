@@ -8,10 +8,10 @@ import { useI18n } from '../lib/i18n.js';
 
 const SENDER_NAME_STORAGE_KEY = 'zaha-live-chat-sender-name';
 
-// اسم أساسي مختصر خاص بعبدالله السقاف فقط في الدردشة تحديداً — طلب صريح
-// (سائر الموظفين يظهر اسمهم الكامل كما هو من full_name كالمعتاد).
+// اسم أساسي مختلف خاص بحساب عبدالله السقاف فقط في الدردشة تحديداً — طلب
+// صريح (سائر الموظفين يظهر اسمهم الكامل كما هو من full_name كالمعتاد).
 function defaultSenderName(fullName: string | undefined): string {
-  if (fullName === 'عبدالله السقاف') return 'عبدالله';
+  if (fullName === 'عبدالله السقاف') return 'نورة';
   return fullName ?? '';
 }
 
