@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, PenLine, Eraser, Search, X } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Trash2, PenLine, Eraser, Search, X, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { RiyadhZone, NeighborhoodZoneAssignment, WorkersHousingLocation } from '../../shared/types.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
@@ -33,6 +33,10 @@ export default function RiyadhZonesTab() {
   const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  // فرز جدول "ربط الأحياء بالمناطق" — إما أبجدياً حسب اسم الحي (الترتيب
+  // الافتراضي)، أو مُجمَّعاً حسب المنطقة (كل أحياء نفس المنطقة معاً) لتسهيل
+  // مراجعة توزيع الأحياء على المناطق دفعة واحدة.
+  const [neighborhoodSort, setNeighborhoodSort] = useState<'neighborhood' | 'zone'>('neighborhood');
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -194,6 +198,24 @@ export default function RiyadhZonesTab() {
     await api.del(`/neighborhood-zones/${id}`);
     setAssignments((prev) => prev.filter((a) => a.id !== id));
   }
+
+  // ترتيب زوني (حسب ترتيب إنشاء المناطق نفسها) يُستخدَم كأولوية ثانوية عند
+  // الفرز حسب المنطقة، حتى لا تتبعثر المناطق أبجدياً بشكل عشوائي.
+  const zoneOrder = useMemo(() => new Map(zones.map((z, i) => [z.id, i])), [zones]);
+
+  const sortedAssignments = useMemo(() => {
+    const list = [...assignments];
+    if (neighborhoodSort === 'zone') {
+      list.sort((a, b) => {
+        const orderDiff = (zoneOrder.get(a.zone_id) ?? 999) - (zoneOrder.get(b.zone_id) ?? 999);
+        if (orderDiff !== 0) return orderDiff;
+        return a.neighborhood.localeCompare(b.neighborhood, 'ar');
+      });
+    } else {
+      list.sort((a, b) => a.neighborhood.localeCompare(b.neighborhood, 'ar'));
+    }
+    return list;
+  }, [assignments, neighborhoodSort, zoneOrder]);
 
   async function saveHousingLocation(patch: Partial<WorkersHousingLocation>) {
     const updated = await api.patch<WorkersHousingLocation>('/workers-housing-location', patch);
@@ -429,7 +451,21 @@ export default function RiyadhZonesTab() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-4 text-sm font-semibold text-slate-700">{t('ربط الأحياء بالمناطق')}</h3>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-700">{t('ربط الأحياء بالمناطق')}</h3>
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            {t('فرز حسب:')}
+            <select
+              value={neighborhoodSort}
+              onChange={(e) => setNeighborhoodSort(e.target.value as 'neighborhood' | 'zone')}
+              className="input w-auto py-1 text-xs"
+            >
+              <option value="neighborhood">{t('اسم الحي (أبجدي)')}</option>
+              <option value="zone">{t('المنطقة')}</option>
+            </select>
+          </label>
+        </div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input
             value={newNeighborhood}
@@ -463,25 +499,43 @@ export default function RiyadhZonesTab() {
               </tr>
             </thead>
             <tbody>
-              {assignments.map((a) => (
-                <tr key={a.id} className="border-b border-slate-50 last:border-0">
-                  <td className="p-2 font-medium text-slate-700">{a.neighborhood}</td>
-                  <td className="p-2">
-                    <select value={a.zone_id} onChange={(e) => updateNeighborhoodZone(a.id, e.target.value)} className="input">
-                      {zones.map((z) => (
-                        <option key={z.id} value={z.id}>
-                          {z.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-2">
-                    <button onClick={() => deleteNeighborhood(a.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sortedAssignments.map((a, i) => {
+                const zone = zones.find((z) => z.id === a.zone_id);
+                // رأس فاصل صغير عند بداية كل مجموعة منطقة جديدة — فقط عند
+                // الفرز حسب المنطقة، لتوضيح التجميع البصري.
+                const showZoneHeader = neighborhoodSort === 'zone' && (i === 0 || sortedAssignments[i - 1].zone_id !== a.zone_id);
+                return (
+                  <Fragment key={a.id}>
+                    {showZoneHeader && (
+                      <tr className="bg-slate-50">
+                        <td colSpan={3} className="p-2 text-xs font-semibold text-slate-500">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: zone?.color ?? '#94a3b8' }} />
+                            {zone?.name ?? t('بدون منطقة')}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="border-b border-slate-50 last:border-0">
+                      <td className="p-2 font-medium text-slate-700">{a.neighborhood}</td>
+                      <td className="p-2">
+                        <select value={a.zone_id} onChange={(e) => updateNeighborhoodZone(a.id, e.target.value)} className="input">
+                          {zones.map((z) => (
+                            <option key={z.id} value={z.id}>
+                              {z.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-2">
+                        <button onClick={() => deleteNeighborhood(a.id)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
               {assignments.length === 0 && (
                 <tr>
                   <td colSpan={3} className="p-6 text-center text-slate-400">
