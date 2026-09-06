@@ -37,6 +37,7 @@ import type {
   CommissionTier,
   CommissionEligibility,
   Expense,
+  ExpenseEntryType,
   LiveChatThread,
   RiyadhZone,
   NeighborhoodZoneAssignment,
@@ -1157,10 +1158,12 @@ api.post('/expenses', async (req, res) => {
   }
   const amount = Number(body.amount ?? 0);
   const isTaxInvoice = Boolean(body.is_tax_invoice);
+  const entryType: ExpenseEntryType = body.entry_type === 'return' ? 'return' : 'expense';
   const expense = store.expenses.insert({
     id: expenseId,
     title: body.title,
     category: body.category,
+    entry_type: entryType,
     sub_category: body.sub_category || undefined,
     period_type: body.period_type ?? 'daily',
     amount,
@@ -1189,7 +1192,9 @@ api.post('/expenses', async (req, res) => {
         ? `تم إضافة سلفية "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
         : isSalary
           ? `تم إضافة راتب "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
-          : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+          : entryType === 'return'
+            ? `تم تسجيل مرتجع "${expense.title}" بقيمة ${expense.amount} ر.س`
+            : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
 });
@@ -1207,6 +1212,7 @@ api.patch('/expenses/:id', async (req, res) => {
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
   if (body.category !== undefined) patch.category = body.category;
+  if (body.entry_type !== undefined) patch.entry_type = body.entry_type === 'return' ? 'return' : 'expense';
   if (body.sub_category !== undefined) patch.sub_category = body.sub_category || undefined;
   if (body.amount !== undefined) patch.amount = Number(body.amount);
   if (body.date !== undefined) patch.date = body.date;

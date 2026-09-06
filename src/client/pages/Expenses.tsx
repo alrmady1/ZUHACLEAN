@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile } from '../../shared/types.js';
+import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile, ExpenseEntryType } from '../../shared/types.js';
 import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -19,6 +19,14 @@ const isPdfInvoiceFile = (url: string) => /\.pdf(\?|$)/i.test(url);
 // المحفوظة تُحتسَب من جديد على السيرفر دائماً.
 const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 
+// مرتجعات المشتريات تُخزَّن بمبلغ موجب دائماً (نفس أي مصروف)، لكنها تُطرَح
+// لا تُجمَع في كل الإجماليات — هاتان الدالتان تحوّلان amount/tax_amount إلى
+// قيمة "موقّعة" (سالبة للمرتجع) تُستخدَم في كل مجاميع هذا الملف بدل amount
+// مباشرة.
+const isReturn = (e: Expense) => e.entry_type === 'return';
+const signedAmount = (e: Expense) => (isReturn(e) ? -e.amount : e.amount);
+const signedTaxAmount = (e: Expense) => (isReturn(e) ? -(e.tax_amount ?? 0) : (e.tax_amount ?? 0));
+
 // إعادة ترتيب/عرض جدول المصروفات العامة — حسب أي عمود ينقر عليه المستخدم
 // (التاريخ افتراضياً، أو المبلغ، أو نوع طريقة الدفع، أو الشخص المسجِّل،
 // أو نوع/تصنيف المصروف)، تصاعدياً أو تنازلياً (تبديل النقر على نفس العمود).
@@ -34,7 +42,7 @@ function sortExpenses(
   const cmp = (a: Expense, b: Expense): number => {
     switch (field) {
       case 'amount':
-        return a.amount - b.amount;
+        return signedAmount(a) - signedAmount(b);
       case 'payment_method':
         return methodName(a.payment_method).localeCompare(methodName(b.payment_method), 'ar');
       case 'recorded_by':
@@ -166,21 +174,22 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
     for (const e of expenses) {
       if (e.category === CUSTODY_CATEGORY_NAME) continue; // custody has its own summary card
       const d = new Date(e.date);
-      if (d.toDateString() === today) daily += e.amount;
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.amount;
-      if (d.getFullYear() === thisYear) annual += e.amount;
+      if (d.toDateString() === today) daily += signedAmount(e);
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += signedAmount(e);
+      if (d.getFullYear() === thisYear) annual += signedAmount(e);
     }
     return { daily, monthly, annual };
   }, [expenses]);
 
   // إجمالي كل مصروف تحت تصنيفه الرئيسي (بصرف النظر عن التاريخ — إجمالي
   // تراكمي منذ البداية)، بلا العهدة (لها ملخصها الخاص أعلاه) — الأكبر
-  // أولاً حتى يتضح أكبر بند صرف بنظرة واحدة.
+  // أولاً حتى يتضح أكبر بند صرف بنظرة واحدة. مرتجعات نفس التصنيف تُطرَح من
+  // إجماليه (صافي بعد الاسترجاع).
   const categoryTotals = useMemo(() => {
     const totals = new Map<string, number>();
     for (const e of expenses) {
       if (e.category === CUSTODY_CATEGORY_NAME) continue;
-      totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
+      totals.set(e.category, (totals.get(e.category) ?? 0) + signedAmount(e));
     }
     return Array.from(totals.entries())
       .map(([category, total]) => ({ category, total }))
@@ -201,9 +210,9 @@ function ExpensesOverview({ onOpenCustody, onOpenGeneral }: { onOpenCustody: () 
     for (const e of expenses) {
       if (!e.is_tax_invoice || !e.tax_amount) continue;
       const d = new Date(e.date);
-      if (d.toDateString() === today) daily += e.tax_amount;
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.tax_amount;
-      if (d.getFullYear() === thisYear) annual += e.tax_amount;
+      if (d.toDateString() === today) daily += signedTaxAmount(e);
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += signedTaxAmount(e);
+      if (d.getFullYear() === thisYear) annual += signedTaxAmount(e);
     }
     return { daily, monthly, annual };
   }, [expenses]);
@@ -318,8 +327,11 @@ function GeneralExpensesTab() {
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [amount, setAmount] = useState('');
   const [isTaxInvoice, setIsTaxInvoice] = useState(false);
+  const [entryType, setEntryType] = useState<ExpenseEntryType>('expense');
   const [sortField, setSortField] = useState<ExpenseSortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // فلترة الجدول — الكل، أو مصروفات فقط، أو مرتجعات فقط.
+  const [typeFilter, setTypeFilter] = useState<'all' | ExpenseEntryType>('all');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
@@ -330,7 +342,9 @@ function GeneralExpensesTab() {
 
   // Custody grants are recorded and listed from the العهد tab now, not
   // here — keep the general form and table focused on non-custody spending.
-  const generalExpenses = expenses.filter((e) => e.category !== CUSTODY_CATEGORY_NAME);
+  const generalExpenses = expenses
+    .filter((e) => e.category !== CUSTODY_CATEGORY_NAME)
+    .filter((e) => typeFilter === 'all' || (e.entry_type ?? 'expense') === typeFilter);
   const mainCategories = categories.filter((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME);
   const subCategories = categories.filter((c) => c.parent_id === mainCategories.find((m) => m.name === category)?.id);
 
@@ -368,9 +382,9 @@ function GeneralExpensesTab() {
       annual = 0;
     for (const e of generalExpenses) {
       const d = new Date(e.date);
-      if (d.toDateString() === today) daily += e.amount;
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += e.amount;
-      if (d.getFullYear() === thisYear) annual += e.amount;
+      if (d.toDateString() === today) daily += signedAmount(e);
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) monthly += signedAmount(e);
+      if (d.getFullYear() === thisYear) annual += signedAmount(e);
     }
     return { daily, monthly, annual };
   }, [generalExpenses]);
@@ -384,6 +398,7 @@ function GeneralExpensesTab() {
       await api.post('/expenses', {
         title: form.get('title'),
         category,
+        entry_type: entryType,
         sub_category: subCategory || undefined,
         amount: Number(amount),
         is_tax_invoice: isTaxInvoice,
@@ -403,6 +418,7 @@ function GeneralExpensesTab() {
       setInvoiceFile(null);
       setAmount('');
       setIsTaxInvoice(false);
+      setEntryType('expense');
       refresh();
     } finally {
       setSubmitting(false);
@@ -434,6 +450,17 @@ function GeneralExpensesTab() {
         <MiniStat label={t('هذه السنة')} value={formatMoney(totals.annual)} />
       </div>
 
+      <div className="flex items-center justify-end">
+        <label className="flex items-center gap-1.5 text-xs text-slate-500">
+          {t('عرض:')}
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as 'all' | ExpenseEntryType)} className="input w-auto py-1 text-xs">
+            <option value="all">{t('الكل')}</option>
+            <option value="expense">{t('مصروفات فقط')}</option>
+            <option value="return">{t('مرتجعات فقط')}</option>
+          </select>
+        </label>
+      </div>
+
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-start text-sm">
           <thead>
@@ -451,7 +478,14 @@ function GeneralExpensesTab() {
             {sortExpenses(generalExpenses, sortField, sortDir, methodName).map((e) => (
                 <tr key={e.id} className="border-b border-slate-50 last:border-0">
                   <td className="p-3 text-slate-600">{e.date}</td>
-                  <td className="p-3 font-medium text-slate-700">{e.title}</td>
+                  <td className="p-3 font-medium text-slate-700">
+                    {e.title}
+                    {isReturn(e) && (
+                      <span className="ms-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        {t('مرتجع')}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
                       {e.category}
@@ -459,11 +493,11 @@ function GeneralExpensesTab() {
                     </span>
                     {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
                   </td>
-                  <td className="p-3 text-slate-600">
-                    {formatMoney(e.amount)}
+                  <td className={`p-3 font-medium ${isReturn(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
+                    {formatMoney(signedAmount(e))}
                     {e.is_tax_invoice && (
-                      <div className="mt-0.5 text-[10px] font-medium text-brand-600">
-                        {t('ضريبية')} · {formatMoney(e.tax_amount ?? 0)}
+                      <div className={`mt-0.5 text-[10px] font-medium ${isReturn(e) ? 'text-emerald-600' : 'text-brand-600'}`}>
+                        {t('ضريبية')} · {formatMoney(signedTaxAmount(e))}
                       </div>
                     )}
                   </td>
@@ -500,7 +534,7 @@ function GeneralExpensesTab() {
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">{t('مصروف جديد')}</h2>
+              <h2 className="text-lg font-bold text-slate-800">{entryType === 'return' ? t('مرتجع جديد') : t('مصروف جديد')}</h2>
               <button
                 type="button"
                 onClick={() => {
@@ -508,6 +542,7 @@ function GeneralExpensesTab() {
                   setInvoiceFile(null);
                   setAmount('');
                   setIsTaxInvoice(false);
+                  setEntryType('expense');
                 }}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -515,9 +550,30 @@ function GeneralExpensesTab() {
               </button>
             </div>
             <div className="space-y-3">
+              <div className="flex rounded-xl bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setEntryType('expense')}
+                  className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'expense' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {t('مصروف')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType('return')}
+                  className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'return' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {t('مرتجع')}
+                </button>
+              </div>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('البند')}</span>
-                <input name="title" required className="input" placeholder={t('مثال: تعبئة وقود سيارة رقم 3')} />
+                <input
+                  name="title"
+                  required
+                  className="input"
+                  placeholder={entryType === 'return' ? t('مثال: إرجاع جزء من مواد التنظيف') : t('مثال: تعبئة وقود سيارة رقم 3')}
+                />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('التصنيف')}</span>
@@ -643,7 +699,7 @@ function GeneralExpensesTab() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? t('جارِ الحفظ…') : t('حفظ المصروف')}
+              {submitting ? t('جارِ الحفظ…') : entryType === 'return' ? t('حفظ المرتجع') : t('حفظ المصروف')}
             </button>
           </form>
         </div>
@@ -708,6 +764,7 @@ function ExpenseDetailModal({
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
   const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
+  const [entryType, setEntryType] = useState<ExpenseEntryType>(expense.entry_type ?? 'expense');
 
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
@@ -720,6 +777,7 @@ function ExpenseDetailModal({
       const updated = await api.patch<Expense>(`/expenses/${expense.id}`, {
         title,
         category,
+        entry_type: entryType,
         sub_category: subCategory || undefined,
         amount,
         is_tax_invoice: isTaxInvoice,
@@ -760,7 +818,12 @@ function ExpenseDetailModal({
           <div className="space-y-3">
             <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-base font-bold text-slate-800">{expense.title}</span>
+                <span className="flex items-center gap-1.5 text-base font-bold text-slate-800">
+                  {expense.title}
+                  {isReturn(expense) && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{t('مرتجع')}</span>
+                  )}
+                </span>
                 <button
                   onClick={() => {
                     setInvoiceFile(null);
@@ -775,10 +838,12 @@ function ExpenseDetailModal({
               </div>
               <div className="mt-2 space-y-1.5 text-sm text-slate-600">
                 <div>{t('التصنيف')}: {expense.category}{expense.sub_category ? ` — ${expense.sub_category}` : ''}</div>
-                <div>{t('المبلغ')}: {formatMoney(expense.amount)}</div>
+                <div className={isReturn(expense) ? 'font-medium text-emerald-600' : undefined}>
+                  {t('المبلغ')}: {formatMoney(signedAmount(expense))}
+                </div>
                 {expense.is_tax_invoice && (
-                  <div className="font-medium text-brand-600">
-                    {t('فاتورة ضريبية')} — {t('قيمة الضريبة')}: {formatMoney(expense.tax_amount ?? 0)}
+                  <div className={`font-medium ${isReturn(expense) ? 'text-emerald-600' : 'text-brand-600'}`}>
+                    {t('فاتورة ضريبية')} — {t('قيمة الضريبة')}: {formatMoney(signedTaxAmount(expense))}
                   </div>
                 )}
                 <div>{t('التاريخ')}: {expense.date}</div>
@@ -815,6 +880,22 @@ function ExpenseDetailModal({
           </div>
         ) : (
           <div className="space-y-3">
+            <div className="flex rounded-xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setEntryType('expense')}
+                className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'expense' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+              >
+                {t('مصروف')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryType('return')}
+                className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'return' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+              >
+                {t('مرتجع')}
+              </button>
+            </div>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{t('البند')}</span>
               <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" />

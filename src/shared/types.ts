@@ -828,10 +828,20 @@ export interface ContractClause {
   body: string;
 }
 
+// مرتجع مشتريات (إرجاع بضاعة/مواد لمورد واسترداد جزء أو كامل قيمتها) —
+// نفس سجل Expense، فقط بعلامة entry_type مختلفة، حتى يُشارك كامل النموذج
+// (تصنيف، فاتورة، ملف مرفق) دون تكرار. مبلغ المرتجع (amount) يبقى موجباً
+// دوماً في التخزين، ويُطرَح (لا يُجمَع) من كل إجماليات المصروفات في الواجهة
+// (Expenses.tsx) — راجع تعليق amount أدناه.
+export type ExpenseEntryType = 'expense' | 'return';
+
 export interface Expense {
   id: string;
   title: string;
   category: string;
+  // مصروف عادي أو مرتجع مشتريات — غير موجود (undefined) يعني "مصروف" لكل
+  // السجلات القديمة قبل إضافة هذا الحقل. انظر ExpenseEntryType أعلاه.
+  entry_type?: ExpenseEntryType;
   // Optional sub-item under the main category (e.g. category "مركبات",
   // sub_category "بنزين") — names of an ExpenseCategoryItem pair.
   sub_category?: string;
