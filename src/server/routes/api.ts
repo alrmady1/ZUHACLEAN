@@ -840,16 +840,14 @@ function describeAppointmentPatch(patch: Record<string, unknown>, customerName: 
 
 api.patch('/appointments/:id', (req, res) => {
   const patch = { ...(req.body ?? {}) };
+  const existing = store.appointments.get(req.params.id);
   // تعديل السعر (مثلاً عند تغيير نوع الخدمة من تفاصيل الموعد) يجب أن
   // يعيد حساب المتبقي وحالة الدفع فوراً بنفس صيغة تحصيل الدفعات أدناه،
   // وإلا بقي "المتبقي" يعكس السعر القديم رغم تغيّر قيمة الخدمة نفسها.
-  if (typeof patch.amount === 'number') {
-    const appt = store.appointments.get(req.params.id);
-    if (appt) {
-      const remaining_amount = Math.max(patch.amount - appt.total_paid, 0);
-      patch.remaining_amount = remaining_amount;
-      patch.payment_status = remaining_amount === 0 ? 'paid' : appt.total_paid > 0 ? 'partial' : 'unpaid';
-    }
+  if (typeof patch.amount === 'number' && existing) {
+    const remaining_amount = Math.max(patch.amount - existing.total_paid, 0);
+    patch.remaining_amount = remaining_amount;
+    patch.payment_status = remaining_amount === 0 ? 'paid' : existing.total_paid > 0 ? 'partial' : 'unpaid';
   }
   // رفع نتيجة زيارة معاينة (نوع التنظيف المطلوب + السعر ثم الحالة) —
   // ينهي الزيارة نفسها فوراً (لا مراحل لاحقة عليها كموعد خدمة عادي).
@@ -857,6 +855,20 @@ api.patch('/appointments/:id', (req, res) => {
   if (isVisitOutcome) {
     patch.visit_outcome_at = new Date().toISOString();
     if (!patch.status) patch.status = 'completed';
+  }
+  // موعد مولَّد من عقد دوري ينتقل من/إلى "مكتمل" — يُحدَّث completed_visits
+  // على العقد نفسه تبعاً لذلك (زيادة أو تراجع)، حتى يعكس عدّاد الزيارات في
+  // صفحة العقود (والمحاسبة ← العقود) الواقع الفعلي بدل البقاء صفراً دوماً.
+  if (existing?.contract_id && typeof patch.status === 'string') {
+    const wasCompleted = existing.status === 'completed';
+    const willBeCompleted = patch.status === 'completed';
+    if (wasCompleted !== willBeCompleted) {
+      const contract = store.contracts.get(existing.contract_id);
+      if (contract) {
+        const nextCount = Math.max(0, contract.completed_visits + (willBeCompleted ? 1 : -1));
+        store.contracts.update(contract.id, { completed_visits: nextCount });
+      }
+    }
   }
   const updated = store.appointments.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
@@ -1072,6 +1084,9 @@ api.post('/contracts', (req, res) => {
     paid_amount: 0,
     remaining_amount: Number(body.total_amount ?? 0),
     payment_status: 'unpaid',
+    payment_method: body.payment_method || undefined,
+    due_date: body.due_date || undefined,
+    payments: [],
     supervisor_id: body.supervisor_id,
     day_supervisors:
       body.day_supervisors && typeof body.day_supervisors === 'object' ? body.day_supervisors : undefined,
@@ -1099,9 +1114,55 @@ api.post('/contracts', (req, res) => {
 // لا يعيد توليد المواعيد ولا يمسّها حتى لو تغيّر التكرار/الأيام/التاريخ؛
 // المواعيد المولَّدة سابقاً تبقى كما هي (نفس منطق حذف العقد أدناه).
 api.patch('/contracts/:id', (req, res) => {
-  const updated = store.contracts.update(req.params.id, req.body ?? {});
+  const patch = { ...(req.body ?? {}) };
+  // تغيير القيمة الإجمالية يجب أن يعيد حساب المتبقي وحالة الدفع فوراً بنفس
+  // منطق تحصيل الدفعات (paid_amount يبقى كما هو، فقط المتبقي يتغيّر)، وإلا
+  // بقي "المتبقي" يعكس القيمة القديمة رغم تعديل قيمة العقد نفسها.
+  if (typeof patch.total_amount === 'number') {
+    const existing = store.contracts.get(req.params.id);
+    if (existing) {
+      const remaining_amount = Math.max(patch.total_amount - existing.paid_amount, 0);
+      patch.remaining_amount = remaining_amount;
+      patch.payment_status = remaining_amount === 0 ? 'paid' : existing.paid_amount > 0 ? 'partial' : 'unpaid';
+    }
+  }
+  const updated = store.contracts.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'العقد غير موجود' });
   logActivity(req, `تم تعديل العقد "${updated.contract_number}"`);
+  res.json(updated);
+});
+
+// تسجيل دفعة فعلية على عقد — نفس منطق POST /appointments/:id/payments
+// بالضبط (مبلغ + طريقة، تُعاد حساب paid_amount/remaining_amount/
+// payment_status تلقائياً). مقيَّدة في الواجهة بصلاحية edit_contracts.
+api.post('/contracts/:id/payments', (req, res) => {
+  const contract = store.contracts.get(req.params.id);
+  if (!contract) return res.status(404).json({ error: 'العقد غير موجود' });
+  const { amount, method } = req.body ?? {};
+  contract.payments.push({ id: store.id(), amount: Number(amount), method, recorded_at: new Date().toISOString() });
+  const paid_amount = contract.payments.reduce((s, p) => s + p.amount, 0);
+  const remaining_amount = Math.max(contract.total_amount - paid_amount, 0);
+  const payment_status = remaining_amount === 0 ? 'paid' : paid_amount > 0 ? 'partial' : 'unpaid';
+  const updated = store.contracts.update(contract.id, { payments: contract.payments, paid_amount, remaining_amount, payment_status });
+  logActivity(req, `تم تسجيل دفعة ${amount} ر.س على العقد "${contract.contract_number}"`);
+  res.status(201).json(updated);
+});
+
+// تعديل دفعة مسجَّلة على عقد — نفس منطق PATCH
+// /appointments/:id/payments/:paymentId بالضبط.
+api.patch('/contracts/:id/payments/:paymentId', (req, res) => {
+  const contract = store.contracts.get(req.params.id);
+  if (!contract) return res.status(404).json({ error: 'العقد غير موجود' });
+  const payment = contract.payments.find((p) => p.id === req.params.paymentId);
+  if (!payment) return res.status(404).json({ error: 'payment not found' });
+  const { amount, method } = req.body ?? {};
+  if (amount !== undefined) payment.amount = Number(amount);
+  if (method !== undefined) payment.method = method;
+  const paid_amount = contract.payments.reduce((s, p) => s + p.amount, 0);
+  const remaining_amount = Math.max(contract.total_amount - paid_amount, 0);
+  const payment_status = remaining_amount === 0 ? 'paid' : paid_amount > 0 ? 'partial' : 'unpaid';
+  const updated = store.contracts.update(contract.id, { payments: contract.payments, paid_amount, remaining_amount, payment_status });
+  logActivity(req, `تم تعديل دفعة على العقد "${contract.contract_number}"`);
   res.json(updated);
 });
 

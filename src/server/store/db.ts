@@ -328,6 +328,9 @@ function seed(): DbShape {
       paid_amount: 1600,
       remaining_amount: 3200,
       payment_status: 'partial',
+      payment_method: 'bank_transfer',
+      due_date: '2026-09-30',
+      payments: [{ id: 'ctp-1', amount: 1600, method: 'bank_transfer', recorded_at: now }],
       assigned_technician_ids: [],
       status: 'active',
       created_at: now,
@@ -579,6 +582,11 @@ async function load(): Promise<DbShape> {
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
     if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
+    // عقود قديمة قبل إضافة سجل الدفعات (payments) — تبقى paid_amount/
+    // remaining_amount المحفوظتان سابقاً كما هي (لا يمكن إعادة بناء سجل
+    // دفعات تفصيلي من رقم إجمالي محفوظ فقط)، فقط تُضاف مصفوفة فارغة حتى
+    // لا تكسر أي قراءة لاحقة لـ contract.payments.
+    parsed.contracts = parsed.contracts.map((c) => (c.payments ? c : { ...c, payments: [] }));
     // ترقية سجلات leads القديمة (قبل توسيع الحالات) — "contacted"/"closed"
     // لم تعودا موجودتين في LeadStatus، تُطابَقان لأقرب حالة جديدة مكافئة.
     // (لا حاجة لحفظ فوري هنا — تُكتَب تلقائياً مع أول persist() تالٍ لأي

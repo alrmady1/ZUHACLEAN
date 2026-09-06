@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, X, Eye, Trash2, Pencil, Check, Printer } from 'lucide-react';
+import { Plus, X, Eye, Trash2, Pencil, Check, Printer, Wallet } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Contract, Customer, Service } from '../../shared/types.js';
+import type { Appointment, Contract, Customer, Service, PaymentMethodOption } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -21,6 +21,7 @@ export default function Contracts() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formFrequency, setFormFrequency] = useState<'weekly' | 'bi_weekly' | 'monthly'>('weekly');
@@ -30,6 +31,7 @@ export default function Contracts() {
   const [printingContract, setPrintingContract] = useState<Contract | null>(null);
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const methodName = (id: string | undefined) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : undefined);
 
   function refresh() {
     api.get<Contract[]>('/contracts').then(setContracts);
@@ -40,6 +42,7 @@ export default function Contracts() {
     refresh();
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
+    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
 
   // مخفية عن المشرف الميداني — حتى لو دخل الرابط مباشرة (بعد كل الـ hooks
@@ -69,6 +72,8 @@ export default function Contracts() {
         start_date: form.get('start_date'),
         end_date: form.get('end_date'),
         total_amount: Number(form.get('total_amount')),
+        payment_method: form.get('payment_method') || undefined,
+        due_date: form.get('due_date') || undefined,
         supervisor_id: form.get('supervisor_id') || undefined,
         day_supervisors:
           form.get('visit_frequency') === 'weekly'
@@ -121,6 +126,8 @@ export default function Contracts() {
               <th className="p-3 text-start font-medium">{t('الزيارات')}</th>
               {canSeeValue && <th className="p-3 text-start font-medium">{t('القيمة')}</th>}
               <th className="p-3 text-start font-medium">{t('السداد')}</th>
+              <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
+              <th className="p-3 text-start font-medium">{t('الاستحقاق')}</th>
               <th className="p-3 text-start font-medium">{t('الحالة')}</th>
               <th className="p-3 text-start font-medium">{t('إجراء')}</th>
             </tr>
@@ -145,6 +152,8 @@ export default function Contracts() {
                 <td className="p-3">
                   <PaymentStatusBadge status={c.payment_status} />
                 </td>
+                <td className="p-3 text-slate-600">{methodName(c.payment_method) ?? '—'}</td>
+                <td className="p-3 text-slate-600" dir="ltr">{c.due_date || '—'}</td>
                 <td className="p-3">
                   <ContractStatusBadge status={c.status} />
                 </td>
@@ -188,7 +197,7 @@ export default function Contracts() {
             ))}
             {contracts.length === 0 && (
               <tr>
-                <td colSpan={canSeeValue ? 9 : 8} className="p-8 text-center text-slate-400">
+                <td colSpan={canSeeValue ? 11 : 10} className="p-8 text-center text-slate-400">
                   {t('لا توجد عقود بعد')}
                 </td>
               </tr>
@@ -320,6 +329,24 @@ export default function Contracts() {
                 </Field>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('طريقة تحصيل العقد')}>
+                  <select name="payment_method" defaultValue="" className="input">
+                    <option value="">{t('بدون تحديد')}</option>
+                    {paymentMethods
+                      .filter((m) => m.is_active)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label={t('تاريخ استحقاق الدفعة القادمة (اختياري)')}>
+                  <input type="date" name="due_date" className="input" />
+                </Field>
+              </div>
+
               <Field label={formFrequency === 'weekly' ? t('المشرف الافتراضي') : t('المشرف المسؤول')}>
                 <select name="supervisor_id" defaultValue={user?.role === 'supervisor' ? user.id : ''} className="input">
                   <option value="">{t('بدون تحديد')}</option>
@@ -350,6 +377,7 @@ export default function Contracts() {
           appointments={appointments.filter((a) => a.contract_id === viewingContract.id)}
           services={services}
           supervisors={supervisors}
+          paymentMethods={paymentMethods}
           canSeeValue={canSeeValue}
           canDelete={canDeleteContract}
           canEdit={canEditContract}
@@ -397,6 +425,7 @@ function ContractDetailModal({
   appointments,
   services,
   supervisors,
+  paymentMethods,
   canSeeValue,
   canDelete,
   canEdit,
@@ -409,6 +438,7 @@ function ContractDetailModal({
   appointments: Appointment[];
   services: Service[];
   supervisors: { id: string; full_name: string }[];
+  paymentMethods: PaymentMethodOption[];
   canSeeValue: boolean;
   canDelete: boolean;
   canEdit: boolean;
@@ -430,11 +460,38 @@ function ContractDetailModal({
   const [totalAmount, setTotalAmount] = useState(String(contract.total_amount));
   const [supervisorId, setSupervisorId] = useState(contract.supervisor_id ?? '');
   const [status, setStatus] = useState(contract.status);
+  const [paymentMethod, setPaymentMethod] = useState(contract.payment_method ?? '');
+  const [dueDate, setDueDate] = useState(contract.due_date ?? '');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethodForNew, setPaymentMethodForNew] = useState(paymentMethods[0]?.id ?? '');
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   const sortedAppts = [...appointments].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   const selectedDays = contract.visit_days_of_week ?? [];
   const supervisorName = (id: string | undefined) => (id ? supervisors.find((s) => s.id === id)?.full_name : undefined);
   const defaultSupervisorName = supervisorName(contract.supervisor_id) ?? t('بدون تحديد');
+  const methodName = (id: string | undefined) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : undefined);
+  // المتبقي من مدة العقد بالأيام — فرق تاريخ اليوم عن end_date، سالب/صفر
+  // لعقد منتهٍ بالفعل (لا يُعرض كرقم سالب مربك، بل "منتهي").
+  const daysRemaining = Math.ceil((new Date(contract.end_date).getTime() - Date.now()) / 86400000);
+  const sortedPayments = [...contract.payments].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+
+  async function recordPayment() {
+    if (!paymentAmount || Number(paymentAmount) <= 0 || !paymentMethodForNew) return;
+    setRecordingPayment(true);
+    try {
+      const updated = await api.post<Contract>(`/contracts/${contract.id}/payments`, {
+        amount: Number(paymentAmount),
+        method: paymentMethodForNew,
+      });
+      onSaved(updated);
+      setShowPaymentForm(false);
+      setPaymentAmount('');
+    } finally {
+      setRecordingPayment(false);
+    }
+  }
 
   function startEditing() {
     setServiceId(contract.service_id);
@@ -445,6 +502,8 @@ function ContractDetailModal({
     setVisitTime(contract.visit_time ?? '09:00');
     setStartDate(contract.start_date);
     setEndDate(contract.end_date);
+    setPaymentMethod(contract.payment_method ?? '');
+    setDueDate(contract.due_date ?? '');
     setTotalAmount(String(contract.total_amount));
     setSupervisorId(contract.supervisor_id ?? '');
     setStatus(contract.status);
@@ -479,6 +538,8 @@ function ContractDetailModal({
             ? Object.fromEntries(Object.entries(daySupervisors).filter(([k, v]) => visitDays.includes(k) && v))
             : null,
         status,
+        payment_method: paymentMethod || null,
+        due_date: dueDate || null,
       });
       onSaved(updated);
       setEditing(false);
@@ -563,15 +624,35 @@ function ContractDetailModal({
                 <div className="font-medium text-slate-700" dir="ltr">{contract.end_date}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-400">{t('الزيارات')}</div>
+                <div className="text-xs text-slate-400">{t('الزيارات (مكتملة / إجمالي)')}</div>
                 <div className="font-medium text-slate-700" dir="ltr">{contract.completed_visits} / {contract.total_visits}</div>
               </div>
-              {canSeeValue && (
-                <div>
-                  <div className="text-xs text-slate-400">{t('القيمة')}</div>
-                  <div className="font-medium text-slate-700">{formatMoney(contract.total_amount)}</div>
+              <div>
+                <div className="text-xs text-slate-400">{t('المتبقي من مدة العقد')}</div>
+                <div className={`font-medium ${daysRemaining < 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                  {daysRemaining < 0 ? t('منتهي') : tt(`${daysRemaining} يوم`, `${daysRemaining} days`)}
                 </div>
+              </div>
+              {canSeeValue && (
+                <>
+                  <div>
+                    <div className="text-xs text-slate-400">{t('القيمة الإجمالية')}</div>
+                    <div className="font-medium text-slate-700">{formatMoney(contract.total_amount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">{t('المبلغ المتبقي')}</div>
+                    <div className="font-medium text-slate-700">{formatMoney(contract.remaining_amount)}</div>
+                  </div>
+                </>
               )}
+              <div>
+                <div className="text-xs text-slate-400">{t('طريقة التحصيل')}</div>
+                <div className="font-medium text-slate-700">{methodName(contract.payment_method) ?? t('بدون تحديد')}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ استحقاق الدفعة القادمة')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{contract.due_date || '—'}</div>
+              </div>
               <div>
                 <div className="text-xs text-slate-400">{t('السداد')}</div>
                 <PaymentStatusBadge status={contract.payment_status} />
@@ -580,6 +661,70 @@ function ContractDetailModal({
                 <div className="text-xs text-slate-400">{t('الحالة')}</div>
                 <ContractStatusBadge status={contract.status} />
               </div>
+
+              {canSeeValue && (
+                <div className="col-span-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-medium text-slate-500">{t('الدفعات المسجَّلة')}</div>
+                    {canEdit && (
+                      <button
+                        onClick={() => setShowPaymentForm((v) => !v)}
+                        className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                      >
+                        <Wallet className="h-3.5 w-3.5" /> {t('تسجيل دفعة')}
+                      </button>
+                    )}
+                  </div>
+                  {showPaymentForm && (
+                    <div className="mb-2 flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-2.5">
+                      <label className="text-xs">
+                        <span className="mb-1 block text-slate-500">{t('المبلغ (ر.س)')}</span>
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={paymentAmount}
+                          onChange={(e) => setPaymentAmount(e.target.value)}
+                          className="input w-28"
+                        />
+                      </label>
+                      <label className="text-xs">
+                        <span className="mb-1 block text-slate-500">{t('طريقة الدفع')}</span>
+                        <select value={paymentMethodForNew} onChange={(e) => setPaymentMethodForNew(e.target.value)} className="input">
+                          {paymentMethods
+                            .filter((m) => m.is_active)
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button
+                        onClick={recordPayment}
+                        disabled={recordingPayment || !paymentAmount}
+                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                      >
+                        {recordingPayment ? t('جارِ الحفظ…') : t('حفظ الدفعة')}
+                      </button>
+                    </div>
+                  )}
+                  <div className="max-h-40 space-y-1.5 overflow-y-auto">
+                    {sortedPayments.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                        <span className="font-medium text-slate-700">{formatMoney(p.amount)}</span>
+                        <span className="text-slate-500">{methodName(p.method) ?? p.method}</span>
+                        <span className="text-slate-400" dir="ltr">{formatDateAr(p.recorded_at)}</span>
+                      </div>
+                    ))}
+                    {sortedPayments.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-slate-200 p-3 text-center text-xs text-slate-400">
+                        {t('لا توجد دفعات مسجَّلة بعد')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-white">
@@ -687,6 +832,24 @@ function ContractDetailModal({
                     />
                   </Field>
                 )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('طريقة تحصيل العقد')}>
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="input">
+                    <option value="">{t('بدون تحديد')}</option>
+                    {paymentMethods
+                      .filter((m) => m.is_active)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label={t('تاريخ استحقاق الدفعة القادمة')}>
+                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="input" />
+                </Field>
               </div>
 
               <Field label={visitFrequency === 'weekly' ? t('المشرف الافتراضي') : t('المشرف المسؤول')}>

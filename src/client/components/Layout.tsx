@@ -52,7 +52,23 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/leads', label: 'طلبات جديدة', icon: Inbox, permissionKey: 'view_leads_page' },
   // يجمع "المبيعات والفواتير" و"المصروفات" (كانتا رابطين مستقلين) في
   // صفحة واحدة بتبويبين داخليين — انظر Accounting.tsx.
-  { to: '/accounting', label: 'المحاسبة', icon: Calculator, permissionKeys: ['view_sales_invoices', 'view_expenses_page', 'view_employee_accounts'] },
+  {
+    to: '/accounting',
+    label: 'المحاسبة',
+    icon: Calculator,
+    // كل صلاحية تُظهر تبويباً داخل Accounting.tsx — من يملك أياً منها
+    // يحتاج رؤية رابط "المحاسبة" نفسه لتصل إليه، وإلا بقي الرابط مخفياً
+    // عنه رغم امتلاكه تبويباً واحداً على الأقل (كان الحال فعلياً لمن يملك
+    // فقط view_commissions أو view_tax_page قبل هذا الإصلاح).
+    permissionKeys: [
+      'view_sales_invoices',
+      'view_expenses_page',
+      'view_employee_accounts',
+      'view_commissions',
+      'view_tax_page',
+      'view_contracts_page',
+    ],
+  },
   // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".
   { to: '/quotes', label: 'عرض سعر', icon: Tag, permissionKey: 'view_quotes_page' },
   { to: '/contracts', label: 'العقود', icon: FileSignature, permissionKey: 'view_contracts_page' },

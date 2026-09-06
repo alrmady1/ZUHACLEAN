@@ -801,6 +801,19 @@ export interface Contract {
   paid_amount: number;
   remaining_amount: number;
   payment_status: PaymentStatus;
+  // طريقة التحصيل المتفَق عليها لهذا العقد ككل (كاش/تحويل/شبكة — نفس
+  // PaymentMethodOption المستخدَم في كل مكان آخر بالنظام). كل دفعة فعلية في
+  // payments أدناه تحمل طريقتها الخاصة أيضاً (قد تختلف دفعة عن أخرى)، وهذا
+  // الحقل هو مجرد الطريقة الافتراضية/المتوقَّعة المعروضة في قائمة العقود.
+  payment_method?: PaymentMethod;
+  // تاريخ استحقاق الدفعة القادمة — منفصل عمداً عن end_date (تاريخ انتهاء
+  // مدة العقد نفسها)، لأن عقداً سنوياً مثلاً قد يُحصَّل على دفعات متعددة
+  // خلال مدته، كل دفعة باستحقاق مختلف عن نهاية العقد.
+  due_date?: string;
+  // سجل الدفعات الفعلية المسجَّلة على هذا العقد — نفس منطق Payment[] على
+  // Appointment بالضبط (انظر POST /contracts/:id/payments)، تُحدِّث
+  // paid_amount/remaining_amount/payment_status تلقائياً عند كل دفعة.
+  payments: Payment[];
   // مشرف افتراضي للعقد — يُستخدم للعقود غير الأسبوعية، وكقيمة احتياطية
   // لأي يوم أسبوعي لم يُحدَّد له مشرف خاص في day_supervisors أدناه.
   supervisor_id?: string;
