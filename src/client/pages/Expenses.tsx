@@ -2,7 +2,16 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile, ExpenseEntryType, ExpenseIncomeType } from '../../shared/types.js';
+import type {
+  Expense,
+  ExpenseCategoryItem,
+  PaymentMethodOption,
+  CustodyInvoice,
+  Profile,
+  ExpenseEntryType,
+  ExpenseIncomeType,
+  AdvanceDeductionMode,
+} from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
@@ -10,6 +19,7 @@ import {
   CAN_SEE_CUSTODY_ROLES,
   VAT_RATE,
   EXPENSE_INCOME_TYPE_LABELS_AR,
+  ADVANCE_DEDUCTION_MODE_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -347,6 +357,11 @@ function GeneralExpensesTab() {
   // السلفية والرواتب كلاهما يحتاج ربط الموظف (custody_holder_id) — انظر
   // تعليق هذا الحقل في shared/types.ts.
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME;
+  const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
+  const [advanceMode, setAdvanceMode] = useState<AdvanceDeductionMode>('none');
+  const [advanceInstallmentMonths, setAdvanceInstallmentMonths] = useState('1');
+  const [advancePeriodStart, setAdvancePeriodStart] = useState('');
+  const [advancePeriodEnd, setAdvancePeriodEnd] = useState('');
 
   // Custody grants are recorded and listed from the العهد tab now, not
   // here — keep the general form and table focused on non-custody spending.
@@ -423,6 +438,10 @@ function GeneralExpensesTab() {
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
         custody_holder_id: needsEmployeeLink ? advanceEmployeeId || undefined : undefined,
+        advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
+        advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
+        advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
+        advance_period_end: isAdvanceCategory && advanceMode === 'period' ? advancePeriodEnd || undefined : undefined,
         invoice_file_data_url,
         invoice_file_name: invoiceFile?.name || undefined,
       });
@@ -434,6 +453,10 @@ function GeneralExpensesTab() {
       setIsTaxInvoice(false);
       setEntryType('expense');
       setIncomeType('return');
+      setAdvanceMode('none');
+      setAdvanceInstallmentMonths('1');
+      setAdvancePeriodStart('');
+      setAdvancePeriodEnd('');
       refresh();
     } finally {
       setSubmitting(false);
@@ -652,6 +675,44 @@ function GeneralExpensesTab() {
                   </select>
                 </label>
               )}
+              {isAdvanceCategory && (
+                <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('استقطاعها من الراتب')}</span>
+                    <select value={advanceMode} onChange={(e) => setAdvanceMode(e.target.value as AdvanceDeductionMode)} className="input">
+                      <option value="none">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.none)}</option>
+                      <option value="full_next">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.full_next)}</option>
+                      <option value="installments">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.installments)}</option>
+                      <option value="period">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.period)}</option>
+                    </select>
+                  </label>
+                  {advanceMode === 'installments' && (
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-slate-600">{t('عدد الرواتب للتقسيط عليها')}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        step="1"
+                        value={advanceInstallmentMonths}
+                        onChange={(e) => setAdvanceInstallmentMonths(e.target.value)}
+                        className="input"
+                      />
+                    </label>
+                  )}
+                  {advanceMode === 'period' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium text-slate-600">{t('من فترة (شهر)')}</span>
+                        <input type="month" value={advancePeriodStart} onChange={(e) => setAdvancePeriodStart(e.target.value)} className="input" />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block font-medium text-slate-600">{t('إلى فترة (شهر)')}</span>
+                        <input type="month" value={advancePeriodEnd} onChange={(e) => setAdvancePeriodEnd(e.target.value)} className="input" />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
@@ -791,8 +852,13 @@ function ExpenseDetailModal({
   const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
   const [entryType, setEntryType] = useState<ExpenseEntryType>(expense.entry_type ?? 'expense');
   const [incomeType, setIncomeType] = useState<ExpenseIncomeType>(expense.income_type ?? 'return');
+  const [advanceMode, setAdvanceMode] = useState<AdvanceDeductionMode>(expense.advance_deduction_mode ?? 'none');
+  const [advanceInstallmentMonths, setAdvanceInstallmentMonths] = useState(String(expense.advance_installment_months ?? 1));
+  const [advancePeriodStart, setAdvancePeriodStart] = useState(expense.advance_period_start ?? '');
+  const [advancePeriodEnd, setAdvancePeriodEnd] = useState(expense.advance_period_end ?? '');
 
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
+  const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
 
@@ -813,6 +879,10 @@ function ExpenseDetailModal({
         payment_method: paymentMethod,
         notes: notes || undefined,
         custody_holder_id: needsEmployeeLink ? holderId || undefined : undefined,
+        advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
+        advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
+        advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
+        advance_period_end: isAdvanceCategory && advanceMode === 'period' ? advancePeriodEnd || undefined : undefined,
         invoice_file_data_url,
         invoice_file_name: invoiceFile?.name || undefined,
         remove_invoice_file: !invoiceFile && removeInvoiceFile ? true : undefined,
@@ -980,6 +1050,49 @@ function ExpenseDetailModal({
                   ))}
                 </select>
               </label>
+            )}
+            {isAdvanceCategory && (
+              <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('استقطاعها من الراتب')}</span>
+                  <select value={advanceMode} onChange={(e) => setAdvanceMode(e.target.value as AdvanceDeductionMode)} className="input">
+                    <option value="none">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.none)}</option>
+                    <option value="full_next">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.full_next)}</option>
+                    <option value="installments">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.installments)}</option>
+                    <option value="period">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.period)}</option>
+                  </select>
+                </label>
+                {advanceMode === 'installments' && (
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('عدد الرواتب للتقسيط عليها')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={advanceInstallmentMonths}
+                      onChange={(e) => setAdvanceInstallmentMonths(e.target.value)}
+                      className="input"
+                    />
+                  </label>
+                )}
+                {advanceMode === 'period' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-slate-600">{t('من فترة (شهر)')}</span>
+                      <input type="month" value={advancePeriodStart} onChange={(e) => setAdvancePeriodStart(e.target.value)} className="input" />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-slate-600">{t('إلى فترة (شهر)')}</span>
+                      <input type="month" value={advancePeriodEnd} onChange={(e) => setAdvancePeriodEnd(e.target.value)} className="input" />
+                    </label>
+                  </div>
+                )}
+                {(expense.advance_settled_amount ?? 0) > 0 && (
+                  <p className="text-xs text-slate-500">
+                    {tt(`المُستقطَع حتى الآن: ${formatMoney(expense.advance_settled_amount ?? 0)}`, `Withheld so far: ${formatMoney(expense.advance_settled_amount ?? 0)}`)}
+                  </p>
+                )}
+              </div>
             )}
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">

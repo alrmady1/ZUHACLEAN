@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage, uploadExpenseInvoice } from '../lib/storage.js';
+import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage, uploadExpenseInvoice, uploadEmployeeIdPhoto } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
@@ -220,7 +220,7 @@ api.post('/profiles', (req, res) => {
   res.status(201).json(toSafeProfile(profile));
 });
 
-api.patch('/profiles/:id', (req, res) => {
+api.patch('/profiles/:id', async (req, res) => {
   const body = req.body ?? {};
   const patch: Partial<StoredProfile> = {};
   if (body.full_name !== undefined) patch.full_name = body.full_name;
@@ -238,6 +238,20 @@ api.patch('/profiles/:id', (req, res) => {
   if (body.national_id !== undefined) patch.national_id = body.national_id || undefined;
   if (body.national_id_expiry !== undefined) patch.national_id_expiry = body.national_id_expiry || undefined;
   if (body.hire_date !== undefined) patch.hire_date = body.hire_date || undefined;
+  if (body.legal_full_name !== undefined) patch.legal_full_name = body.legal_full_name || undefined;
+  if (body.job_title !== undefined) patch.job_title = body.job_title || undefined;
+  // صورة الهوية/الإقامة — نفس منطق ملف فاتورة المصروف بالضبط (رفع جديد
+  // يستبدل القديم، ملف قديم على Supabase Storage يبقى يتيماً بلا مشكلة).
+  if (body.id_photo_data_url) {
+    try {
+      patch.id_photo_url = await uploadEmployeeIdPhoto(req.params.id, body.id_photo_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع صورة الهوية إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع صورة الهوية' });
+    }
+  } else if (body.remove_id_photo) {
+    patch.id_photo_url = undefined;
+  }
 
   const updated = store.profiles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
@@ -1252,6 +1266,13 @@ api.post('/expenses', async (req, res) => {
     supervisor_name: body.supervisor_name,
     custody_holder_id: linksEmployee ? body.custody_holder_id || undefined : undefined,
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
+    // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما isAdvance، تبقى
+    // 'none' (بلا استقطاع تلقائي) افتراضياً حتى يُختار وضع صراحةً.
+    advance_deduction_mode: isAdvance && body.advance_deduction_mode ? body.advance_deduction_mode : 'none',
+    advance_installment_months: isAdvance && body.advance_installment_months ? Number(body.advance_installment_months) : undefined,
+    advance_period_start: isAdvance ? body.advance_period_start || undefined : undefined,
+    advance_period_end: isAdvance ? body.advance_period_end || undefined : undefined,
+    advance_settled_amount: isAdvance ? 0 : undefined,
     payment_method: body.payment_method ?? 'cash',
     notes: body.notes,
     invoice_file_url: invoiceFileUrl,
@@ -1299,6 +1320,14 @@ api.patch('/expenses/:id', async (req, res) => {
     patch.custody_holder_id = holderId || undefined;
     patch.custody_holder_name = holderId ? store.profiles.get(holderId)?.full_name : undefined;
   }
+  // جدولة استقطاع السلفية — قابلة للتعديل لاحقاً (مثلاً تحويلها من "بلا
+  // استقطاع" إلى مُقسَّطة)، لا تُلمَس إن لم تُرسَل في الطلب.
+  if (body.advance_deduction_mode !== undefined) patch.advance_deduction_mode = body.advance_deduction_mode;
+  if (body.advance_installment_months !== undefined) {
+    patch.advance_installment_months = body.advance_installment_months ? Number(body.advance_installment_months) : undefined;
+  }
+  if (body.advance_period_start !== undefined) patch.advance_period_start = body.advance_period_start || undefined;
+  if (body.advance_period_end !== undefined) patch.advance_period_end = body.advance_period_end || undefined;
   // إعادة احتساب ضريبة الفاتورة كلما تغيّر أحد مدخليها (الوسم أو المبلغ)
   // — نفس دالة POST أعلاه، بحيث تبقى tax_amount متسقة دوماً مع amount.
   if (body.is_tax_invoice !== undefined || body.amount !== undefined) {
@@ -1615,6 +1644,41 @@ api.delete('/employee-violations/:id', (req, res) => {
   res.status(204).end();
 });
 
+// فرق الأشهر بين شهرين بصيغة YYYY-MM (شامل الطرفين) — 2026-01 إلى
+// 2026-01 = 1 شهر، 2026-01 إلى 2026-04 = 4 أشهر.
+function monthsBetweenInclusive(startMonth: string, endMonth: string): number {
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  return Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+}
+
+// قسط هذا الشهر من سلفية واحدة (Expense بفئة ADVANCE_CATEGORY_NAME) — بلا
+// استقطاع تلقائي إطلاقاً ما لم يُختَر وضع صراحةً (advance_deduction_mode
+// !== 'none'، انظر تعليقه في shared/types.ts). لوضع 'period' لا استقطاع
+// خارج [advance_period_start, advance_period_end].
+function computeAdvanceInstallment(advance: Expense, currentMonth: string): number {
+  const mode = advance.advance_deduction_mode ?? 'none';
+  if (mode === 'none') return 0;
+  const remaining = advance.amount - (advance.advance_settled_amount ?? 0);
+  if (remaining <= 0.005) return 0;
+
+  if (mode === 'full_next') return Math.round(remaining * 100) / 100;
+
+  if (mode === 'installments') {
+    const months = Math.max(1, advance.advance_installment_months ?? 1);
+    return Math.round(Math.min(advance.amount / months, remaining) * 100) / 100;
+  }
+
+  if (mode === 'period') {
+    if (!advance.advance_period_start || !advance.advance_period_end) return 0;
+    if (currentMonth < advance.advance_period_start || currentMonth > advance.advance_period_end) return 0;
+    const months = monthsBetweenInclusive(advance.advance_period_start, advance.advance_period_end);
+    return Math.round(Math.min(advance.amount / months, remaining) * 100) / 100;
+  }
+
+  return 0;
+}
+
 // تسجيل راتب شهري لموظف — الطريقة الوحيدة لإضافة مصروف رواتب الآن (لم تعد
 // "رواتب" خياراً في نموذج "مصروف جديد" العام، انظر تعليق SALARY_CATEGORY_NAME
 // وGeneralExpensesTab في Expenses.tsx). تحسب صافي الراتب تلقائياً: الراتب
@@ -1622,8 +1686,10 @@ api.delete('/employee-violations/:id', (req, res) => {
 // (مسوّق أو مشرف — نفس computeCommissionReport المستخدَم في تبويب
 // "العمولات"، وليس رقماً يرسله العميل)، ناقص قسط هذا الشهر من كل خصم نشط
 // (له مبلغ متبقٍ لم يُسدَّد بعد — انظر تعليق installment_months في
-// EmployeeDeduction)، ثم تُنشئ مصروف رواتب بالصافي وتُحدِّث settled_amount
-// لكل خصم شارك في الاستقطاع، بعملية واحدة ذرية.
+// EmployeeDeduction) وقسط هذا الشهر من كل سلفية مجدولة للاستقطاع (انظر
+// computeAdvanceInstallment أعلاه)، ثم تُنشئ مصروف رواتب بالصافي وتُحدِّث
+// settled_amount/advance_settled_amount لكل ما شارك في الاستقطاع، بعملية
+// واحدة ذرية.
 api.post('/employees/:id/pay-salary', (req, res) => {
   const profile = store.profiles.get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'الموظف غير موجود' });
@@ -1654,11 +1720,28 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     totalWithheld += installment;
     applied.push({ deduction: d, installment });
   }
-  const net = Math.max(Math.round((gross - totalWithheld) * 100) / 100, 0);
+
+  // سلفيات هذا الموظف المجدولة للاستقطاع فقط (advance_deduction_mode !== 'none')
+  // — انظر computeAdvanceInstallment أعلاه.
+  const scheduledAdvances = store.expenses
+    .list()
+    .filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === profile.id && (e.advance_deduction_mode ?? 'none') !== 'none');
+  let totalAdvanceWithheld = 0;
+  const appliedAdvances: { advance: Expense; installment: number }[] = [];
+  for (const a of scheduledAdvances) {
+    const installment = computeAdvanceInstallment(a, month);
+    if (installment <= 0) continue;
+    totalAdvanceWithheld += installment;
+    appliedAdvances.push({ advance: a, installment });
+  }
+
+  const totalWithheldAll = Math.round((totalWithheld + totalAdvanceWithheld) * 100) / 100;
+  const net = Math.max(Math.round((gross - totalWithheldAll) * 100) / 100, 0);
 
   const noteParts: string[] = [`راتب أساسي ${baseSalary} ر.س`];
   if (commission > 0) noteParts.push(`+ عمولة ${commission} ر.س (${month})`);
   if (totalWithheld > 0) noteParts.push(`- خصميات ${totalWithheld} ر.س (${applied.length} خصم نشط)`);
+  if (totalAdvanceWithheld > 0) noteParts.push(`- سلفيات ${totalAdvanceWithheld} ر.س (${appliedAdvances.length} سلفية مجدولة)`);
   noteParts.push(`= صافي ${net} ر.س`);
 
   const expense = store.expenses.insert({
@@ -1674,21 +1757,26 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     custody_holder_id: profile.id,
     custody_holder_name: profile.full_name,
     payment_method: body.payment_method ?? 'bank_transfer',
-    notes: commission > 0 || totalWithheld > 0 ? noteParts.join(' ') : undefined,
+    notes: commission > 0 || totalWithheldAll > 0 ? noteParts.join(' ') : undefined,
     created_at: new Date().toISOString(),
   });
 
   for (const { deduction, installment } of applied) {
     store.employeeDeductions.update(deduction.id, { settled_amount: (deduction.settled_amount ?? 0) + installment });
   }
+  for (const { advance, installment } of appliedAdvances) {
+    store.expenses.update(advance.id, { advance_settled_amount: (advance.advance_settled_amount ?? 0) + installment });
+  }
 
-  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س (منه عمولة ${commission} ر.س)، صافي ${net} ر.س بعد الخصميات`);
+  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س (منه عمولة ${commission} ر.س)، صافي ${net} ر.س بعد الخصميات والسلفيات`);
   res.status(201).json({
     expense,
     base_salary: baseSalary,
     commission,
     gross,
-    withheld: totalWithheld,
+    withheld: totalWithheldAll,
+    withheld_deductions: totalWithheld,
+    withheld_advances: totalAdvanceWithheld,
     net,
     deductions: store.employeeDeductions.list().filter((d) => d.employee_id === profile.id),
   });

@@ -387,6 +387,15 @@ export interface Profile {
   termination_date?: string;
   termination_reason?: TerminationReason;
   end_of_service_amount?: number;
+  // الاسم الكامل كما يظهر رسمياً على الهوية/الإقامة — منفصل عمداً عن
+  // full_name (اسم العرض/الدخول، قد يكون مختصراً أو غير مطابق حرفياً).
+  legal_full_name?: string;
+  // المسمى الوظيفي الفعلي (نص حر، مثال: "فني تكييف أول") — منفصل عن role
+  // (الدور البرمجي الذي يتحكم بالصلاحيات، مجموعة قيم ثابتة محدودة).
+  job_title?: string;
+  // صورة الهوية/الإقامة — رابط موقَّع طويل الأمد (10 سنوات) على Supabase
+  // Storage، نفس نمط باقي صور النظام (انظر uploadEmployeeIdPhoto).
+  id_photo_url?: string;
 }
 
 // سبب انتهاء العقد — يُحدِّد نسبة الاستحقاق من مكافأة نهاية الخدمة وفق
@@ -897,6 +906,17 @@ export const EXPENSE_INCOME_TYPE_LABELS_AR: Record<ExpenseIncomeType, string> = 
   additional_capital: 'رأس مال إضافي',
 };
 
+// كيف تُستقطَع سلفية (Expense بفئة ADVANCE_CATEGORY_NAME) من راتب صاحبها —
+// انظر Expense.advance_deduction_mode أعلاه.
+export type AdvanceDeductionMode = 'none' | 'full_next' | 'installments' | 'period';
+
+export const ADVANCE_DEDUCTION_MODE_LABELS_AR: Record<AdvanceDeductionMode, string> = {
+  none: 'بلا استقطاع تلقائي',
+  full_next: 'خصمها كاملة من الراتب القادم',
+  installments: 'تقسيطها على عدة رواتب',
+  period: 'خصمها بين فترتين محدَّدتين',
+};
+
 export interface Expense {
   id: string;
   title: string;
@@ -932,6 +952,24 @@ export interface Expense {
   // to avoid a schema migration.
   custody_holder_id?: string;
   custody_holder_name?: string;
+  // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما
+  // category === ADVANCE_CATEGORY_NAME، تُضبَط عند تسجيل السلفية نفسها
+  // (أو لاحقاً بالتعديل). 'none' (الافتراضي) يعني بلا استقطاع تلقائي
+  // إطلاقاً — لا شيء مفعّل إلا بالاختيار الصريح. يُحتسَب فعلياً في POST
+  // /employees/:id/pay-salary بنفس منطق قسط EmployeeDeduction الشهري
+  // تماماً (انظر computeAdvanceInstallment هناك).
+  advance_deduction_mode?: AdvanceDeductionMode;
+  // لوضع 'installments': عدد الأشهر لتقسيط amount عليها بالتساوي، بدءاً
+  // من الراتب القادم مباشرة (1 يكافئ 'full_next').
+  advance_installment_months?: number;
+  // لوضع 'period': نطاق الأشهر (YYYY-MM شاملة الطرفين) التي يُستقطَع
+  // amount مقسَّماً بالتساوي عليها — لا استقطاع قبل advance_period_start
+  // ولا بعد advance_period_end حتى لو بقي رصيد.
+  advance_period_start?: string;
+  advance_period_end?: string;
+  // المبلغ المُستقطَع فعلياً حتى الآن عبر الرواتب الشهرية — الفرق
+  // (amount - advance_settled_amount) هو "المتبقي".
+  advance_settled_amount?: number;
   payment_method: PaymentMethod;
   notes?: string;
   // صورة أو ملف PDF لسند/فاتورة المصروف — يُرفع كـ base64 data URL من

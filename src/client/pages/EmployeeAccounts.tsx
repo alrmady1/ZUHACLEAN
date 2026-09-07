@@ -17,6 +17,7 @@ import {
   Percent,
   UserX,
   AlertTriangle,
+  Camera,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
@@ -29,6 +30,7 @@ import type {
   Profile,
   CommissionEligibility,
   TerminationReason,
+  AdvanceDeductionMode,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
@@ -37,11 +39,13 @@ import {
   CAN_DELETE_CUSTODY_ROLES,
   DEDUCTION_CATEGORY_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
+  ADVANCE_DEDUCTION_MODE_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { compressImageToDataUrl } from '../lib/image.js';
 
 // العمر بالسنوات الكاملة من تاريخ الميلاد — يُحتسَب دائماً ديناميكياً
 // (لا يُخزَّن كرقم ثابت يصبح خاطئاً مع مرور الوقت).
@@ -90,6 +94,33 @@ function monthlyInstallment(d: EmployeeDeduction): number {
   return Math.round(Math.min(perMonth, remaining) * 100) / 100;
 }
 
+function monthsBetweenInclusive(startMonth: string, endMonth: string): number {
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  return Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+}
+
+// قسط هذا الشهر من سلفية واحدة — نفس منطق computeAdvanceInstallment على
+// الخادم بالضبط (server/routes/api.ts)، لعرض معاينة حيّة فقط.
+function advanceMonthlyInstallment(advance: Expense, currentMonth: string): number {
+  const mode = advance.advance_deduction_mode ?? 'none';
+  if (mode === 'none') return 0;
+  const remaining = advance.amount - (advance.advance_settled_amount ?? 0);
+  if (remaining <= 0.005) return 0;
+  if (mode === 'full_next') return Math.round(remaining * 100) / 100;
+  if (mode === 'installments') {
+    const months = Math.max(1, advance.advance_installment_months ?? 1);
+    return Math.round(Math.min(advance.amount / months, remaining) * 100) / 100;
+  }
+  if (mode === 'period') {
+    if (!advance.advance_period_start || !advance.advance_period_end) return 0;
+    if (currentMonth < advance.advance_period_start || currentMonth > advance.advance_period_end) return 0;
+    const months = monthsBetweenInclusive(advance.advance_period_start, advance.advance_period_end);
+    return Math.round(Math.min(advance.amount / months, remaining) * 100) / 100;
+  }
+  return 0;
+}
+
 // أقرب تاريخ استحقاق قادم من يوم ثابت في الشهر — إن مرّ هذا اليوم في
 // الشهر الحالي بالفعل، ينتقل تلقائياً لنفس اليوم من الشهر القادم.
 function nextDueDate(day: number): Date {
@@ -128,15 +159,21 @@ interface EmployeeSummary {
   // خصميات ما زال لها رصيد متبقٍ (amount > settled_amount) — هذه فقط
   // تُحتسَب ضمن قسط الراتب القادم، وليس كل الخصميات المسجَّلة تاريخياً.
   activeDeductions: EmployeeDeduction[];
+  // سلفيات مجدولة للاستقطاع (advance_deduction_mode !== 'none') ولها
+  // رصيد متبقٍ — تدخل في قسط الراتب القادم أيضاً (انظر
+  // advanceMonthlyInstallment). سلفية بلا جدولة (الافتراضي) لا تظهر هنا
+  // ولا تُخصَم تلقائياً إطلاقاً.
+  scheduledAdvances: Expense[];
   thisMonthDeductionTotal: number;
+  thisMonthAdvanceTotal: number;
   violationsTotal: number;
   violations: EmployeeViolation[];
   // عمولة هذا الشهر المستحقة له (مسوّق أو مشرف) — من تقرير العمولات، صفر
   // إن لم يكن مستحقاً لأي عمولة إطلاقاً.
   commissionDue: number;
   // صافي الراتب المتوقَّع = الراتب الثابت زائد عمولة هذا الشهر ناقص قسط
-  // هذا الشهر من الخصميات النشطة — null إن لم يُحدَّد راتب ثابت لهذا
-  // الموظف بعد.
+  // هذا الشهر من الخصميات النشطة وقسط السلفيات المجدولة — null إن لم
+  // يُحدَّد راتب ثابت لهذا الموظف بعد.
   netSalary: number | null;
 }
 
@@ -195,11 +232,17 @@ export function EmployeeAccountsTab() {
         const empViolations = violations.filter((v) => v.employee_id === p.id);
         const activeDeductions = empDeductions.filter((d) => d.amount - (d.settled_amount ?? 0) > 0.005);
         const thisMonthDeductionTotal = activeDeductions.reduce((sum, d) => sum + monthlyInstallment(d), 0);
+        const scheduledAdvances = advanceEntries.filter(
+          (a) => (a.advance_deduction_mode ?? 'none') !== 'none' && a.amount - (a.advance_settled_amount ?? 0) > 0.005,
+        );
+        const thisMonthAdvanceTotal = scheduledAdvances.reduce((sum, a) => sum + advanceMonthlyInstallment(a, currentMonth()), 0);
         const commissionDue =
           commissionReport?.marketers.find((m) => m.profile_id === p.id)?.commission_due ??
           commissionReport?.supervisors.find((s) => s.profile_id === p.id)?.commission_due ??
           0;
-        const netSalary = p.monthly_salary ? Math.max(p.monthly_salary + commissionDue - thisMonthDeductionTotal, 0) : null;
+        const netSalary = p.monthly_salary
+          ? Math.max(p.monthly_salary + commissionDue - thisMonthDeductionTotal - thisMonthAdvanceTotal, 0)
+          : null;
         return {
           profile: p,
           salaryEntries,
@@ -214,7 +257,9 @@ export function EmployeeAccountsTab() {
           deductions: empDeductions,
           deductionsTotal: empDeductions.reduce((sum, d) => sum + d.amount, 0),
           activeDeductions,
+          scheduledAdvances,
           thisMonthDeductionTotal,
+          thisMonthAdvanceTotal,
           violations: empViolations,
           violationsTotal: empViolations.reduce((sum, v) => sum + (v.amount ?? 0), 0),
           commissionDue,
@@ -293,10 +338,18 @@ export function EmployeeAccountsTab() {
                     <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.commissionDue)}</div>
                   </div>
                 )}
-                <div className={`${s.commissionDue > 0 ? '' : 'col-span-2'} rounded-xl px-2 py-2 ${s.thisMonthDeductionTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
-                  <div className="text-[11px] text-slate-400">{t('خصميات هذا الشهر')}</div>
-                  <div className={`text-sm font-semibold ${s.thisMonthDeductionTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                    {formatMoney(s.thisMonthDeductionTotal)}
+                <div
+                  className={`${s.commissionDue > 0 ? '' : 'col-span-2'} rounded-xl px-2 py-2 ${
+                    s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal > 0 ? 'bg-red-50' : 'bg-slate-50'
+                  }`}
+                >
+                  <div className="text-[11px] text-slate-400">{t('خصميات وسلفيات هذا الشهر')}</div>
+                  <div
+                    className={`text-sm font-semibold ${
+                      s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal > 0 ? 'text-red-600' : 'text-slate-700'
+                    }`}
+                  >
+                    {formatMoney(s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal)}
                   </div>
                 </div>
               </div>
@@ -361,16 +414,20 @@ function EmployeeDetail({
   const [payingSalary, setPayingSalary] = useState(false);
   const [payResult, setPayResult] = useState<{ net: number; withheld: number; commission: number } | null>(null);
   const [editingPersonal, setEditingPersonal] = useState(false);
+  const [legalNameInput, setLegalNameInput] = useState(summary.profile.legal_full_name ?? '');
+  const [jobTitleInput, setJobTitleInput] = useState(summary.profile.job_title ?? '');
   const [dobInput, setDobInput] = useState(summary.profile.date_of_birth ?? '');
   const [nationalIdInput, setNationalIdInput] = useState(summary.profile.national_id ?? '');
   const [nationalIdExpiryInput, setNationalIdExpiryInput] = useState(summary.profile.national_id_expiry ?? '');
   const [hireDateInput, setHireDateInput] = useState(summary.profile.hire_date ?? '');
+  const [idPhotoFile, setIdPhotoFile] = useState<File | null>(null);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingEligibility, setSavingEligibility] = useState(false);
   const [showTerminateForm, setShowTerminateForm] = useState(false);
   const [terminationDateInput, setTerminationDateInput] = useState(new Date().toISOString().slice(0, 10));
   const [terminationReasonInput, setTerminationReasonInput] = useState<TerminationReason>('employer_termination');
   const [terminating, setTerminating] = useState(false);
+  const [editingSalaryEntry, setEditingSalaryEntry] = useState<Expense | null>(null);
 
   async function handleDeleteDeduction(id: string) {
     if (!window.confirm(t('حذف هذا الخصم؟'))) return;
@@ -390,23 +447,37 @@ function EmployeeDetail({
     onChanged();
   }
 
+  async function handleDeleteSalaryEntry(id: string) {
+    if (!window.confirm(t('حذف سجل الراتب هذا نهائياً؟'))) return;
+    await api.del(`/expenses/${id}`);
+    onChanged();
+  }
+
   function startEditingPersonal() {
+    setLegalNameInput(summary.profile.legal_full_name ?? '');
+    setJobTitleInput(summary.profile.job_title ?? '');
     setDobInput(summary.profile.date_of_birth ?? '');
     setNationalIdInput(summary.profile.national_id ?? '');
     setNationalIdExpiryInput(summary.profile.national_id_expiry ?? '');
     setHireDateInput(summary.profile.hire_date ?? '');
+    setIdPhotoFile(null);
     setEditingPersonal(true);
   }
 
   async function savePersonal() {
     setSavingPersonal(true);
     try {
+      const id_photo_data_url = idPhotoFile ? await compressImageToDataUrl(idPhotoFile) : undefined;
       await api.patch(`/profiles/${summary.profile.id}`, {
+        legal_full_name: legalNameInput || null,
+        job_title: jobTitleInput || null,
         date_of_birth: dobInput || null,
         national_id: nationalIdInput || null,
         national_id_expiry: nationalIdExpiryInput || null,
         hire_date: hireDateInput || null,
+        id_photo_data_url,
       });
+      setIdPhotoFile(null);
       setEditingPersonal(false);
       onChanged();
     } finally {
@@ -531,6 +602,16 @@ function EmployeeDetail({
             <div className="space-y-3 rounded-xl bg-slate-50 p-3">
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الاسم الكامل (حسب الهوية)')}</span>
+                  <input value={legalNameInput} onChange={(e) => setLegalNameInput(e.target.value)} className="input" />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المسمى الوظيفي')}</span>
+                  <input value={jobTitleInput} onChange={(e) => setJobTitleInput(e.target.value)} className="input" placeholder={t('مثال: فني تكييف أول')} />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('تاريخ الميلاد')}</span>
                   <input type="date" value={dobInput} onChange={(e) => setDobInput(e.target.value)} className="input" />
                 </label>
@@ -554,6 +635,31 @@ function EmployeeDetail({
                   />
                 </label>
               </div>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('صورة الهوية / الإقامة')}</span>
+                {summary.profile.id_photo_url && !idPhotoFile && (
+                  <a
+                    href={summary.profile.id_photo_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium text-brand-600"
+                  >
+                    <img src={summary.profile.id_photo_url} alt={t('صورة الهوية')} className="h-10 w-10 rounded object-cover" />
+                    {t('عرض الصورة الحالية')}
+                  </a>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setIdPhotoFile(e.target.files?.[0] ?? null)}
+                  className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                />
+                {idPhotoFile && (
+                  <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                    <Camera className="h-3 w-3" /> {idPhotoFile.name}
+                  </span>
+                )}
+              </label>
               <div className="flex items-center gap-2">
                 <button
                   onClick={savePersonal}
@@ -568,34 +674,57 @@ function EmployeeDetail({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div>
-                <div className="text-xs text-slate-400">{t('العمر')}</div>
-                <div className="font-medium text-slate-700">
-                  {summary.profile.date_of_birth ? tt(`${ageFromBirthDate(summary.profile.date_of_birth)} سنة`, `${ageFromBirthDate(summary.profile.date_of_birth)} yrs`) : '—'}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-slate-400">{t('الاسم الكامل (حسب الهوية)')}</div>
+                  <div className="font-medium text-slate-700">{summary.profile.legal_full_name || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('المسمى الوظيفي')}</div>
+                  <div className="font-medium text-slate-700">{summary.profile.job_title || '—'}</div>
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-slate-400">{t('رقم الهوية / الإقامة')}</div>
-                <div className="font-medium text-slate-700" dir="ltr">{summary.profile.national_id || '—'}</div>
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div>
+                  <div className="text-xs text-slate-400">{t('العمر')}</div>
+                  <div className="font-medium text-slate-700">
+                    {summary.profile.date_of_birth ? tt(`${ageFromBirthDate(summary.profile.date_of_birth)} سنة`, `${ageFromBirthDate(summary.profile.date_of_birth)} yrs`) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('رقم الهوية / الإقامة')}</div>
+                  <div className="font-medium text-slate-700" dir="ltr">{summary.profile.national_id || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('تاريخ انتهاء الهوية')}</div>
+                  <div
+                    className={`font-medium ${
+                      summary.profile.national_id_expiry && new Date(summary.profile.national_id_expiry) < new Date()
+                        ? 'text-red-600'
+                        : 'text-slate-700'
+                    }`}
+                    dir="ltr"
+                  >
+                    {summary.profile.national_id_expiry || '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
+                  <div className="font-medium text-slate-700" dir="ltr">{summary.profile.hire_date || '—'}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-slate-400">{t('تاريخ انتهاء الهوية')}</div>
-                <div
-                  className={`font-medium ${
-                    summary.profile.national_id_expiry && new Date(summary.profile.national_id_expiry) < new Date()
-                      ? 'text-red-600'
-                      : 'text-slate-700'
-                  }`}
-                  dir="ltr"
+              {summary.profile.id_photo_url && (
+                <a
+                  href={summary.profile.id_photo_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium text-brand-600"
                 >
-                  {summary.profile.national_id_expiry || '—'}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
-                <div className="font-medium text-slate-700" dir="ltr">{summary.profile.hire_date || '—'}</div>
-              </div>
+                  <img src={summary.profile.id_photo_url} alt={t('صورة الهوية')} className="h-10 w-10 rounded object-cover" />
+                  {t('عرض صورة الهوية')}
+                </a>
+              )}
             </div>
           )}
         </Section>
@@ -674,10 +803,14 @@ function EmployeeDetail({
                     {summary.commissionDue > 0 ? `+${formatMoney(summary.commissionDue)}` : formatMoney(0)}
                   </div>
                 </div>
-                <div className={`rounded-xl p-2.5 ${summary.thisMonthDeductionTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
-                  <div className="text-[11px] text-slate-400">{t('خصميات هذا الشهر')}</div>
-                  <div className={`text-sm font-semibold ${summary.thisMonthDeductionTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                    {summary.thisMonthDeductionTotal > 0 ? `-${formatMoney(summary.thisMonthDeductionTotal)}` : formatMoney(0)}
+                <div className={`rounded-xl p-2.5 ${summary.thisMonthDeductionTotal + summary.thisMonthAdvanceTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
+                  <div className="text-[11px] text-slate-400">{t('خصميات وسلفيات هذا الشهر')}</div>
+                  <div
+                    className={`text-sm font-semibold ${summary.thisMonthDeductionTotal + summary.thisMonthAdvanceTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}
+                  >
+                    {summary.thisMonthDeductionTotal + summary.thisMonthAdvanceTotal > 0
+                      ? `-${formatMoney(summary.thisMonthDeductionTotal + summary.thisMonthAdvanceTotal)}`
+                      : formatMoney(0)}
                   </div>
                 </div>
                 <div className="rounded-xl bg-brand-50 p-2.5">
@@ -686,7 +819,7 @@ function EmployeeDetail({
                 </div>
               </div>
 
-              {summary.activeDeductions.length > 0 && (
+              {(summary.activeDeductions.length > 0 || summary.scheduledAdvances.length > 0) && (
                 <div className="rounded-xl border border-slate-100 p-2.5">
                   <div className="mb-1.5 text-xs font-medium text-slate-500">{t('تفاصيل قسط هذا الشهر')}</div>
                   <div className="space-y-1">
@@ -700,6 +833,20 @@ function EmployeeDetail({
                           {formatMoney(monthlyInstallment(d))}
                           <span className="ms-1 text-slate-400">
                             ({tt(`متبقٍ ${formatMoney(d.amount - (d.settled_amount ?? 0))}`, `${formatMoney(d.amount - (d.settled_amount ?? 0))} remaining`)})
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                    {summary.scheduledAdvances.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-600">
+                          {a.title}
+                          <span className="text-slate-400"> — {t(ADVANCE_DEDUCTION_MODE_LABELS_AR[a.advance_deduction_mode ?? 'none'])}</span>
+                        </span>
+                        <span className="font-medium text-red-600">
+                          {formatMoney(advanceMonthlyInstallment(a, currentMonth()))}
+                          <span className="ms-1 text-slate-400">
+                            ({tt(`متبقٍ ${formatMoney(a.amount - (a.advance_settled_amount ?? 0))}`, `${formatMoney(a.amount - (a.advance_settled_amount ?? 0))} remaining`)})
                           </span>
                         </span>
                       </div>
@@ -774,17 +921,61 @@ function EmployeeDetail({
         <Section icon={<Wallet className="h-4 w-4 text-brand-600" />} title={t('سجل الرواتب المدفوعة')} total={formatMoney(summary.salaryTotal)}>
           <SimpleTable
             emptyLabel={t('لا توجد رواتب مسجَّلة لهذا الموظف')}
-            headers={[t('التاريخ'), t('البيان'), t('المبلغ')]}
-            rows={summary.salaryEntries.map((e) => [formatDateAr(e.date), e.title, formatMoney(e.amount)])}
+            headers={[t('التاريخ'), t('البيان'), t('المبلغ'), '']}
+            rows={summary.salaryEntries.map((e) => [
+              formatDateAr(e.date),
+              e.title,
+              formatMoney(e.amount),
+              <span key={`${e.id}-actions`} className="flex items-center gap-1">
+                {canEdit && (
+                  <button
+                    onClick={() => setEditingSalaryEntry(e)}
+                    title={t('تعديل')}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => handleDeleteSalaryEntry(e.id)}
+                    title={t('حذف')}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </span>,
+            ])}
           />
         </Section>
 
-        {/* السلفيات */}
+        {/* السلفيات — الجدولة (استقطاعها من الراتب) تُضبَط عند تسجيل السلفية
+            نفسها من صفحة المصروفات العامة (أو تعديلها لاحقاً من هناك)، هنا
+            عرض فقط لحالة كل سلفية. */}
         <Section icon={<HandCoins className="h-4 w-4 text-brand-600" />} title={t('السلفيات')} total={formatMoney(summary.advanceTotal)}>
           <SimpleTable
             emptyLabel={t('لا توجد سلفيات مسجَّلة لهذا الموظف')}
-            headers={[t('التاريخ'), t('البيان'), t('المبلغ')]}
-            rows={summary.advanceEntries.map((e) => [formatDateAr(e.date), e.title, formatMoney(e.amount)])}
+            headers={[t('التاريخ'), t('البيان'), t('المبلغ'), t('الاستقطاع')]}
+            rows={summary.advanceEntries.map((e) => {
+              const mode = e.advance_deduction_mode ?? 'none';
+              const remaining = e.amount - (e.advance_settled_amount ?? 0);
+              return [
+                formatDateAr(e.date),
+                e.title,
+                formatMoney(e.amount),
+                mode === 'none' ? (
+                  <span key={`${e.id}-mode`} className="text-slate-400">{t(ADVANCE_DEDUCTION_MODE_LABELS_AR.none)}</span>
+                ) : remaining <= 0.005 ? (
+                  <span key={`${e.id}-mode`} className="font-medium text-emerald-600">{t('مسدَّد')}</span>
+                ) : (
+                  <span key={`${e.id}-mode`} className="text-slate-600">
+                    {t(ADVANCE_DEDUCTION_MODE_LABELS_AR[mode])}
+                    <span className="ms-1 text-slate-400">({tt(`متبقٍ ${formatMoney(remaining)}`, `${formatMoney(remaining)} remaining`)})</span>
+                  </span>
+                ),
+              ];
+            })}
           />
         </Section>
 
@@ -1071,6 +1262,27 @@ function EmployeeDetail({
           }}
         />
       )}
+
+      {editingSalaryEntry && (
+        <EntryForm
+          zIndexTop
+          title={t('تعديل سجل الراتب')}
+          amountRequired
+          amountLabel={t('المبلغ (ر.س)')}
+          initial={{ title: editingSalaryEntry.title, amount: editingSalaryEntry.amount, date: editingSalaryEntry.date, notes: editingSalaryEntry.notes }}
+          onClose={() => setEditingSalaryEntry(null)}
+          onSubmit={async (values) => {
+            await api.patch(`/expenses/${editingSalaryEntry.id}`, {
+              title: values.title,
+              amount: Number(values.amount),
+              date: values.date,
+              notes: values.notes || undefined,
+            });
+            setEditingSalaryEntry(null);
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1145,6 +1357,7 @@ function EntryForm({
   amountLabel,
   amountRequired,
   zIndexTop,
+  initial,
   onClose,
   onSubmit,
 }: {
@@ -1152,6 +1365,8 @@ function EntryForm({
   amountLabel: string;
   amountRequired: boolean;
   zIndexTop?: boolean;
+  // قيم مبدئية — عند تحريرها (تعديل سجل قائم) بدل إدخال جديد فارغ.
+  initial?: { title?: string; amount?: number; date?: string; notes?: string };
   onClose: () => void;
   onSubmit: (values: { title: string; amount: string; date: string; notes: string }) => Promise<void>;
 }) {
@@ -1186,21 +1401,21 @@ function EntryForm({
         <div className="space-y-3">
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('البيان')}</span>
-            <input name="title" required className="input" />
+            <input name="title" defaultValue={initial?.title} required className="input" />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{amountLabel}</span>
-              <input type="number" name="amount" min={0} step="0.01" required={amountRequired} className="input" />
+              <input type="number" name="amount" min={0} step="0.01" defaultValue={initial?.amount} required={amountRequired} className="input" />
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
-              <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
+              <input type="date" name="date" defaultValue={initial?.date ?? new Date().toISOString().slice(0, 10)} required className="input" />
             </label>
           </div>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
-            <textarea name="notes" rows={2} className="input resize-none" />
+            <textarea name="notes" rows={2} defaultValue={initial?.notes} className="input resize-none" />
           </label>
         </div>
         <button
