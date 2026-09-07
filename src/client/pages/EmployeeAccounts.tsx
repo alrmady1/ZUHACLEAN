@@ -42,6 +42,19 @@ function nextDueDate(day: number): Date {
   return candidate;
 }
 
+function currentMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+// نفس الشكل الذي يُرجعه GET /commission-report (انظر computeCommissionReport
+// في server/routes/api.ts) — فقط الحقول المستخدَمة هنا (مطابقة عمولة كل
+// موظف براتبه الشهري، انظر POST /employees/:id/pay-salary الذي يحتسبها
+// بنفس الطريقة على الخادم فعلياً؛ هذا فقط لمعاينة حيّة قبل التسجيل).
+interface CommissionReportLite {
+  marketers: { profile_id: string; commission_due: number }[];
+  supervisors: { profile_id: string; commission_due: number }[];
+}
+
 interface EmployeeSummary {
   profile: Profile;
   salaryTotal: number;
@@ -61,8 +74,12 @@ interface EmployeeSummary {
   thisMonthDeductionTotal: number;
   violationsTotal: number;
   violations: EmployeeViolation[];
-  // صافي الراتب المتوقَّع = الراتب الثابت ناقص قسط هذا الشهر من الخصميات
-  // النشطة — null إن لم يُحدَّد راتب ثابت لهذا الموظف بعد.
+  // عمولة هذا الشهر المستحقة له (مسوّق أو مشرف) — من تقرير العمولات، صفر
+  // إن لم يكن مستحقاً لأي عمولة إطلاقاً.
+  commissionDue: number;
+  // صافي الراتب المتوقَّع = الراتب الثابت زائد عمولة هذا الشهر ناقص قسط
+  // هذا الشهر من الخصميات النشطة — null إن لم يُحدَّد راتب ثابت لهذا
+  // الموظف بعد.
   netSalary: number | null;
 }
 
@@ -84,6 +101,7 @@ export function EmployeeAccountsTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [deductions, setDeductions] = useState<EmployeeDeduction[]>([]);
   const [violations, setViolations] = useState<EmployeeViolation[]>([]);
+  const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   function refresh() {
@@ -92,6 +110,7 @@ export function EmployeeAccountsTab() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
     api.get<EmployeeDeduction[]>('/employee-deductions').then(setDeductions);
     api.get<EmployeeViolation[]>('/employee-violations').then(setViolations);
+    api.get<CommissionReportLite>(`/commission-report?month=${currentMonth()}`).then(setCommissionReport);
   }
 
   useEffect(refresh, []);
@@ -117,7 +136,11 @@ export function EmployeeAccountsTab() {
         const empViolations = violations.filter((v) => v.employee_id === p.id);
         const activeDeductions = empDeductions.filter((d) => d.amount - (d.settled_amount ?? 0) > 0.005);
         const thisMonthDeductionTotal = activeDeductions.reduce((sum, d) => sum + monthlyInstallment(d), 0);
-        const netSalary = p.monthly_salary ? Math.max(p.monthly_salary - thisMonthDeductionTotal, 0) : null;
+        const commissionDue =
+          commissionReport?.marketers.find((m) => m.profile_id === p.id)?.commission_due ??
+          commissionReport?.supervisors.find((s) => s.profile_id === p.id)?.commission_due ??
+          0;
+        const netSalary = p.monthly_salary ? Math.max(p.monthly_salary + commissionDue - thisMonthDeductionTotal, 0) : null;
         return {
           profile: p,
           salaryEntries,
@@ -135,11 +158,12 @@ export function EmployeeAccountsTab() {
           thisMonthDeductionTotal,
           violations: empViolations,
           violationsTotal: empViolations.reduce((sum, v) => sum + (v.amount ?? 0), 0),
+          commissionDue,
           netSalary,
         };
       })
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name, 'ar'));
-  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations]);
+  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations, commissionReport]);
 
   const openSummary = summaries.find((s) => s.profile.id === openId) ?? null;
   const canEdit = can('edit_custody_expenses');
@@ -191,7 +215,13 @@ export function EmployeeAccountsTab() {
                   <div className="text-[11px] text-slate-400">{t('فواتير محصَّلة')}</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(s.invoicesTotal)}</div>
                 </div>
-                <div className={`col-span-2 rounded-xl px-2 py-2 ${s.thisMonthDeductionTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
+                {s.commissionDue > 0 && (
+                  <div className="rounded-xl bg-emerald-50 px-2 py-2">
+                    <div className="text-[11px] text-slate-400">{t('عمولة هذا الشهر')}</div>
+                    <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.commissionDue)}</div>
+                  </div>
+                )}
+                <div className={`${s.commissionDue > 0 ? '' : 'col-span-2'} rounded-xl px-2 py-2 ${s.thisMonthDeductionTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
                   <div className="text-[11px] text-slate-400">{t('خصميات هذا الشهر')}</div>
                   <div className={`text-sm font-semibold ${s.thisMonthDeductionTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}>
                     {formatMoney(s.thisMonthDeductionTotal)}
@@ -254,7 +284,7 @@ function EmployeeDetail({
   const [dueDayInput, setDueDayInput] = useState(String(summary.profile.salary_due_day ?? ''));
   const [savingSalary, setSavingSalary] = useState(false);
   const [payingSalary, setPayingSalary] = useState(false);
-  const [payResult, setPayResult] = useState<{ net: number; withheld: number } | null>(null);
+  const [payResult, setPayResult] = useState<{ net: number; withheld: number; commission: number } | null>(null);
 
   async function handleDeleteDeduction(id: string) {
     if (!window.confirm(t('حذف هذا الخصم؟'))) return;
@@ -298,7 +328,7 @@ function EmployeeDetail({
     if (!window.confirm(tt(`تسجيل راتب ${summary.profile.full_name} لهذا الشهر؟`, `Record ${summary.profile.full_name}'s salary for this month?`))) return;
     setPayingSalary(true);
     try {
-      const result = await api.post<{ net: number; withheld: number }>(`/employees/${summary.profile.id}/pay-salary`, {
+      const result = await api.post<{ net: number; withheld: number; commission: number }>(`/employees/${summary.profile.id}/pay-salary`, {
         recorded_by: recordedById,
         recorded_by_name: recordedByName,
       });
@@ -387,20 +417,26 @@ function EmployeeDetail({
             </p>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                 <div className="rounded-xl bg-slate-50 p-2.5">
                   <div className="text-[11px] text-slate-400">{t('الراتب الأساسي')}</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(summary.profile.monthly_salary)}</div>
                 </div>
+                <div className={`rounded-xl p-2.5 ${summary.commissionDue > 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+                  <div className="text-[11px] text-slate-400">{t('عمولة هذا الشهر')}</div>
+                  <div className={`text-sm font-semibold ${summary.commissionDue > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {summary.commissionDue > 0 ? `+${formatMoney(summary.commissionDue)}` : formatMoney(0)}
+                  </div>
+                </div>
                 <div className={`rounded-xl p-2.5 ${summary.thisMonthDeductionTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
                   <div className="text-[11px] text-slate-400">{t('خصميات هذا الشهر')}</div>
                   <div className={`text-sm font-semibold ${summary.thisMonthDeductionTotal > 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                    {formatMoney(summary.thisMonthDeductionTotal)}
+                    {summary.thisMonthDeductionTotal > 0 ? `-${formatMoney(summary.thisMonthDeductionTotal)}` : formatMoney(0)}
                   </div>
                 </div>
-                <div className="rounded-xl bg-emerald-50 p-2.5">
+                <div className="rounded-xl bg-brand-50 p-2.5">
                   <div className="text-[11px] text-slate-400">{t('صافي الراتب المتوقع')}</div>
-                  <div className="text-sm font-semibold text-emerald-700">{formatMoney(summary.netSalary ?? 0)}</div>
+                  <div className="text-sm font-semibold text-brand-700">{formatMoney(summary.netSalary ?? 0)}</div>
                 </div>
               </div>
 
@@ -448,8 +484,8 @@ function EmployeeDetail({
                   {payResult && (
                     <p className="mt-2 text-xs text-emerald-700">
                       {tt(
-                        `تم تسجيل صافي ${formatMoney(payResult.net)} (خُصم ${formatMoney(payResult.withheld)}).`,
-                        `Net ${formatMoney(payResult.net)} recorded (${formatMoney(payResult.withheld)} withheld).`,
+                        `تم تسجيل صافي ${formatMoney(payResult.net)}${payResult.commission > 0 ? ` (منها عمولة ${formatMoney(payResult.commission)})` : ''}${payResult.withheld > 0 ? ` (خُصم ${formatMoney(payResult.withheld)})` : ''}.`,
+                        `Net ${formatMoney(payResult.net)} recorded${payResult.commission > 0 ? ` (incl. ${formatMoney(payResult.commission)} commission)` : ''}${payResult.withheld > 0 ? ` (${formatMoney(payResult.withheld)} withheld)` : ''}.`,
                       )}
                     </p>
                   )}

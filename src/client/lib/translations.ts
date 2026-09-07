@@ -29,6 +29,7 @@ export const AR_TO_EN: Record<string, string> = {
   "مخالفة": "Violation",
   "تأخير": "Lateness",
   "تلفية": "Damage",
+  "عمولة هذا الشهر": "This Month's Commission",
   "المبيعات والفواتير والمصروفات والموظفين والعمولات والضريبة والعقود في مكان واحد": "Sales & invoices, expenses, employees, commissions, tax, and contracts — all in one place",
   "بيانات الحساب البنكي": "Bank Account Details",
   "تُستخدَم لإنشاء صورة قابلة للمشاركة عبر واتساب أو الإيميل عند اختيار \"حوالة بنكية\" كطريقة دفع": "Used to generate a shareable image (via WhatsApp or email) when \"Bank transfer\" is selected as the payment method",

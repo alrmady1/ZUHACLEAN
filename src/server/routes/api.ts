@@ -1612,8 +1612,10 @@ api.delete('/employee-violations/:id', (req, res) => {
 // تسجيل راتب شهري لموظف — الطريقة الوحيدة لإضافة مصروف رواتب الآن (لم تعد
 // "رواتب" خياراً في نموذج "مصروف جديد" العام، انظر تعليق SALARY_CATEGORY_NAME
 // وGeneralExpensesTab في Expenses.tsx). تحسب صافي الراتب تلقائياً: الراتب
-// الثابت (Profile.monthly_salary) ناقص قسط هذا الشهر من كل خصم نشط (له
-// مبلغ متبقٍ لم يُسدَّد بعد — انظر تعليق installment_months في
+// الثابت (Profile.monthly_salary) زائد عمولة هذا الشهر المستحقة له فعلياً
+// (مسوّق أو مشرف — نفس computeCommissionReport المستخدَم في تبويب
+// "العمولات"، وليس رقماً يرسله العميل)، ناقص قسط هذا الشهر من كل خصم نشط
+// (له مبلغ متبقٍ لم يُسدَّد بعد — انظر تعليق installment_months في
 // EmployeeDeduction)، ثم تُنشئ مصروف رواتب بالصافي وتُحدِّث settled_amount
 // لكل خصم شارك في الاستقطاع، بعملية واحدة ذرية.
 api.post('/employees/:id/pay-salary', (req, res) => {
@@ -1622,7 +1624,16 @@ api.post('/employees/:id/pay-salary', (req, res) => {
   if (!profile.monthly_salary || profile.monthly_salary <= 0) {
     return res.status(400).json({ error: 'الراتب الشهري لهذا الموظف غير محدَّد بعد' });
   }
-  const gross = profile.monthly_salary;
+  const body = req.body ?? {};
+  const month = typeof body.month === 'string' && /^\d{4}-\d{2}$/.test(body.month) ? body.month : new Date().toISOString().slice(0, 7);
+  const baseSalary = profile.monthly_salary;
+  const commissionReport = computeCommissionReport(month);
+  const commission =
+    commissionReport.marketers.find((m) => m.profile_id === profile.id)?.commission_due ??
+    commissionReport.supervisors.find((s) => s.profile_id === profile.id)?.commission_due ??
+    0;
+  const gross = Math.round((baseSalary + commission) * 100) / 100;
+
   const activeDeductions = store.employeeDeductions
     .list()
     .filter((d) => d.employee_id === profile.id && d.amount - (d.settled_amount ?? 0) > 0.005);
@@ -1639,10 +1650,14 @@ api.post('/employees/:id/pay-salary', (req, res) => {
   }
   const net = Math.max(Math.round((gross - totalWithheld) * 100) / 100, 0);
 
-  const body = req.body ?? {};
+  const noteParts: string[] = [`راتب أساسي ${baseSalary} ر.س`];
+  if (commission > 0) noteParts.push(`+ عمولة ${commission} ر.س (${month})`);
+  if (totalWithheld > 0) noteParts.push(`- خصميات ${totalWithheld} ر.س (${applied.length} خصم نشط)`);
+  noteParts.push(`= صافي ${net} ر.س`);
+
   const expense = store.expenses.insert({
     id: store.id(),
-    title: `راتب ${profile.full_name} — ${body.month_label ?? new Date().toISOString().slice(0, 7)}`,
+    title: `راتب ${profile.full_name} — ${body.month_label ?? month}`,
     category: SALARY_CATEGORY_NAME,
     entry_type: 'expense',
     period_type: 'monthly',
@@ -1653,10 +1668,7 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     custody_holder_id: profile.id,
     custody_holder_name: profile.full_name,
     payment_method: body.payment_method ?? 'bank_transfer',
-    notes:
-      totalWithheld > 0
-        ? `راتب إجمالي ${gross} ر.س، خُصم منه ${totalWithheld} ر.س (${applied.length} خصم نشط)، صافي مسجَّل ${net} ر.س.`
-        : undefined,
+    notes: commission > 0 || totalWithheld > 0 ? noteParts.join(' ') : undefined,
     created_at: new Date().toISOString(),
   });
 
@@ -1664,8 +1676,16 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     store.employeeDeductions.update(deduction.id, { settled_amount: (deduction.settled_amount ?? 0) + installment });
   }
 
-  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س، صافي ${net} ر.س بعد الخصميات`);
-  res.status(201).json({ expense, gross, withheld: totalWithheld, net, deductions: store.employeeDeductions.list().filter((d) => d.employee_id === profile.id) });
+  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س (منه عمولة ${commission} ر.س)، صافي ${net} ر.س بعد الخصميات`);
+  res.status(201).json({
+    expense,
+    base_salary: baseSalary,
+    commission,
+    gross,
+    withheld: totalWithheld,
+    net,
+    deductions: store.employeeDeductions.list().filter((d) => d.employee_id === profile.id),
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1781,9 +1801,11 @@ api.delete('/commission-eligibility/:id', (req, res) => {
 // كل شخص الفعلية من إجمالي إيراد الشركة. شرط الأمان (أدنى حصة للشركة)
 // يُخفِّض كل الحصص المستحقة تناسبياً (لا يُلغي الاستحقاق نفسه) لو
 // تجاوزتها الشرائح المُعدَّة يدوياً.
-api.get('/commission-report', (req, res) => {
-  const month =
-    typeof req.query.month === 'string' && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
+// مستخرَجة كدالة مستقلة (بدل بقائها داخل معالج GET /commission-report
+// فقط) حتى يستدعيها أيضاً POST /employees/:id/pay-salary — العمولة
+// المستحقة لهذا الشهر تُضاف تلقائياً كزيادة على الراتب الصافي عند تسجيله،
+// دون تكرار منطق الاحتساب أو تصديق رقم يرسله العميل.
+function computeCommissionReport(month: string) {
   const config = store.commissionConfig.get();
   const tiers = store.commissionTiers.list();
   const appointments = store.appointments.list();
@@ -1888,7 +1910,7 @@ api.get('/commission-report', (req, res) => {
   const totalMarketerDue = Math.round(marketers.reduce((s, m) => s + m.commission_due, 0) * 100) / 100;
   const totalSupervisorDue = Math.round(supervisors.reduce((s, v) => s + v.commission_due, 0) * 100) / 100;
 
-  res.json({
+  return {
     month,
     config,
     tiers,
@@ -1906,7 +1928,13 @@ api.get('/commission-report', (req, res) => {
     company_net_share: Math.round((companyRevenue - totalMarketerDue - totalSupervisorDue) * 100) / 100,
     marketers,
     supervisors,
-  });
+  };
+}
+
+api.get('/commission-report', (req, res) => {
+  const month =
+    typeof req.query.month === 'string' && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
+  res.json(computeCommissionReport(month));
 });
 
 // ---------------------------------------------------------------------------
