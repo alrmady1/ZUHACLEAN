@@ -29,6 +29,7 @@ import {
   CalendarOff as DaysOffIcon,
   History as ActivityLogIcon,
   Globe as LandingIcon,
+  Smartphone as MobileAppIcon,
   Image as ImageIcon,
   ArrowUp,
   ArrowDown,
@@ -62,12 +63,13 @@ import type {
   ActivityLogEntry,
   LandingPageSettings,
   LandingService,
+  MobileAppSettings,
   CommissionConfig,
   CommissionTier,
   CommissionEligibility,
   CompanyBankAccount,
 } from '../../shared/types.js';
-import { DEFAULT_LANDING_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
+import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
   SETTINGS_ACCESS_ROLES,
   PERMISSIONS_ACCESS_ROLES,
@@ -2742,6 +2744,142 @@ function LandingServiceForm({
 }
 
 // ---------------------------------------------------------------------------
+// Mobile app tab — بانر الشاشة الرئيسية ونصوص شاشة الدخول في تطبيق زهى
+// للجوال (مشروع React Native منفصل، zaha-mobile). قائمة الخدمات نفسها لا
+// تُدار من هنا — التطبيق يقرأها مباشرة من نفس LandingService/landing-services
+// المُدارة في تبويب "الطلبات الخارجية" أعلاه، فلا داعي لتكرارها هنا.
+// ---------------------------------------------------------------------------
+function MobileAppTab() {
+  const { t, tt } = useI18n();
+  const [settings, setSettings] = useState<MobileAppSettings>(DEFAULT_MOBILE_APP_SETTINGS);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.get<MobileAppSettings>('/mobile-app-settings').then(setSettings);
+  }, []);
+
+  async function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const { url } = await api.post<{ url: string }>('/landing-images', { data_url: dataUrl });
+      setSettings((prev) => ({ ...prev, home_banner_image_url: url }));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const updated = await api.patch<MobileAppSettings>('/mobile-app-settings', settings);
+      setSettings(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-slate-800">{t('تطبيق الجوال')}</h2>
+        <p className="text-sm text-slate-400">
+          {t('بانر الشاشة الرئيسية ونصوص شاشة الدخول في تطبيق زهى للجوال — قائمة الخدمات نفسها تُدار من تبويب "الطلبات الخارجية"')}
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h3 className="mb-4 text-sm font-bold text-slate-800">{t('بانر الشاشة الرئيسية')}</h3>
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('صورة البانر (اختياري)')}</span>
+            {settings.home_banner_image_url && (
+              <img src={settings.home_banner_image_url} alt="" className="mb-2 h-32 w-full rounded-xl object-cover" />
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              disabled={uploading}
+              className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+            />
+            {uploading && <span className="mt-1 block text-xs text-slate-400">{t('جارِ الرفع…')}</span>}
+            {settings.home_banner_image_url && (
+              <button
+                type="button"
+                onClick={() => setSettings((prev) => ({ ...prev, home_banner_image_url: undefined }))}
+                className="mt-1.5 text-xs font-medium text-red-600 hover:underline"
+              >
+                {t('إزالة الصورة')}
+              </button>
+            )}
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('عنوان البانر (اختياري)')}</span>
+            <input
+              value={settings.home_banner_title ?? ''}
+              onChange={(e) => setSettings((prev) => ({ ...prev, home_banner_title: e.target.value }))}
+              className="input"
+              placeholder={t('مثال: عرض الشهر — خصم على التنظيف الشامل')}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('وصف البانر (اختياري)')}</span>
+            <textarea
+              value={settings.home_banner_subtitle ?? ''}
+              onChange={(e) => setSettings((prev) => ({ ...prev, home_banner_subtitle: e.target.value }))}
+              rows={2}
+              className="input resize-none"
+            />
+          </label>
+          <p className="text-xs text-slate-400">{t('اترك العنوان فارغاً لإخفاء البانر بالكامل من الشاشة الرئيسية')}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h3 className="mb-4 text-sm font-bold text-slate-800">{t('نصوص شاشة تسجيل الدخول')}</h3>
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('عنوان الشاشة')}</span>
+            <input
+              value={settings.login_title ?? ''}
+              onChange={(e) => setSettings((prev) => ({ ...prev, login_title: e.target.value }))}
+              className="input"
+              placeholder={t('ابدأ الآن')}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('الوصف')}</span>
+            <input
+              value={settings.login_subtitle ?? ''}
+              onChange={(e) => setSettings((prev) => ({ ...prev, login_subtitle: e.target.value }))}
+              className="input"
+              placeholder={tt('اكتب جوالك عشان تسجّل الدخول', 'e.g. Enter your phone to sign in')}
+            />
+          </label>
+        </div>
+      </div>
+
+      <button
+        onClick={save}
+        disabled={saving}
+        className="rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+      >
+        {saving ? t('جارِ الحفظ…') : saved ? t('تم الحفظ ✓') : t('حفظ')}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -3368,6 +3506,7 @@ export default function Settings() {
     | 'team_links'
     | 'days_off'
     | 'landing_page'
+    | 'mobile_app'
     | 'permissions'
     | 'commissions'
     | 'riyadh_zones'
@@ -3457,6 +3596,14 @@ export default function Settings() {
             <LandingIcon className="h-4 w-4" /> {t('الطلبات الخارجية')}
           </button>
         )}
+        {canLandingPage && (
+          <button
+            onClick={() => setTab('mobile_app')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'mobile_app' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <MobileAppIcon className="h-4 w-4" /> {t('تطبيق الجوال')}
+          </button>
+        )}
         {canPermissions && (
           <button
             onClick={() => setTab('permissions')}
@@ -3505,6 +3652,8 @@ export default function Settings() {
         <DaysOffTab />
       ) : tab === 'landing_page' && canLandingPage ? (
         <LandingPageTab />
+      ) : tab === 'mobile_app' && canLandingPage ? (
+        <MobileAppTab />
       ) : tab === 'permissions' && canPermissions ? (
         <PermissionsTab />
       ) : tab === 'commissions' && canCommissions ? (

@@ -701,6 +701,31 @@ export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
   show_installments_banner: true,
 };
 
+// إعدادات نصوص وبانر تطبيق الجوال (زهى — React Native، مشروع zaha-mobile
+// المنفصل) — سجل واحد فقط (singleton)، نفس نمط LandingPageSettings تماماً
+// بالضبط، يُقرأ عبر GET /mobile-app-settings العامة (بلا تسجيل دخول —
+// يستهلكها التطبيق مباشرة) ويُعدَّل عبر PATCH /mobile-app-settings خلف
+// نفس صلاحية edit_landing_page (لا صلاحية مستقلة، هذا امتداد لنفس فكرة
+// "التحكم بمحتوى الواجهات العامة"). قائمة الخدمات وصورها/أوصافها في
+// التطبيق لا تُدار من هنا إطلاقاً — يقرأها التطبيق من نفس
+// LandingService/landing-services المستخدَمة في صفحة "اطلب الخدمة" مباشرة.
+export interface MobileAppSettings {
+  // بانر ترحيبي أعلى الشاشة الرئيسية في التطبيق — أي حقل فارغ/غائب يُخفي
+  // البانر بالكامل بدل عرضه فارغاً.
+  home_banner_image_url?: string;
+  home_banner_title?: string;
+  home_banner_subtitle?: string;
+  // نصوص شاشة تسجيل الدخول (العنوان والوصف تحته) — التطبيق يستخدم نصاً
+  // افتراضياً معقولاً إن كانت هذه الحقول فارغة.
+  login_title?: string;
+  login_subtitle?: string;
+  updated_at: string;
+}
+
+export const DEFAULT_MOBILE_APP_SETTINGS: MobileAppSettings = {
+  updated_at: new Date(0).toISOString(),
+};
+
 // بطاقة خدمة تسويقية معروضة في صفحة "اطلب الخدمة" العامة — منفصلة عمداً عن
 // دليل الخدمات التشغيلي (Service، المستخدَم في التسعير والمواعيد والعقود)،
 // حتى يمكن التحكم بمحتوى الصفحة التسويقية (صورة ونص كل خدمة، وأيها معروض)

@@ -28,6 +28,7 @@ import type {
   LeadStatus,
   LandingPageSettings,
   LandingService,
+  MobileAppSettings,
   VisitOutcome,
   ServicePricingTier,
   CustomerType,
@@ -2477,6 +2478,27 @@ api.patch('/landing-settings', (req, res) => {
   store.landingSettings.set(next);
   logActivity(req, 'تم تعديل إعدادات صفحة الطلبات الخارجية (الألوان/النصوص)');
   res.json(next);
+});
+
+// إعدادات تطبيق الجوال (بانر الرئيسية ونصوص شاشة الدخول) — عامة بلا تسجيل
+// دخول (يستهلكها تطبيق زهى للجوال مباشرة، نفس مستوى حماية /landing-settings
+// أعلاه)، تُعدَّل من الإعدادات ← تطبيق الجوال خلف صلاحية edit_landing_page.
+api.get('/mobile-app-settings', (_req, res) => res.json(store.mobileAppSettings.get()));
+
+// الصورة نفسها تُرفَع أولاً من العميل عبر /landing-images الموجودة أصلاً
+// (نفس الحاوية المستخدَمة لصور بطاقات الخدمات)، ثم يُرسَل رابطها الناتج
+// هنا كـ home_banner_image_url عادي — لا حاجة لمسار رفع منفصل لصورة واحدة.
+api.patch('/mobile-app-settings', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<MobileAppSettings> = {};
+  if (body.home_banner_title !== undefined) patch.home_banner_title = body.home_banner_title.trim() || undefined;
+  if (body.home_banner_subtitle !== undefined) patch.home_banner_subtitle = body.home_banner_subtitle.trim() || undefined;
+  if (body.home_banner_image_url !== undefined) patch.home_banner_image_url = body.home_banner_image_url || undefined;
+  if (body.login_title !== undefined) patch.login_title = body.login_title.trim() || undefined;
+  if (body.login_subtitle !== undefined) patch.login_subtitle = body.login_subtitle.trim() || undefined;
+  const updated = store.mobileAppSettings.set(patch);
+  logActivity(req, 'تم تعديل إعدادات تطبيق الجوال (البانر/نصوص الدخول)');
+  res.json(updated);
 });
 
 api.get('/landing-services', (_req, res) => res.json(store.landingServices.list()));

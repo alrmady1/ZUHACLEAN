@@ -42,6 +42,7 @@ import type {
   CompanyBankAccount,
   LandingPageSettings,
   LandingService,
+  MobileAppSettings,
   CommissionConfig,
   CommissionTier,
   CommissionEligibility,
@@ -49,6 +50,7 @@ import type {
 import {
   DEFAULT_PERMISSIONS,
   DEFAULT_LANDING_SETTINGS,
+  DEFAULT_MOBILE_APP_SETTINGS,
   DEFAULT_COMMISSION_CONFIG,
   DEFAULT_WORKERS_HOUSING_LOCATION,
   DEFAULT_COMPANY_BANK_ACCOUNT,
@@ -116,6 +118,9 @@ interface DbShape {
   // بطاقات الخدمات التسويقية المعروضة في نفس الصفحة — انظر LandingService
   // في src/shared/types.ts.
   landingServices: LandingService[];
+  // بانر الشاشة الرئيسية ونصوص شاشة الدخول في تطبيق الجوال — سجل واحد
+  // فقط، انظر MobileAppSettings في src/shared/types.ts.
+  mobileAppSettings: MobileAppSettings;
   // محادثات واتساب مع الرد الآلي (WhatsApp Cloud API webhook) — انظر
   // WhatsappThread في src/shared/types.ts وsrc/server/lib/whatsappBot.ts.
   whatsappThreads: WhatsappThread[];
@@ -430,6 +435,7 @@ function seed(): DbShape {
         is_active: true,
         created_at: new Date().toISOString(),
       })),
+    mobileAppSettings: { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: now },
     whatsappThreads: [],
     liveChatThreads: [],
     riyadhZones: defaultRiyadhZones(now),
@@ -562,6 +568,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.quotes) parsed.quotes = [];
     if (!parsed.leads) parsed.leads = [];
     if (!parsed.landingSettings) parsed.landingSettings = DEFAULT_LANDING_SETTINGS;
+    if (!parsed.mobileAppSettings) parsed.mobileAppSettings = { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: new Date().toISOString() };
     if (!parsed.landingServices) {
       parsed.landingServices = parsed.services
         .filter((s) => s.is_active)
@@ -1056,6 +1063,14 @@ export const store = {
   landingSettings: {
     get: () => db.landingSettings,
     set: (next: LandingPageSettings) => { db.landingSettings = next; persist(); return next; },
+  },
+  mobileAppSettings: {
+    get: () => db.mobileAppSettings,
+    set: (next: Partial<MobileAppSettings>) => {
+      db.mobileAppSettings = { ...db.mobileAppSettings, ...next, updated_at: new Date().toISOString() };
+      persist();
+      return db.mobileAppSettings;
+    },
   },
   landingServices: {
     // ترتيب العرض الفعلي في الصفحة العامة — نفس ترتيب المصفوفة المخزَّنة
