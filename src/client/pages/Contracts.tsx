@@ -10,12 +10,16 @@ import { useI18n } from '../lib/i18n.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
 import ContractDocument from '../components/ContractDocument.js';
 
-export default function Contracts() {
+// allowCreate=false (تبويب "العقود" داخل المحاسبة) يُخفي زر/نموذج "عقد
+// جديد" بصرف النظر عن صلاحية create_contracts — تلك الصفحة مخصَّصة لمتابعة
+// الأمور المالية للعقود (الدفعات، المتبقي، عرض بيانات العقد) وليس لإنشاء
+// عقود جديدة، وهو ما يبقى حصراً في صفحة "العقود" المستقلة (/contracts).
+export default function Contracts({ allowCreate = true }: { allowCreate?: boolean } = {}) {
   const { user, allProfiles, can } = useAuth();
   const { t, tt } = useI18n();
   const canSeeValue = can('view_contract_value');
   const canDeleteContract = can('delete_contracts');
-  const canCreateContract = can('create_contracts');
+  const canCreateContract = allowCreate && can('create_contracts');
   const canEditContract = can('edit_contracts');
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -103,7 +107,11 @@ export default function Contracts() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">{t('العقود الدورية')}</h1>
-          <p className="text-sm text-slate-400">{t('تُولَّد الزيارات تلقائياً في جدول المواعيد عند إنشاء العقد')}</p>
+          <p className="text-sm text-slate-400">
+            {allowCreate
+              ? t('تُولَّد الزيارات تلقائياً في جدول المواعيد عند إنشاء العقد')
+              : t('متابعة الدفعات والمبالغ المتبقية وبيانات العقود — إنشاء عقد جديد من صفحة "العقود" في القائمة الجانبية')}
+          </p>
         </div>
         {canCreateContract && (
           <button

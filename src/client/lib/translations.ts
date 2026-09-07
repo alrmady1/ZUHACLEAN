@@ -42,6 +42,7 @@ export const AR_TO_EN: Record<string, string> = {
   "لا توجد دفعات مسجَّلة بعد": "No payments recorded yet",
   "الاستحقاق": "Due Date",
   "المبيعات والفواتير والمصروفات وكشف حساب الموظفين والعمولات والضريبة والعقود في مكان واحد": "Sales & invoices, expenses, employee accounts, commissions, tax, and contracts — all in one place",
+  "متابعة الدفعات والمبالغ المتبقية وبيانات العقود — إنشاء عقد جديد من صفحة \"العقود\" في القائمة الجانبية": "Track payments, remaining amounts, and contract details — create a new contract from the \"Contracts\" page in the sidebar",
   "تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء": "The end date must be after the start date",
   "الإجازات السنوية": "Annual Leaves",
   "فترة محددة بتاريخين — لا يمكن إسناد موعد جديد لصاحبها خلالها إطلاقاً.": "A period defined by two dates — no new appointment can be assigned to its owner during it.",

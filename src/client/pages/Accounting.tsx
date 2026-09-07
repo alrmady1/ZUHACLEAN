@@ -114,7 +114,7 @@ export default function Accounting() {
       {tab === 'employees' && canEmployees && <EmployeeAccountsTab />}
       {tab === 'commissions' && canCommissions && <CommissionsDashboardTab />}
       {tab === 'tax' && canTax && <TaxTab />}
-      {tab === 'contracts' && canContracts && <Contracts />}
+      {tab === 'contracts' && canContracts && <Contracts allowCreate={false} />}
     </div>
   );
 }
