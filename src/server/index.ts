@@ -20,6 +20,18 @@ async function createServer() {
   // ويب هوك واتساب (Twilio) يرسل جسم الطلب بصيغة form-urlencoded، وليس JSON.
   app.use(express.urlencoded({ extended: false }));
 
+  // يسمح بطلبات /api من أي نطاق (تطبيق زهى للجوال React Native، ومعاينة
+  // الويب الخاصة به أثناء التطوير على Expo Web) — لا خطر أمني إضافي هنا،
+  // فكل نقاط /api أصلاً بلا أي تحقق صلاحيات من جهة الخادم (نفس نمط الحماية
+  // في كل هذا التطبيق، انظر أي تعليق "لا يوجد تحقق صلاحيات من جهة الخادم").
+  app.use('/api', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-actor-id');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+
   app.use('/api', api);
 
   if (!isProd) {
