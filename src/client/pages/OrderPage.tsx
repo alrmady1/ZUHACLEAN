@@ -70,6 +70,21 @@ export default function OrderPage() {
       .catch(() => {});
   }, []);
 
+  // هذه الصفحة العامة تبقى بإضاءة نهارية دائماً، حتى لو كان تفضيل الوضع
+  // الداكن للحساب الرئيسي مفعّلاً على نفس المتصفح — localStorage.
+  // "zaha-ops:theme" مشترك على مستوى النطاق كاملاً، لا الحساب، فقاعدة
+  // index.html تمنع تطبيقه عند التحميل المباشر لهذا المسار، وهذا الأثر
+  // هنا يغطي أيضاً الوصول إليها بالتنقل الداخلي (SPA navigation) بلا
+  // إعادة تحميل الصفحة، مع إعادة الحالة عند مغادرتها.
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    root.classList.remove('dark');
+    return () => {
+      if (wasDark) root.classList.add('dark');
+    };
+  }, []);
+
   const { primary: NAVY, secondary: CREAM, background: OFFWHITE, accent: GREEN } = settings.colors;
 
   function pickService(n: string) {
