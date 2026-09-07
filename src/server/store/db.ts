@@ -1152,7 +1152,15 @@ export const store = {
   },
   employeeDeductions: {
     list: () => db.employeeDeductions,
+    get: (id: string) => db.employeeDeductions.find((d) => d.id === id),
     insert: (d: EmployeeDeduction) => { db.employeeDeductions.push(d); persist(); return d; },
+    update: (id: string, patch: Partial<EmployeeDeduction>) => {
+      const idx = db.employeeDeductions.findIndex((d) => d.id === id);
+      if (idx === -1) return undefined;
+      db.employeeDeductions[idx] = { ...db.employeeDeductions[idx], ...patch };
+      persist();
+      return db.employeeDeductions[idx];
+    },
     remove: (id: string) => {
       const idx = db.employeeDeductions.findIndex((d) => d.id === id);
       if (idx === -1) return false;

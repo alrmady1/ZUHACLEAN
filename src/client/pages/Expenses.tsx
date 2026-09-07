@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile, ExpenseEntryType } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, ADVANCE_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_SEE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
+import type { Expense, ExpenseCategoryItem, PaymentMethodOption, CustodyInvoice, Profile, ExpenseEntryType, ExpenseIncomeType } from '../../shared/types.js';
+import {
+  CUSTODY_CATEGORY_NAME,
+  ADVANCE_CATEGORY_NAME,
+  SALARY_CATEGORY_NAME,
+  CAN_SEE_CUSTODY_ROLES,
+  VAT_RATE,
+  EXPENSE_INCOME_TYPE_LABELS_AR,
+} from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -19,13 +26,13 @@ const isPdfInvoiceFile = (url: string) => /\.pdf(\?|$)/i.test(url);
 // المحفوظة تُحتسَب من جديد على السيرفر دائماً.
 const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 
-// مرتجعات المشتريات تُخزَّن بمبلغ موجب دائماً (نفس أي مصروف)، لكنها تُطرَح
-// لا تُجمَع في كل الإجماليات — هاتان الدالتان تحوّلان amount/tax_amount إلى
-// قيمة "موقّعة" (سالبة للمرتجع) تُستخدَم في كل مجاميع هذا الملف بدل amount
-// مباشرة.
-const isReturn = (e: Expense) => e.entry_type === 'return';
-const signedAmount = (e: Expense) => (isReturn(e) ? -e.amount : e.amount);
-const signedTaxAmount = (e: Expense) => (isReturn(e) ? -(e.tax_amount ?? 0) : (e.tax_amount ?? 0));
+// الإيرادات (مرتجعات مشتريات أو رأس مال إضافي) تُخزَّن بمبلغ موجب دائماً
+// (نفس أي مصروف)، لكنها تُطرَح لا تُجمَع في كل الإجماليات — هاتان الدالتان
+// تحوّلان amount/tax_amount إلى قيمة "موقّعة" (سالبة للإيراد) تُستخدَم في
+// كل مجاميع هذا الملف بدل amount مباشرة.
+const isIncome = (e: Expense) => e.entry_type === 'income';
+const signedAmount = (e: Expense) => (isIncome(e) ? -e.amount : e.amount);
+const signedTaxAmount = (e: Expense) => (isIncome(e) ? -(e.tax_amount ?? 0) : (e.tax_amount ?? 0));
 
 // إعادة ترتيب/عرض جدول المصروفات العامة — حسب أي عمود ينقر عليه المستخدم
 // (التاريخ افتراضياً، أو المبلغ، أو نوع طريقة الدفع، أو الشخص المسجِّل،
@@ -328,9 +335,10 @@ function GeneralExpensesTab() {
   const [amount, setAmount] = useState('');
   const [isTaxInvoice, setIsTaxInvoice] = useState(false);
   const [entryType, setEntryType] = useState<ExpenseEntryType>('expense');
+  const [incomeType, setIncomeType] = useState<ExpenseIncomeType>('return');
   const [sortField, setSortField] = useState<ExpenseSortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  // فلترة الجدول — الكل، أو مصروفات فقط، أو مرتجعات فقط.
+  // فلترة الجدول — الكل، أو مصروفات فقط، أو إيرادات فقط.
   const [typeFilter, setTypeFilter] = useState<'all' | ExpenseEntryType>('all');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -346,6 +354,11 @@ function GeneralExpensesTab() {
     .filter((e) => e.category !== CUSTODY_CATEGORY_NAME)
     .filter((e) => typeFilter === 'all' || (e.entry_type ?? 'expense') === typeFilter);
   const mainCategories = categories.filter((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME);
+  // الرواتب لم تعد تُسجَّل من هنا — تُسجَّل فقط من صفحة "الموظفين" (كانت
+  // "كشف حساب الموظفين")، حيث تُحتسَب صافي الراتب تلقائياً بعد الخصميات
+  // (انظر POST /employees/:id/pay-salary). "رواتب" يبقى تصنيفاً صالحاً
+  // للسجلات التاريخية القديمة، فقط غير قابل للاختيار عند إضافة مصروف جديد.
+  const creatableCategories = mainCategories.filter((c) => c.name !== SALARY_CATEGORY_NAME);
   const subCategories = categories.filter((c) => c.parent_id === mainCategories.find((m) => m.name === category)?.id);
 
   function refresh() {
@@ -357,7 +370,7 @@ function GeneralExpensesTab() {
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     api.get<ExpenseCategoryItem[]>('/expense-categories').then((list) => {
       setCategories(list);
-      const firstMain = list.find((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME);
+      const firstMain = list.find((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME && c.name !== SALARY_CATEGORY_NAME);
       if (firstMain) setCategory(firstMain.name);
     });
   }, []);
@@ -399,6 +412,7 @@ function GeneralExpensesTab() {
         title: form.get('title'),
         category,
         entry_type: entryType,
+        income_type: entryType === 'income' ? incomeType : undefined,
         sub_category: subCategory || undefined,
         amount: Number(amount),
         is_tax_invoice: isTaxInvoice,
@@ -419,6 +433,7 @@ function GeneralExpensesTab() {
       setAmount('');
       setIsTaxInvoice(false);
       setEntryType('expense');
+      setIncomeType('return');
       refresh();
     } finally {
       setSubmitting(false);
@@ -456,7 +471,7 @@ function GeneralExpensesTab() {
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as 'all' | ExpenseEntryType)} className="input w-auto py-1 text-xs">
             <option value="all">{t('الكل')}</option>
             <option value="expense">{t('مصروفات فقط')}</option>
-            <option value="return">{t('مرتجعات فقط')}</option>
+            <option value="income">{t('إيرادات فقط')}</option>
           </select>
         </label>
       </div>
@@ -480,9 +495,9 @@ function GeneralExpensesTab() {
                   <td className="p-3 text-slate-600">{e.date}</td>
                   <td className="p-3 font-medium text-slate-700">
                     {e.title}
-                    {isReturn(e) && (
+                    {isIncome(e) && (
                       <span className="ms-1.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                        {t('مرتجع')}
+                        {t(EXPENSE_INCOME_TYPE_LABELS_AR[e.income_type ?? 'return'])}
                       </span>
                     )}
                   </td>
@@ -493,10 +508,10 @@ function GeneralExpensesTab() {
                     </span>
                     {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
                   </td>
-                  <td className={`p-3 font-medium ${isReturn(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
+                  <td className={`p-3 font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
                     {formatMoney(signedAmount(e))}
                     {e.is_tax_invoice && (
-                      <div className={`mt-0.5 text-[10px] font-medium ${isReturn(e) ? 'text-emerald-600' : 'text-brand-600'}`}>
+                      <div className={`mt-0.5 text-[10px] font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-brand-600'}`}>
                         {t('ضريبية')} · {formatMoney(signedTaxAmount(e))}
                       </div>
                     )}
@@ -534,7 +549,7 @@ function GeneralExpensesTab() {
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">{entryType === 'return' ? t('مرتجع جديد') : t('مصروف جديد')}</h2>
+              <h2 className="text-lg font-bold text-slate-800">{entryType === 'income' ? t('إيراد جديد') : t('مصروف جديد')}</h2>
               <button
                 type="button"
                 onClick={() => {
@@ -543,6 +558,7 @@ function GeneralExpensesTab() {
                   setAmount('');
                   setIsTaxInvoice(false);
                   setEntryType('expense');
+                  setIncomeType('return');
                 }}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -560,19 +576,28 @@ function GeneralExpensesTab() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEntryType('return')}
-                  className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'return' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                  onClick={() => setEntryType('income')}
+                  className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'income' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
                 >
-                  {t('مرتجع')}
+                  {t('إيرادات')}
                 </button>
               </div>
+              {entryType === 'income' && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('نوع الإيراد')}</span>
+                  <select value={incomeType} onChange={(e) => setIncomeType(e.target.value as ExpenseIncomeType)} className="input">
+                    <option value="return">{t(EXPENSE_INCOME_TYPE_LABELS_AR.return)}</option>
+                    <option value="additional_capital">{t(EXPENSE_INCOME_TYPE_LABELS_AR.additional_capital)}</option>
+                  </select>
+                </label>
+              )}
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('البند')}</span>
                 <input
                   name="title"
                   required
                   className="input"
-                  placeholder={entryType === 'return' ? t('مثال: إرجاع جزء من مواد التنظيف') : t('مثال: تعبئة وقود سيارة رقم 3')}
+                  placeholder={entryType === 'income' ? t('مثال: إرجاع جزء من مواد التنظيف') : t('مثال: تعبئة وقود سيارة رقم 3')}
                 />
               </label>
               <label className="block text-sm">
@@ -588,8 +613,8 @@ function GeneralExpensesTab() {
                     setAdvanceEmployeeId('');
                   }}
                 >
-                  {mainCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
-                  {mainCategories.map((c) => (
+                  {creatableCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
+                  {creatableCategories.map((c) => (
                     <option key={c.id} value={c.name}>
                       {c.name}
                     </option>
@@ -699,7 +724,7 @@ function GeneralExpensesTab() {
               disabled={submitting}
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
             >
-              {submitting ? t('جارِ الحفظ…') : entryType === 'return' ? t('حفظ المرتجع') : t('حفظ المصروف')}
+              {submitting ? t('جارِ الحفظ…') : entryType === 'income' ? t('حفظ الإيراد') : t('حفظ المصروف')}
             </button>
           </form>
         </div>
@@ -765,6 +790,7 @@ function ExpenseDetailModal({
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
   const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
   const [entryType, setEntryType] = useState<ExpenseEntryType>(expense.entry_type ?? 'expense');
+  const [incomeType, setIncomeType] = useState<ExpenseIncomeType>(expense.income_type ?? 'return');
 
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
@@ -778,6 +804,7 @@ function ExpenseDetailModal({
         title,
         category,
         entry_type: entryType,
+        income_type: entryType === 'income' ? incomeType : undefined,
         sub_category: subCategory || undefined,
         amount,
         is_tax_invoice: isTaxInvoice,
@@ -820,8 +847,10 @@ function ExpenseDetailModal({
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-base font-bold text-slate-800">
                   {expense.title}
-                  {isReturn(expense) && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{t('مرتجع')}</span>
+                  {isIncome(expense) && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      {t(EXPENSE_INCOME_TYPE_LABELS_AR[expense.income_type ?? 'return'])}
+                    </span>
                   )}
                 </span>
                 <button
@@ -838,11 +867,11 @@ function ExpenseDetailModal({
               </div>
               <div className="mt-2 space-y-1.5 text-sm text-slate-600">
                 <div>{t('التصنيف')}: {expense.category}{expense.sub_category ? ` — ${expense.sub_category}` : ''}</div>
-                <div className={isReturn(expense) ? 'font-medium text-emerald-600' : undefined}>
+                <div className={isIncome(expense) ? 'font-medium text-emerald-600' : undefined}>
                   {t('المبلغ')}: {formatMoney(signedAmount(expense))}
                 </div>
                 {expense.is_tax_invoice && (
-                  <div className={`font-medium ${isReturn(expense) ? 'text-emerald-600' : 'text-brand-600'}`}>
+                  <div className={`font-medium ${isIncome(expense) ? 'text-emerald-600' : 'text-brand-600'}`}>
                     {t('فاتورة ضريبية')} — {t('قيمة الضريبة')}: {formatMoney(signedTaxAmount(expense))}
                   </div>
                 )}
@@ -890,12 +919,21 @@ function ExpenseDetailModal({
               </button>
               <button
                 type="button"
-                onClick={() => setEntryType('return')}
-                className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'return' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                onClick={() => setEntryType('income')}
+                className={`flex-1 rounded-lg py-1.5 text-sm font-medium ${entryType === 'income' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
               >
-                {t('مرتجع')}
+                {t('إيرادات')}
               </button>
             </div>
+            {entryType === 'income' && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('نوع الإيراد')}</span>
+                <select value={incomeType} onChange={(e) => setIncomeType(e.target.value as ExpenseIncomeType)} className="input">
+                  <option value="return">{t(EXPENSE_INCOME_TYPE_LABELS_AR.return)}</option>
+                  <option value="additional_capital">{t(EXPENSE_INCOME_TYPE_LABELS_AR.additional_capital)}</option>
+                </select>
+              </label>
+            )}
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{t('البند')}</span>
               <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" />

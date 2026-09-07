@@ -38,6 +38,7 @@ import type {
   CommissionEligibility,
   Expense,
   ExpenseEntryType,
+  ExpenseIncomeType,
   LiveChatThread,
   RiyadhZone,
   NeighborhoodZoneAssignment,
@@ -49,6 +50,7 @@ import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
+  EXPENSE_INCOME_TYPE_LABELS_AR,
   DEFAULT_PERMISSIONS,
   PERMISSION_LABELS_AR,
   LEAVE_TYPE_LABELS_AR,
@@ -228,6 +230,8 @@ api.patch('/profiles/:id', (req, res) => {
   if (body.username !== undefined) patch.username = body.username || undefined;
   if (body.is_active !== undefined) patch.is_active = body.is_active;
   if (body.password) patch.password_hash = hashPassword(body.password);
+  if (body.monthly_salary !== undefined) patch.monthly_salary = body.monthly_salary === null ? undefined : Number(body.monthly_salary);
+  if (body.salary_due_day !== undefined) patch.salary_due_day = body.salary_due_day === null ? undefined : Number(body.salary_due_day);
 
   const updated = store.profiles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
@@ -1219,12 +1223,15 @@ api.post('/expenses', async (req, res) => {
   }
   const amount = Number(body.amount ?? 0);
   const isTaxInvoice = Boolean(body.is_tax_invoice);
-  const entryType: ExpenseEntryType = body.entry_type === 'return' ? 'return' : 'expense';
+  const entryType: ExpenseEntryType = body.entry_type === 'income' ? 'income' : 'expense';
+  const incomeType: ExpenseIncomeType | undefined =
+    entryType === 'income' ? (body.income_type === 'additional_capital' ? 'additional_capital' : 'return') : undefined;
   const expense = store.expenses.insert({
     id: expenseId,
     title: body.title,
     category: body.category,
     entry_type: entryType,
+    income_type: incomeType,
     sub_category: body.sub_category || undefined,
     period_type: body.period_type ?? 'daily',
     amount,
@@ -1253,8 +1260,8 @@ api.post('/expenses', async (req, res) => {
         ? `تم إضافة سلفية "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
         : isSalary
           ? `تم إضافة راتب "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
-          : entryType === 'return'
-            ? `تم تسجيل مرتجع "${expense.title}" بقيمة ${expense.amount} ر.س`
+          : entryType === 'income'
+            ? `تم تسجيل إيراد (${EXPENSE_INCOME_TYPE_LABELS_AR[incomeType ?? 'return']}) "${expense.title}" بقيمة ${expense.amount} ر.س`
             : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
@@ -1273,7 +1280,8 @@ api.patch('/expenses/:id', async (req, res) => {
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
   if (body.category !== undefined) patch.category = body.category;
-  if (body.entry_type !== undefined) patch.entry_type = body.entry_type === 'return' ? 'return' : 'expense';
+  if (body.entry_type !== undefined) patch.entry_type = body.entry_type === 'income' ? 'income' : 'expense';
+  if (body.income_type !== undefined) patch.income_type = body.income_type === 'additional_capital' ? 'additional_capital' : 'return';
   if (body.sub_category !== undefined) patch.sub_category = body.sub_category || undefined;
   if (body.amount !== undefined) patch.amount = Number(body.amount);
   if (body.date !== undefined) patch.date = body.date;
@@ -1529,7 +1537,10 @@ api.post('/employee-deductions', (req, res) => {
     employee_id: body.employee_id,
     employee_name: store.profiles.get(body.employee_id)?.full_name ?? body.employee_name,
     title: body.title,
+    category: body.category || undefined,
     amount: Number(body.amount) || 0,
+    settled_amount: 0,
+    installment_months: body.installment_months ? Math.max(1, Number(body.installment_months)) : 1,
     date: body.date ?? new Date().toISOString().slice(0, 10),
     notes: body.notes || undefined,
     recorded_by: body.recorded_by || undefined,
@@ -1539,6 +1550,16 @@ api.post('/employee-deductions', (req, res) => {
   store.employeeDeductions.insert(deduction);
   logActivity(req, `تم إضافة خصم "${deduction.title}" على "${deduction.employee_name ?? ''}"`);
   res.status(201).json(deduction);
+});
+
+// تسوية خصم يدوياً بالكامل (بدل انتظار اكتمال أقساطه عبر الرواتب) — يضبط
+// settled_amount = amount مباشرة.
+api.patch('/employee-deductions/:id/settle', (req, res) => {
+  const target = store.employeeDeductions.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'not found' });
+  const updated = store.employeeDeductions.update(req.params.id, { settled_amount: target.amount });
+  logActivity(req, `تم تسوية خصم "${target.title}" على "${target.employee_name ?? ''}" يدوياً`);
+  res.json(updated);
 });
 
 api.delete('/employee-deductions/:id', (req, res) => {
@@ -1586,6 +1607,65 @@ api.delete('/employee-violations/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف مخالفة "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
   res.status(204).end();
+});
+
+// تسجيل راتب شهري لموظف — الطريقة الوحيدة لإضافة مصروف رواتب الآن (لم تعد
+// "رواتب" خياراً في نموذج "مصروف جديد" العام، انظر تعليق SALARY_CATEGORY_NAME
+// وGeneralExpensesTab في Expenses.tsx). تحسب صافي الراتب تلقائياً: الراتب
+// الثابت (Profile.monthly_salary) ناقص قسط هذا الشهر من كل خصم نشط (له
+// مبلغ متبقٍ لم يُسدَّد بعد — انظر تعليق installment_months في
+// EmployeeDeduction)، ثم تُنشئ مصروف رواتب بالصافي وتُحدِّث settled_amount
+// لكل خصم شارك في الاستقطاع، بعملية واحدة ذرية.
+api.post('/employees/:id/pay-salary', (req, res) => {
+  const profile = store.profiles.get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'الموظف غير موجود' });
+  if (!profile.monthly_salary || profile.monthly_salary <= 0) {
+    return res.status(400).json({ error: 'الراتب الشهري لهذا الموظف غير محدَّد بعد' });
+  }
+  const gross = profile.monthly_salary;
+  const activeDeductions = store.employeeDeductions
+    .list()
+    .filter((d) => d.employee_id === profile.id && d.amount - (d.settled_amount ?? 0) > 0.005);
+
+  let totalWithheld = 0;
+  const applied: { deduction: EmployeeDeduction; installment: number }[] = [];
+  for (const d of activeDeductions) {
+    const remaining = d.amount - (d.settled_amount ?? 0);
+    const perMonth = d.amount / Math.max(1, d.installment_months ?? 1);
+    const installment = Math.round(Math.min(perMonth, remaining) * 100) / 100;
+    if (installment <= 0) continue;
+    totalWithheld += installment;
+    applied.push({ deduction: d, installment });
+  }
+  const net = Math.max(Math.round((gross - totalWithheld) * 100) / 100, 0);
+
+  const body = req.body ?? {};
+  const expense = store.expenses.insert({
+    id: store.id(),
+    title: `راتب ${profile.full_name} — ${body.month_label ?? new Date().toISOString().slice(0, 7)}`,
+    category: SALARY_CATEGORY_NAME,
+    entry_type: 'expense',
+    period_type: 'monthly',
+    amount: net,
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    recorded_by: body.recorded_by ?? 'unknown',
+    recorded_by_name: body.recorded_by_name,
+    custody_holder_id: profile.id,
+    custody_holder_name: profile.full_name,
+    payment_method: body.payment_method ?? 'bank_transfer',
+    notes:
+      totalWithheld > 0
+        ? `راتب إجمالي ${gross} ر.س، خُصم منه ${totalWithheld} ر.س (${applied.length} خصم نشط)، صافي مسجَّل ${net} ر.س.`
+        : undefined,
+    created_at: new Date().toISOString(),
+  });
+
+  for (const { deduction, installment } of applied) {
+    store.employeeDeductions.update(deduction.id, { settled_amount: (deduction.settled_amount ?? 0) + installment });
+  }
+
+  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س، صافي ${net} ر.س بعد الخصميات`);
+  res.status(201).json({ expense, gross, withheld: totalWithheld, net, deductions: store.employeeDeductions.list().filter((d) => d.employee_id === profile.id) });
 });
 
 // ---------------------------------------------------------------------------

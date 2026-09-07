@@ -358,6 +358,15 @@ export interface Profile {
   // api.ts). يبقى القديم ظاهراً بعد إيقاف المشاركة (بدل حذفه) مع توضيح
   // "توقفت المشاركة" في صفحة التتبع، حتى تُعرف آخر نقطة معروفة.
   last_location?: EmployeeLocation;
+  // الراتب الشهري الثابت — يُدار من صفحة "الموظفين" (كانت "كشف حساب
+  // الموظفين") بدل تسجيل كل راتب كمصروف عام منفصل. غائب لمن لم يُضبط
+  // راتبه بعد (يُعرض عندها "لم يُحدَّد" بدل رقم). انظر EmployeeDeduction
+  // أدناه لآلية الخصم النسبي الشهري منه.
+  monthly_salary?: number;
+  // يوم استحقاق الراتب من كل شهر (١-٢٨، لتفادي مشاكل الأشهر القصيرة) —
+  // يُستخدم فقط لعرض "تاريخ الاستحقاق القادم" في صفحة الموظفين، لا يُنشئ
+  // أي شيء تلقائياً بنفسه.
+  salary_due_day?: number;
 }
 
 export interface EmployeeLocation {
@@ -841,20 +850,29 @@ export interface ContractClause {
   body: string;
 }
 
-// مرتجع مشتريات (إرجاع بضاعة/مواد لمورد واسترداد جزء أو كامل قيمتها) —
-// نفس سجل Expense، فقط بعلامة entry_type مختلفة، حتى يُشارك كامل النموذج
-// (تصنيف، فاتورة، ملف مرفق) دون تكرار. مبلغ المرتجع (amount) يبقى موجباً
-// دوماً في التخزين، ويُطرَح (لا يُجمَع) من كل إجماليات المصروفات في الواجهة
-// (Expenses.tsx) — راجع تعليق amount أدناه.
-export type ExpenseEntryType = 'expense' | 'return';
+// إيراد (وارد مالي خارج تحصيل المواعيد/الفواتير العادي) — نفس سجل Expense،
+// فقط بعلامة entry_type مختلفة، حتى يُشارك كامل النموذج (تصنيف، فاتورة،
+// ملف مرفق) دون تكرار. مبلغ الإيراد (amount) يبقى موجباً دوماً في التخزين،
+// ويُطرَح (لا يُجمَع) من كل إجماليات المصروفات في الواجهة (Expenses.tsx) —
+// راجع تعليق amount أدناه. نوعان فرعيان (income_type): "مرتجع" (استرداد
+// من مورد لبضاعة/مواد مرتجعة) أو "رأس مال إضافي" (ضخ مالي من المالك).
+export type ExpenseEntryType = 'expense' | 'income';
+export type ExpenseIncomeType = 'return' | 'additional_capital';
+
+export const EXPENSE_INCOME_TYPE_LABELS_AR: Record<ExpenseIncomeType, string> = {
+  return: 'مرتجع',
+  additional_capital: 'رأس مال إضافي',
+};
 
 export interface Expense {
   id: string;
   title: string;
   category: string;
-  // مصروف عادي أو مرتجع مشتريات — غير موجود (undefined) يعني "مصروف" لكل
-  // السجلات القديمة قبل إضافة هذا الحقل. انظر ExpenseEntryType أعلاه.
+  // مصروف عادي أو إيراد — غير موجود (undefined) يعني "مصروف" لكل السجلات
+  // القديمة قبل إضافة هذا الحقل. انظر ExpenseEntryType أعلاه.
   entry_type?: ExpenseEntryType;
+  // نوع الإيراد الفرعي — مطلوب فقط عندما entry_type === 'income'.
+  income_type?: ExpenseIncomeType;
   // Optional sub-item under the main category (e.g. category "مركبات",
   // sub_category "بنزين") — names of an ExpenseCategoryItem pair.
   sub_category?: string;
@@ -1005,21 +1023,47 @@ export interface Invoice {
   recorded_by_name?: string;
 }
 
-// خصم مالي على موظف (غير سلفية أو عهدة) — تأخير، نقص في العمل، أو أي خصم
-// إداري آخر. يُعرَض في كشف حساب الموظف فقط، ولا يؤثر على أي رصيد عهدة أو
+// خصم مالي على موظف (غير سلفية أو عهدة) — مخالفة، تأخير، تلفية، أو أي خصم
+// إداري آخر. يُعرَض في صفحة الموظفين فقط، ولا يؤثر على أي رصيد عهدة أو
 // سلفية قائم.
+//
+// آلية التقسيط الشهري (installment_months): مبلغ الخصم amount يُقسَّط
+// بالتساوي على عدد الأشهر المحدَّد (مثال: 1000 ر.س على 4 أشهر = 250 ر.س
+// شهرياً). في كل مرة يُسجَّل فيها راتب الموظف (POST /employees/:id/pay-salary)
+// يُحتسَب قسط هذا الشهر = min(amount / installment_months, amount -
+// settled_amount المتبقي فعلياً — يغطي تقريب الكسور في آخر قسط)، يُضاف
+// إلى settled_amount ويُخصَم من صافي الراتب المسجَّل لذلك الشهر تلقائياً،
+// والباقي يترحّل للأشهر القادمة حتى يكتمل amount بالكامل (settled_amount
+// === amount)، عندها يُعتبر الخصم "مسدَّداً" ولا يُحتسَب في أي راتب لاحق.
+// installment_months = 1 (الافتراضي) يعني خصمه بالكامل من راتب هذا الشهر.
+export type EmployeeDeductionCategory = 'violation' | 'lateness' | 'damage' | 'other';
+
 export interface EmployeeDeduction {
   id: string;
   employee_id: string;
   employee_name?: string;
   title: string;
+  category?: EmployeeDeductionCategory;
   amount: number;
+  // المبلغ المُستقطَع فعلياً حتى الآن عبر الرواتب الشهرية — الفرق
+  // (amount - settled_amount) هو "المتبقي" المعروض في صفحة الموظفين.
+  settled_amount?: number;
+  // عدد الأشهر لتقسيط amount عليها بالتساوي (1 = خصمه بالكامل من هذا
+  // الشهر). غائب/1 كلاهما يعني بلا تقسيط.
+  installment_months?: number;
   date: string;
   notes?: string;
   recorded_by?: string;
   recorded_by_name?: string;
   created_at: string;
 }
+
+export const DEDUCTION_CATEGORY_LABELS_AR: Record<EmployeeDeductionCategory, string> = {
+  violation: 'مخالفة',
+  lateness: 'تأخير',
+  damage: 'تلفية',
+  other: 'أخرى',
+};
 
 // مخالفة إدارية على موظف — قد تحمل غرامة مالية (amount) أو تكون إنذاراً
 // بلا غرامة (amount غائب/صفر). مستقلة تماماً عن EmployeeDeduction رغم
