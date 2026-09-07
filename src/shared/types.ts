@@ -367,7 +367,40 @@ export interface Profile {
   // يُستخدم فقط لعرض "تاريخ الاستحقاق القادم" في صفحة الموظفين، لا يُنشئ
   // أي شيء تلقائياً بنفسه.
   salary_due_day?: number;
+  // بيانات شخصية — تُدار من صفحة "الموظفين"، تُعرض هناك فقط (ليست جزءاً
+  // من نموذج تسجيل الدخول أو الصلاحيات). العمر يُحتسَب دائماً من
+  // date_of_birth بدل تخزينه كرقم ثابت يصبح خاطئاً مع الوقت.
+  date_of_birth?: string;
+  // رقم الهوية (وطنية للسعوديين، إقامة للمقيمين) — نفس الحقل لكليهما.
+  national_id?: string;
+  national_id_expiry?: string;
+  // تاريخ بداية العمل الفعلي — أساس احتساب "مدة الخدمة" عند إنهاء العقد
+  // (انظر computeEndOfServiceGratuity في server/routes/api.ts)، منفصل
+  // عمداً عن created_at (تاريخ إنشاء حساب النظام فقط، قد يكون لاحقاً
+  // لتاريخ التعيين الفعلي لموظف انضم قبل استخدام النظام).
+  hire_date?: string;
+  // إنهاء الخدمة — تُضبَط دفعة واحدة عبر POST /employees/:id/terminate
+  // (تُحسِب مكافأة نهاية الخدمة تلقائياً وتُسجِّلها كمصروف، ثم تُعطِّل
+  // الحساب). end_of_service_amount هو المبلغ المحتسَب وقت الإنهاء تحديداً
+  // — يبقى ثابتاً كسجل تاريخي حتى لو تغيّر الراتب لاحقاً (لا ينطبق أصلاً
+  // بعد التعطيل، لكن للتوثيق).
+  termination_date?: string;
+  termination_reason?: TerminationReason;
+  end_of_service_amount?: number;
 }
+
+// سبب انتهاء العقد — يُحدِّد نسبة الاستحقاق من مكافأة نهاية الخدمة وفق
+// المادتين ٨٤ و٨٥ من نظام العمل السعودي: استقالة قبل عامين = بلا مكافأة،
+// من عامين إلى ٥ = الثلث، من ٥ إلى ١٠ = الثلثان، ١٠ فأكثر = كامل المكافأة.
+// إنهاء من صاحب العمل أو انتهاء مدة العقد = كامل المكافأة بصرف النظر عن
+// المدة (لا خصم تناسبي، ذلك محصور بحالة الاستقالة فقط).
+export type TerminationReason = 'resignation' | 'employer_termination' | 'contract_expiry';
+
+export const TERMINATION_REASON_LABELS_AR: Record<TerminationReason, string> = {
+  resignation: 'استقالة',
+  employer_termination: 'إنهاء من صاحب العمل',
+  contract_expiry: 'انتهاء مدة العقد',
+};
 
 export interface EmployeeLocation {
   lat: number;

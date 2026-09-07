@@ -39,6 +39,7 @@ import type {
   Expense,
   ExpenseEntryType,
   ExpenseIncomeType,
+  TerminationReason,
   LiveChatThread,
   RiyadhZone,
   NeighborhoodZoneAssignment,
@@ -51,6 +52,7 @@ import {
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
+  TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
   PERMISSION_LABELS_AR,
   LEAVE_TYPE_LABELS_AR,
@@ -232,6 +234,10 @@ api.patch('/profiles/:id', (req, res) => {
   if (body.password) patch.password_hash = hashPassword(body.password);
   if (body.monthly_salary !== undefined) patch.monthly_salary = body.monthly_salary === null ? undefined : Number(body.monthly_salary);
   if (body.salary_due_day !== undefined) patch.salary_due_day = body.salary_due_day === null ? undefined : Number(body.salary_due_day);
+  if (body.date_of_birth !== undefined) patch.date_of_birth = body.date_of_birth || undefined;
+  if (body.national_id !== undefined) patch.national_id = body.national_id || undefined;
+  if (body.national_id_expiry !== undefined) patch.national_id_expiry = body.national_id_expiry || undefined;
+  if (body.hire_date !== undefined) patch.hire_date = body.hire_date || undefined;
 
   const updated = store.profiles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
@@ -1686,6 +1692,96 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     net,
     deductions: store.employeeDeductions.list().filter((d) => d.employee_id === profile.id),
   });
+});
+
+// مكافأة نهاية الخدمة وفق المادتين ٨٤ و٨٥ من نظام العمل السعودي — تقدير
+// أولي مبني على أشيع صيغتين في النظام:
+//  المادة ٨٤: نصف أجر شهر عن كل سنة من أول ٥ سنوات، وأجر شهر كامل عن كل
+//  سنة تالية بعد ذلك، على أساس آخر أجر (الراتب الشهري الحالي).
+//  المادة ٨٥: عند الاستقالة فقط، تُخفَّض المكافأة تناسبياً حسب مدة الخدمة
+//  (أقل من سنتين = لا شيء، ٢-٥ سنوات = الثلث، ٥-١٠ = الثلثان، ١٠ فأكثر =
+//  كاملة). إنهاء من صاحب العمل أو انتهاء مدة العقد = المكافأة كاملة دون
+//  أي خصم تناسبي، بصرف النظر عن المدة.
+// ملاحظة: هذا تقدير آلي مبسَّط لأشيع الحالات فقط — لا يغطي حالات الفصل
+// التأديبي بلا مكافأة (المادة ٨٠)، رصيد الإجازات غير المستخدَمة، أو بدل
+// الإشعار؛ يُنصح دوماً بمراجعتها مع مختص قبل الصرف النهائي.
+function computeEndOfServiceGratuity(
+  hireDate: string,
+  terminationDate: string,
+  lastMonthlySalary: number,
+  reason: TerminationReason,
+): { years: number; fullGratuity: number; fraction: number; gratuity: number } {
+  const msPerYear = 365.25 * 24 * 60 * 60 * 1000;
+  const years = Math.max(0, (new Date(terminationDate).getTime() - new Date(hireDate).getTime()) / msPerYear);
+  const first5 = Math.min(years, 5);
+  const beyond5 = Math.max(years - 5, 0);
+  const fullGratuity = Math.round((first5 * 0.5 + beyond5 * 1) * lastMonthlySalary * 100) / 100;
+
+  let fraction = 1;
+  if (reason === 'resignation') {
+    if (years < 2) fraction = 0;
+    else if (years < 5) fraction = 1 / 3;
+    else if (years < 10) fraction = 2 / 3;
+    else fraction = 1;
+  }
+
+  return {
+    years: Math.round(years * 100) / 100,
+    fullGratuity,
+    fraction,
+    gratuity: Math.round(fullGratuity * fraction * 100) / 100,
+  };
+}
+
+// إنهاء عقد موظف — يحتسب مكافأة نهاية الخدمة تلقائياً (انظر
+// computeEndOfServiceGratuity أعلاه)، يسجّلها كمصروف مستقل عن الراتب
+// الشهري، يحفظ تفاصيل الإنهاء على ملف الموظف، ويعطّل حسابه (is_active).
+api.post('/employees/:id/terminate', (req, res) => {
+  const profile = store.profiles.get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'الموظف غير موجود' });
+  if (!profile.hire_date) return res.status(400).json({ error: 'تاريخ التعيين غير محدَّد — لا يمكن احتساب مدة الخدمة بدونه' });
+  if (!profile.monthly_salary || profile.monthly_salary <= 0) {
+    return res.status(400).json({ error: 'الراتب الشهري لهذا الموظف غير محدَّد — أساس احتساب المكافأة' });
+  }
+  const body = req.body ?? {};
+  const reason: TerminationReason =
+    body.reason === 'resignation' || body.reason === 'contract_expiry' ? body.reason : 'employer_termination';
+  const terminationDate = body.termination_date || new Date().toISOString().slice(0, 10);
+
+  const result = computeEndOfServiceGratuity(profile.hire_date, terminationDate, profile.monthly_salary, reason);
+
+  let expense = null;
+  if (result.gratuity > 0) {
+    expense = store.expenses.insert({
+      id: store.id(),
+      title: `مكافأة نهاية خدمة — ${profile.full_name}`,
+      category: 'مكافأة نهاية الخدمة',
+      entry_type: 'expense',
+      period_type: 'daily',
+      amount: result.gratuity,
+      date: terminationDate,
+      recorded_by: body.recorded_by ?? 'unknown',
+      recorded_by_name: body.recorded_by_name,
+      custody_holder_id: profile.id,
+      custody_holder_name: profile.full_name,
+      payment_method: body.payment_method ?? 'bank_transfer',
+      notes: `مدة الخدمة ${result.years} سنة، سبب الإنهاء: ${TERMINATION_REASON_LABELS_AR[reason]}، آخر راتب شهري ${profile.monthly_salary} ر.س، إجمالي المكافأة قبل أي خصم تناسبي ${result.fullGratuity} ر.س${result.fraction < 1 ? ` (نسبة الاستحقاق ${Math.round(result.fraction * 100)}%)` : ''}.`,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  const updated = store.profiles.update(profile.id, {
+    termination_date: terminationDate,
+    termination_reason: reason,
+    end_of_service_amount: result.gratuity,
+    is_active: false,
+  });
+
+  logActivity(
+    req,
+    `تم إنهاء عقد "${profile.full_name}" (${TERMINATION_REASON_LABELS_AR[reason]}) — مكافأة نهاية الخدمة ${result.gratuity} ر.س عن ${result.years} سنة خدمة`,
+  );
+  res.status(201).json({ profile: toSafeProfile(updated!), expense, ...result });
 });
 
 // ---------------------------------------------------------------------------

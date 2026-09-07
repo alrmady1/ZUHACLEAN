@@ -1,5 +1,23 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { X, Plus, Trash2, Wallet, PiggyBank, HandCoins, Receipt, MinusCircle, ShieldAlert, Banknote, Pencil, Check, CalendarClock } from 'lucide-react';
+import {
+  X,
+  Plus,
+  Trash2,
+  Wallet,
+  PiggyBank,
+  HandCoins,
+  Receipt,
+  MinusCircle,
+  ShieldAlert,
+  Banknote,
+  Pencil,
+  Check,
+  CalendarClock,
+  IdCard,
+  Percent,
+  UserX,
+  AlertTriangle,
+} from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
   Expense,
@@ -9,6 +27,8 @@ import type {
   EmployeeDeductionCategory,
   EmployeeViolation,
   Profile,
+  CommissionEligibility,
+  TerminationReason,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
@@ -16,11 +36,48 @@ import {
   SALARY_CATEGORY_NAME,
   CAN_DELETE_CUSTODY_ROLES,
   DEDUCTION_CATEGORY_LABELS_AR,
+  TERMINATION_REASON_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+
+// العمر بالسنوات الكاملة من تاريخ الميلاد — يُحتسَب دائماً ديناميكياً
+// (لا يُخزَّن كرقم ثابت يصبح خاطئاً مع مرور الوقت).
+function ageFromBirthDate(dob: string): number {
+  const birth = new Date(dob);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const hasHadBirthdayThisYear = now.getMonth() > birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age;
+}
+
+// معاينة حيّة لمكافأة نهاية الخدمة قبل تأكيد الإنهاء فعلياً — نفس منطق
+// computeEndOfServiceGratuity على الخادم بالضبط (server/routes/api.ts)،
+// المصدر الفعلي المُعتمَد للمبلغ المسجَّل. انظر التعليق هناك لتفصيل
+// المادتين ٨٤ و٨٥ من نظام العمل السعودي والتحفظات على هذا التقدير.
+function previewGratuity(
+  hireDate: string,
+  terminationDate: string,
+  lastMonthlySalary: number,
+  reason: TerminationReason,
+): { years: number; fullGratuity: number; fraction: number; gratuity: number } {
+  const msPerYear = 365.25 * 24 * 60 * 60 * 1000;
+  const years = Math.max(0, (new Date(terminationDate).getTime() - new Date(hireDate).getTime()) / msPerYear);
+  const first5 = Math.min(years, 5);
+  const beyond5 = Math.max(years - 5, 0);
+  const fullGratuity = Math.round((first5 * 0.5 + beyond5 * 1) * lastMonthlySalary * 100) / 100;
+  let fraction = 1;
+  if (reason === 'resignation') {
+    if (years < 2) fraction = 0;
+    else if (years < 5) fraction = 1 / 3;
+    else if (years < 10) fraction = 2 / 3;
+    else fraction = 1;
+  }
+  return { years: Math.round(years * 100) / 100, fullGratuity, fraction, gratuity: Math.round(fullGratuity * fraction * 100) / 100 };
+}
 
 // قسط هذا الشهر لخصم واحد — أقل من (amount / installment_months) أو
 // (amount - settled_amount المتبقي فعلياً)، نفس منطق POST
@@ -102,6 +159,7 @@ export function EmployeeAccountsTab() {
   const [deductions, setDeductions] = useState<EmployeeDeduction[]>([]);
   const [violations, setViolations] = useState<EmployeeViolation[]>([]);
   const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
+  const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
 
   function refresh() {
@@ -111,6 +169,7 @@ export function EmployeeAccountsTab() {
     api.get<EmployeeDeduction[]>('/employee-deductions').then(setDeductions);
     api.get<EmployeeViolation[]>('/employee-violations').then(setViolations);
     api.get<CommissionReportLite>(`/commission-report?month=${currentMonth()}`).then(setCommissionReport);
+    api.get<CommissionEligibility[]>('/commission-eligibility').then(setEligibility);
   }
 
   useEffect(refresh, []);
@@ -184,14 +243,27 @@ export function EmployeeAccountsTab() {
             <button
               key={s.profile.id}
               onClick={() => setOpenId(s.profile.id)}
-              className="rounded-2xl border border-slate-200 bg-white p-4 text-start transition hover:border-brand-300 hover:shadow-sm"
+              className={`rounded-2xl border bg-white p-4 text-start transition hover:border-brand-300 hover:shadow-sm ${
+                s.profile.termination_date ? 'border-slate-200 opacity-60' : 'border-slate-200'
+              }`}
             >
               <div className="mb-3 flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    s.profile.termination_date ? 'bg-slate-400' : 'bg-brand-600'
+                  }`}
+                >
                   {s.profile.full_name.trim().charAt(0)}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-slate-800">{s.profile.full_name}</div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="truncate text-sm font-semibold text-slate-800">{s.profile.full_name}</div>
+                    {s.profile.termination_date && (
+                      <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                        {t('منتهي الخدمة')}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -247,6 +319,7 @@ export function EmployeeAccountsTab() {
       {openSummary && (
         <EmployeeDetail
           summary={openSummary}
+          eligibility={eligibility.filter((e) => e.profile_id === openSummary.profile.id)}
           canEdit={canEdit}
           canDelete={canDelete}
           recordedById={user?.id}
@@ -261,6 +334,7 @@ export function EmployeeAccountsTab() {
 
 function EmployeeDetail({
   summary,
+  eligibility,
   canEdit,
   canDelete,
   recordedById,
@@ -269,6 +343,7 @@ function EmployeeDetail({
   onChanged,
 }: {
   summary: EmployeeSummary;
+  eligibility: CommissionEligibility[];
   canEdit: boolean;
   canDelete: boolean;
   recordedById?: string;
@@ -285,6 +360,17 @@ function EmployeeDetail({
   const [savingSalary, setSavingSalary] = useState(false);
   const [payingSalary, setPayingSalary] = useState(false);
   const [payResult, setPayResult] = useState<{ net: number; withheld: number; commission: number } | null>(null);
+  const [editingPersonal, setEditingPersonal] = useState(false);
+  const [dobInput, setDobInput] = useState(summary.profile.date_of_birth ?? '');
+  const [nationalIdInput, setNationalIdInput] = useState(summary.profile.national_id ?? '');
+  const [nationalIdExpiryInput, setNationalIdExpiryInput] = useState(summary.profile.national_id_expiry ?? '');
+  const [hireDateInput, setHireDateInput] = useState(summary.profile.hire_date ?? '');
+  const [savingPersonal, setSavingPersonal] = useState(false);
+  const [savingEligibility, setSavingEligibility] = useState(false);
+  const [showTerminateForm, setShowTerminateForm] = useState(false);
+  const [terminationDateInput, setTerminationDateInput] = useState(new Date().toISOString().slice(0, 10));
+  const [terminationReasonInput, setTerminationReasonInput] = useState<TerminationReason>('employer_termination');
+  const [terminating, setTerminating] = useState(false);
 
   async function handleDeleteDeduction(id: string) {
     if (!window.confirm(t('حذف هذا الخصم؟'))) return;
@@ -302,6 +388,74 @@ function EmployeeDetail({
     if (!window.confirm(t('حذف هذه المخالفة؟'))) return;
     await api.del(`/employee-violations/${id}`);
     onChanged();
+  }
+
+  function startEditingPersonal() {
+    setDobInput(summary.profile.date_of_birth ?? '');
+    setNationalIdInput(summary.profile.national_id ?? '');
+    setNationalIdExpiryInput(summary.profile.national_id_expiry ?? '');
+    setHireDateInput(summary.profile.hire_date ?? '');
+    setEditingPersonal(true);
+  }
+
+  async function savePersonal() {
+    setSavingPersonal(true);
+    try {
+      await api.patch(`/profiles/${summary.profile.id}`, {
+        date_of_birth: dobInput || null,
+        national_id: nationalIdInput || null,
+        national_id_expiry: nationalIdExpiryInput || null,
+        hire_date: hireDateInput || null,
+      });
+      setEditingPersonal(false);
+      onChanged();
+    } finally {
+      setSavingPersonal(false);
+    }
+  }
+
+  // تفعيل/إيقاف استحقاق العمولة كمسوّق أو مشرف — يُنشئ سجلاً جديداً إن لم
+  // يكن هذا الموظف مضافاً بهذا الدور بعد، أو يُبدِّل active إن كان مضافاً
+  // مسبقاً (نفس منطق toggleEligibilityActive في Settings.tsx بالضبط).
+  async function toggleCommissionRole(role: 'marketer' | 'supervisor') {
+    setSavingEligibility(true);
+    try {
+      const existing = eligibility.find((e) => e.role === role);
+      if (existing) {
+        await api.patch(`/commission-eligibility/${existing.id}`, { active: !existing.active });
+      } else {
+        await api.post('/commission-eligibility', { profile_id: summary.profile.id, role, active: true });
+      }
+      onChanged();
+    } finally {
+      setSavingEligibility(false);
+    }
+  }
+
+  async function terminateEmployee() {
+    if (
+      !window.confirm(
+        tt(
+          `إنهاء عقد ${summary.profile.full_name} نهائياً؟ سيُعطَّل حسابه وتُسجَّل مكافأة نهاية الخدمة كمصروف تلقائياً. لا يمكن التراجع عن هذا الإجراء.`,
+          `Permanently terminate ${summary.profile.full_name}'s contract? Their account will be disabled and the end-of-service gratuity recorded as an expense automatically. This cannot be undone.`,
+        ),
+      )
+    )
+      return;
+    setTerminating(true);
+    try {
+      await api.post(`/employees/${summary.profile.id}/terminate`, {
+        termination_date: terminationDateInput,
+        reason: terminationReasonInput,
+        recorded_by: recordedById,
+        recorded_by_name: recordedByName,
+      });
+      setShowTerminateForm(false);
+      onChanged();
+      onClose();
+    } finally {
+      setTerminating(false);
+    }
   }
 
   function startEditingSalary() {
@@ -353,6 +507,98 @@ function EmployeeDetail({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {/* البيانات الشخصية — الاسم (في رأس النافذة أعلاه)، العمر (محتسَب من
+            تاريخ الميلاد)، رقم الهوية/الإقامة وتاريخ انتهائها، وتاريخ التعيين
+            (أساس احتساب مدة الخدمة عند إنهاء العقد لاحقاً). */}
+        <Section
+          icon={<IdCard className="h-4 w-4 text-brand-600" />}
+          title={t('البيانات الشخصية')}
+          action={
+            canEdit &&
+            !editingPersonal && (
+              <button
+                onClick={startEditingPersonal}
+                className="flex items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                title={t('تعديل البيانات الشخصية')}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )
+          }
+        >
+          {editingPersonal ? (
+            <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('تاريخ الميلاد')}</span>
+                  <input type="date" value={dobInput} onChange={(e) => setDobInput(e.target.value)} className="input" />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('تاريخ التعيين')}</span>
+                  <input type="date" value={hireDateInput} onChange={(e) => setHireDateInput(e.target.value)} className="input" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('رقم الهوية / الإقامة')}</span>
+                  <input value={nationalIdInput} onChange={(e) => setNationalIdInput(e.target.value)} className="input" dir="ltr" />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('تاريخ انتهاء الهوية')}</span>
+                  <input
+                    type="date"
+                    value={nationalIdExpiryInput}
+                    onChange={(e) => setNationalIdExpiryInput(e.target.value)}
+                    className="input"
+                  />
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={savePersonal}
+                  disabled={savingPersonal}
+                  className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" /> {savingPersonal ? t('جارِ الحفظ…') : t('حفظ')}
+                </button>
+                <button onClick={() => setEditingPersonal(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                  {t('إلغاء')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-slate-400">{t('العمر')}</div>
+                <div className="font-medium text-slate-700">
+                  {summary.profile.date_of_birth ? tt(`${ageFromBirthDate(summary.profile.date_of_birth)} سنة`, `${ageFromBirthDate(summary.profile.date_of_birth)} yrs`) : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('رقم الهوية / الإقامة')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{summary.profile.national_id || '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ انتهاء الهوية')}</div>
+                <div
+                  className={`font-medium ${
+                    summary.profile.national_id_expiry && new Date(summary.profile.national_id_expiry) < new Date()
+                      ? 'text-red-600'
+                      : 'text-slate-700'
+                  }`}
+                  dir="ltr"
+                >
+                  {summary.profile.national_id_expiry || '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{summary.profile.hire_date || '—'}</div>
+              </div>
+            </div>
+          )}
+        </Section>
 
         {/* الراتب الشهري — الراتب الثابت، الخصميات النشطة وقسط هذا الشهر
             منها، صافي الراتب المتوقع، تاريخ الاستحقاق، وتسجيل راتب الشهر. */}
@@ -495,6 +741,35 @@ function EmployeeDetail({
           )}
         </Section>
 
+        {/* استحقاق العمولات — تفعيل/إيقاف هذا الموظف كمسوّق و/أو مشرف مستحق
+            للعمولة الشهرية (يشترك في نفس مجمّع العمولة النسبي المُدار من
+            الإعدادات ← العمولات — لا توجد "نسبة" ثابتة لكل موظف، فالتوزيع
+            تناسبي حسب حصة كل مستحق من الإيراد المحصَّل، انظر Commissions.tsx). */}
+        <Section icon={<Percent className="h-4 w-4 text-brand-600" />} title={t('استحقاق العمولات')}>
+          <div className="grid grid-cols-2 gap-3">
+            {(['marketer', 'supervisor'] as const).map((role) => {
+              const entry = eligibility.find((e) => e.role === role);
+              const active = entry?.active ?? false;
+              return (
+                <label
+                  key={role}
+                  className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-sm ${
+                    active ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'
+                  } ${!canEdit || savingEligibility ? 'pointer-events-none opacity-60' : ''}`}
+                >
+                  <span className={`font-medium ${active ? 'text-emerald-700' : 'text-slate-600'}`}>
+                    {role === 'marketer' ? t('مستحق كمسوّق') : t('مستحق كمشرف')}
+                  </span>
+                  <input type="checkbox" checked={active} onChange={() => toggleCommissionRole(role)} className="h-4 w-4" />
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-slate-400">
+            {t('التوزيع تناسبي حسب حصة كل مستحق من الإيراد المحصَّل — النِسَب والشرائح العامة تُضبَط من الإعدادات ← العمولات')}
+          </p>
+        </Section>
+
         {/* سجل الرواتب المدفوعة */}
         <Section icon={<Wallet className="h-4 w-4 text-brand-600" />} title={t('سجل الرواتب المدفوعة')} total={formatMoney(summary.salaryTotal)}>
           <SimpleTable
@@ -624,7 +899,6 @@ function EmployeeDetail({
               </button>
             )
           }
-          last
         >
           <SimpleTable
             emptyLabel={t('لا توجد مخالفات مسجَّلة')}
@@ -642,6 +916,115 @@ function EmployeeDetail({
               ),
             ])}
           />
+        </Section>
+
+        {/* إنهاء الخدمة — يحتسب مكافأة نهاية الخدمة تلقائياً وفق المادتين
+            ٨٤ و٨٥ من نظام العمل السعودي (انظر computeEndOfServiceGratuity في
+            server/routes/api.ts للتفاصيل والتحفظات)، ويسجّلها كمصروف منفصل
+            عن الراتب الشهري، ثم يعطّل حساب الموظف. إجراء نهائي لا رجعة فيه. */}
+        <Section icon={<UserX className="h-4 w-4 text-red-500" />} title={t('إنهاء الخدمة')} last>
+          {summary.profile.termination_date ? (
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              <div>
+                {t('تاريخ الإنهاء')}: <span className="font-medium text-slate-800" dir="ltr">{summary.profile.termination_date}</span>
+              </div>
+              <div>
+                {t('السبب')}:{' '}
+                <span className="font-medium text-slate-800">
+                  {summary.profile.termination_reason ? t(TERMINATION_REASON_LABELS_AR[summary.profile.termination_reason]) : '—'}
+                </span>
+              </div>
+              <div>
+                {t('مكافأة نهاية الخدمة المحتسَبة')}:{' '}
+                <span className="font-semibold text-slate-800">{formatMoney(summary.profile.end_of_service_amount ?? 0)}</span>
+              </div>
+            </div>
+          ) : !canEdit ? (
+            <p className="text-sm text-slate-400">{t('لا تملك صلاحية إنهاء عقد موظف')}</p>
+          ) : !showTerminateForm ? (
+            <button
+              onClick={() => setShowTerminateForm(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+            >
+              <UserX className="h-4 w-4" /> {t('إنهاء عقد الموظف')}
+            </button>
+          ) : (
+            <div className="space-y-3 rounded-xl bg-red-50 p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('تاريخ الإنهاء')}</span>
+                  <input
+                    type="date"
+                    value={terminationDateInput}
+                    onChange={(e) => setTerminationDateInput(e.target.value)}
+                    className="input"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('سبب الإنهاء')}</span>
+                  <select
+                    value={terminationReasonInput}
+                    onChange={(e) => setTerminationReasonInput(e.target.value as TerminationReason)}
+                    className="input"
+                  >
+                    <option value="employer_termination">{t(TERMINATION_REASON_LABELS_AR.employer_termination)}</option>
+                    <option value="contract_expiry">{t(TERMINATION_REASON_LABELS_AR.contract_expiry)}</option>
+                    <option value="resignation">{t(TERMINATION_REASON_LABELS_AR.resignation)}</option>
+                  </select>
+                </label>
+              </div>
+
+              {!summary.profile.hire_date || !summary.profile.monthly_salary ? (
+                <p className="flex items-center gap-1.5 text-xs text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {t('يلزم ضبط تاريخ التعيين والراتب الشهري أولاً (قسم البيانات الشخصية والراتب الشهري أعلاه) لاحتساب المكافأة')}
+                </p>
+              ) : (
+                (() => {
+                  const preview = previewGratuity(
+                    summary.profile.hire_date,
+                    terminationDateInput,
+                    summary.profile.monthly_salary,
+                    terminationReasonInput,
+                  );
+                  return (
+                    <div className="rounded-lg bg-white p-2.5 text-xs text-slate-600">
+                      <div>
+                        {tt(`مدة الخدمة: ${preview.years} سنة`, `Service: ${preview.years} years`)}
+                      </div>
+                      <div>
+                        {tt(`المكافأة كاملة قبل أي خصم: ${formatMoney(preview.fullGratuity)}`, `Full gratuity before any reduction: ${formatMoney(preview.fullGratuity)}`)}
+                      </div>
+                      {preview.fraction < 1 && (
+                        <div>{tt(`نسبة الاستحقاق (استقالة): ${Math.round(preview.fraction * 100)}%`, `Entitlement share (resignation): ${Math.round(preview.fraction * 100)}%`)}</div>
+                      )}
+                      <div className="mt-1 font-semibold text-slate-800">
+                        {tt(`المبلغ المُقدَّر: ${formatMoney(preview.gratuity)}`, `Estimated amount: ${formatMoney(preview.gratuity)}`)}
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+
+              <p className="flex items-start gap-1.5 text-xs text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                {t('تقدير آلي مبسَّط وفق المادتين ٨٤ و٨٥ من نظام العمل السعودي — لا يغطي حالات الفصل التأديبي أو رصيد الإجازات أو بدل الإشعار. يُنصح بمراجعة مختص قبل الصرف النهائي.')}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={terminateEmployee}
+                  disabled={terminating || !summary.profile.hire_date || !summary.profile.monthly_salary}
+                  className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {terminating ? t('جارِ الإنهاء…') : t('تأكيد إنهاء العقد')}
+                </button>
+                <button onClick={() => setShowTerminateForm(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                  {t('إلغاء')}
+                </button>
+              </div>
+            </div>
+          )}
         </Section>
       </div>
 
