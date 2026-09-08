@@ -782,8 +782,47 @@ api.get('/appointments', (req, res) => {
   res.json(list);
 });
 
+// يبحث عن مسوّق نشط يملك بالضبط هذا الكود (غير حسّاس لحالة الأحرف/
+// المسافات الطرفية) — يُستخدَم عند حجز موعد جديد لتطبيق خصمه الحقيقي على
+// السعر وربط إيراد ذلك الموعد بهذا المسوّق مباشرة (انظر Appointment.marketer_id
+// وcomputeCommissionReport أدناه). لا يُعتَد بأي نسبة/مبلغ يرسله العميل —
+// القيم المُستخدَمة فعلياً دائماً من سجل المسوّق نفسه على الخادم.
+function resolveMarketerCode(code: string): CommissionEligibility | undefined {
+  const normalized = code.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return store.commissionEligibility
+    .list()
+    .find((e) => e.role === 'marketer' && e.active && e.discount_code?.trim().toLowerCase() === normalized);
+}
+
+// يطبّق خصم كود المسوّق (إن وُجد كود صالح) على مبلغ قبل الخصم، ويُرجع
+// المبلغ بعد الخصم مع بيانات المسوّق للتخزين على الموعد. amount هنا هو
+// دائماً "قبل الخصم" كما يُرسِله العميل، تماماً كمبدأ خصومات المبيعات.
+function applyMarketerCode(
+  code: string | undefined,
+  preDiscountAmount: number,
+): { amount: number; marketer_code?: string; marketer_id?: string; marketer_discount_amount?: number } {
+  const trimmed = typeof code === 'string' ? code.trim() : '';
+  if (!trimmed) return { amount: preDiscountAmount };
+  const marketer = resolveMarketerCode(trimmed);
+  if (!marketer) return { amount: preDiscountAmount, marketer_code: trimmed };
+  const kind = marketer.discount_kind ?? 'percent';
+  const discount =
+    kind === 'fixed'
+      ? Math.min(Math.max(marketer.discount_amount ?? 0, 0), preDiscountAmount)
+      : Math.round((preDiscountAmount * Math.max(marketer.discount_percent ?? 0, 0)) / 100 * 100) / 100;
+  return {
+    amount: Math.round((preDiscountAmount - discount) * 100) / 100,
+    marketer_code: trimmed,
+    marketer_id: marketer.profile_id,
+    marketer_discount_amount: discount > 0 ? discount : undefined,
+  };
+}
+
 api.post('/appointments', (req, res) => {
   const body = req.body ?? {};
+  const preDiscountAmount = Number(body.amount ?? 0);
+  const marketerCodeResult = applyMarketerCode(body.marketer_code, preDiscountAmount);
   const appointment: Appointment = {
     id: store.id(),
     customer_id: body.customer_id,
@@ -794,14 +833,14 @@ api.post('/appointments', (req, res) => {
     service_name_snapshot: body.service_name_snapshot || store.services.get(body.service_id)?.name || '',
     scheduled_at: body.scheduled_at,
     expected_duration_minutes: body.expected_duration_minutes ?? 120,
-    amount: body.amount ?? 0,
+    amount: marketerCodeResult.amount,
     status: 'scheduled',
     supervisor_id: body.supervisor_id,
     address_snapshot: body.address_snapshot ?? '',
     location_url: body.location_url,
     notes: body.notes,
     total_paid: 0,
-    remaining_amount: body.amount ?? 0,
+    remaining_amount: marketerCodeResult.amount,
     payment_status: 'unpaid',
     assignments: body.assignments ?? [],
     photos: [],
@@ -812,13 +851,19 @@ api.post('/appointments', (req, res) => {
     // زيارة معاينة (لا خدمة أو سعر محدد بعد) بدل موعد خدمة عادي — انظر
     // AppointmentKind في shared/types.ts. غائب/'service' لا يغيّر شيئاً.
     kind: body.kind === 'visit' ? 'visit' : undefined,
+    marketer_code: marketerCodeResult.marketer_code,
+    marketer_id: marketerCodeResult.marketer_id,
+    marketer_discount_amount: marketerCodeResult.marketer_discount_amount,
   };
   store.appointments.insert(appointment);
+  const marketerNote = appointment.marketer_id
+    ? ` (كود مسوّق "${appointment.marketer_code}" — ${store.profiles.get(appointment.marketer_id)?.full_name ?? ''})`
+    : '';
   logActivity(
     req,
-    appointment.kind === 'visit'
+    (appointment.kind === 'visit'
       ? `تم تحديد زيارة معاينة للعميل "${appointment.customer_name_snapshot ?? ''}"`
-      : `تم إضافة موعد للعميل "${appointment.customer_name_snapshot ?? ''}"`,
+      : `تم إضافة موعد للعميل "${appointment.customer_name_snapshot ?? ''}"`) + marketerNote,
   );
   res.status(201).json(appointment);
 
@@ -2078,9 +2123,43 @@ api.patch('/commission-eligibility/:id', (req, res) => {
   const body = req.body ?? {};
   const patch: Partial<CommissionEligibility> = {};
   if (body.active !== undefined) patch.active = !!body.active;
+  if (body.discount_code !== undefined) {
+    const code = String(body.discount_code).trim();
+    if (code) {
+      // فريد بين كل المسوّقين النشطين (غير حسّاس لحالة الأحرف) — كودان
+      // متطابقان يجعلان تحليل الكود عند الحجز غامضاً (أي مسوّق يُقصَد؟).
+      const clash = store.commissionEligibility
+        .list()
+        .find(
+          (e) =>
+            e.id !== req.params.id &&
+            e.role === 'marketer' &&
+            e.active &&
+            e.discount_code?.trim().toLowerCase() === code.toLowerCase(),
+        );
+      if (clash) {
+        return res.status(409).json({ error: `هذا الكود مستخدَم بالفعل من "${clash.profile_name ?? 'مسوّق آخر'}"` });
+      }
+    }
+    patch.discount_code = code || undefined;
+  }
+  if (body.discount_kind !== undefined) patch.discount_kind = body.discount_kind === 'fixed' ? 'fixed' : 'percent';
+  if (body.discount_percent !== undefined) {
+    const percent = Number(body.discount_percent);
+    patch.discount_percent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined;
+  }
+  if (body.discount_amount !== undefined) {
+    const amount = Number(body.discount_amount);
+    patch.discount_amount = Number.isFinite(amount) ? Math.max(0, amount) : undefined;
+  }
   const updated = store.commissionEligibility.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
-  logActivity(req, `${updated.active ? 'تم تفعيل' : 'تم إيقاف'} استحقاق عمولة "${updated.profile_name ?? ''}"`);
+  logActivity(
+    req,
+    body.active !== undefined
+      ? `${updated.active ? 'تم تفعيل' : 'تم إيقاف'} استحقاق عمولة "${updated.profile_name ?? ''}"`
+      : `تم تعديل كود خصم المسوّق "${updated.profile_name ?? ''}"`,
+  );
   res.json(updated);
 });
 
@@ -2115,22 +2194,23 @@ function computeCommissionReport(month: string) {
   let companyRevenue = 0;
   const revenueByCustomer = new Map<string, number>();
   const revenueBySupervisor = new Map<string, number>();
+  const revenueByMarketer = new Map<string, number>();
+  const customersById = new Map(customers.map((c) => [c.id, c]));
   for (const a of appointments) {
+    // كود خصم مسوّق طُبِّق عند حجز هذا الموعد تحديداً (Appointment.marketer_id)
+    // يتفوّق على مسوّق العميل الثابت (customer.marketer_id) — عائد هذا
+    // الموعد وحده يُنسَب لصاحب الكود، بصرف النظر عن مسوّق العميل المعتاد.
+    // غياب الكود يعني: نفس السلوك السابق تماماً (الاعتماد على مسوّق العميل).
+    const effectiveMarketerId = a.marketer_id ?? customersById.get(a.customer_id)?.marketer_id;
     for (const p of a.payments) {
       if (!inMonth(p.recorded_at)) continue;
       companyRevenue += p.amount;
       revenueByCustomer.set(a.customer_id, (revenueByCustomer.get(a.customer_id) ?? 0) + p.amount);
       if (a.supervisor_id) revenueBySupervisor.set(a.supervisor_id, (revenueBySupervisor.get(a.supervisor_id) ?? 0) + p.amount);
+      if (effectiveMarketerId) revenueByMarketer.set(effectiveMarketerId, (revenueByMarketer.get(effectiveMarketerId) ?? 0) + p.amount);
     }
   }
   companyRevenue = Math.round(companyRevenue * 100) / 100;
-
-  const revenueByMarketer = new Map<string, number>();
-  for (const c of customers) {
-    if (!c.marketer_id) continue;
-    const rev = revenueByCustomer.get(c.id);
-    if (rev) revenueByMarketer.set(c.marketer_id, (revenueByMarketer.get(c.marketer_id) ?? 0) + rev);
-  }
 
   // نسبة شكاوى كل مشرف هذا الشهر — تقييمات ١-٢ نجوم ÷ إجمالي التقييمات
   // على مواعيد ذلك المشرف تحديداً (Rating.created_at ضمن الشهر).

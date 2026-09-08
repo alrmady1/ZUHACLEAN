@@ -1407,6 +1407,15 @@ export default function AppointmentDetailModal({
               </div>
             </div>
 
+            {appointment.marketer_id && (
+              <div className="mb-3 rounded-xl bg-violet-50 px-3 py-2 text-xs text-violet-700">
+                {tt(
+                  `كود مسوّق مُطبَّق: "${appointment.marketer_code}" — خصم ${formatMoney(appointment.marketer_discount_amount ?? 0)}`,
+                  `Marketer code applied: "${appointment.marketer_code}" — discount ${formatMoney(appointment.marketer_discount_amount ?? 0)}`,
+                )}
+              </div>
+            )}
+
             {appointment.payments.length > 0 && (
               <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100 pt-2">
                 {appointment.payments.map((p) => (

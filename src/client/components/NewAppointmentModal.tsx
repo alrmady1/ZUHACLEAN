@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
@@ -173,10 +173,17 @@ export default function NewAppointmentModal({
   const [submitting, setSubmitting] = useState(false);
   const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  // كود خصم مسوّق اختياري — يمنح خصماً حقيقياً على السعر ويربط عائد هذا
+  // الموعد بذلك المسوّق مباشرة عند احتساب العمولات (انظر Settings.tsx ←
+  // تبويب العمولات، وresolveMarketerCode في src/server/routes/api.ts).
+  // التحليل هنا للمعاينة فقط — الخادم هو من يعتمد الخصم فعلياً عند الحفظ.
+  const [marketerCode, setMarketerCode] = useState('');
+  const [marketerEligibility, setMarketerEligibility] = useState<CommissionEligibility[]>([]);
 
   useEffect(() => {
     api.get<Appointment[]>('/appointments').then(setExistingAppointments);
     api.get<LeaveRecord[]>('/leaves').then(setLeaves);
+    api.get<CommissionEligibility[]>('/commission-eligibility').then(setMarketerEligibility);
   }, []);
 
   function applyCustomer(customer: Customer | undefined) {
@@ -272,6 +279,19 @@ export default function NewAppointmentModal({
     return { time: formatTimeAr(end.toISOString()), duration: formatDuration(Number(duration)) };
   })();
 
+  // معاينة فقط (بلا اعتماد فعلي) لكود المسوّق المُدخَل — غير حسّاسة لحالة
+  // الأحرف، تطابق منطق resolveMarketerCode على الخادم تماماً.
+  const resolvedMarketer = useMemo(() => {
+    const code = marketerCode.trim().toLowerCase();
+    if (!code) return null;
+    return marketerEligibility.find((e) => e.role === 'marketer' && e.active && e.discount_code?.trim().toLowerCase() === code) ?? null;
+  }, [marketerCode, marketerEligibility]);
+  const marketerDiscountPreview = resolvedMarketer
+    ? resolvedMarketer.discount_kind === 'fixed'
+      ? Math.min(Math.max(resolvedMarketer.discount_amount ?? 0, 0), Number(amount) || 0)
+      : Math.round((((Number(amount) || 0) * Math.max(resolvedMarketer.discount_percent ?? 0, 0)) / 100) * 100) / 100
+    : 0;
+
   // منطقة الرياض المقترحة لحيّ العميل المختار (إن كان حيّه مربوطاً بمنطقة
   // من الإعدادات ← مناطق الرياض) — تُعرض كبانر تحت حقل التاريخ يقترح أفضل
   // أيام الأسبوع لتجميع عملاء نفس المنطقة، مع اقتراح أقرب تاريخ فعلي لكل
@@ -355,6 +375,7 @@ export default function NewAppointmentModal({
         scheduled_at: scheduledAt,
         expected_duration_minutes: Number(duration) || (isVisit ? 30 : 120),
         amount: isVisit ? 0 : Number(amount) || 0,
+        marketer_code: isVisit ? undefined : marketerCode.trim() || undefined,
         supervisor_id: supervisorId || undefined,
         address_snapshot: address,
         location_url: locationUrl || undefined,
@@ -706,6 +727,27 @@ export default function NewAppointmentModal({
                   />
                 </label>
               </div>
+
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('كود خصم مسوّق (اختياري)')}</span>
+                <input
+                  type="text"
+                  value={marketerCode}
+                  onChange={(e) => setMarketerCode(e.target.value)}
+                  placeholder={t('مثال: AHMED10')}
+                  className="input"
+                />
+              </label>
+              {marketerCode.trim() && (
+                <div className={`rounded-xl px-3 py-2 text-xs font-medium ${resolvedMarketer ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                  {resolvedMarketer
+                    ? tt(
+                        `كود صالح — للمسوّق "${resolvedMarketer.profile_name}" — خصم ${formatMoney(marketerDiscountPreview)}`,
+                        `Valid code — for marketer "${resolvedMarketer.profile_name}" — discount ${formatMoney(marketerDiscountPreview)}`,
+                      )
+                    : t('كود غير صالح أو غير مفعَّل')}
+                </div>
+              )}
             </Section>
           )}
 

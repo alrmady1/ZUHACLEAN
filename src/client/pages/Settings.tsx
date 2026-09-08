@@ -68,6 +68,7 @@ import type {
   CommissionTier,
   CommissionEligibility,
   CompanyBankAccount,
+  SalesDiscountKind,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
@@ -3040,6 +3041,111 @@ function PermissionsTab() {
   );
 }
 
+// كود خصم مسوّق واحد — عنصر مستقل (بدل حقل نموذج عام) حتى يحمل حالة
+// محلية خاصة به لنوع الخصم (نسبة/مبلغ ثابت)، تُهيَّأ من قيمة entry الحالية
+// عند كل mount؛ الأب يستخدمه بـ key={entry.id + entry.discount_kind}
+// فتُعاد تهيئته تلقائياً بعد كل حفظ ناجح، بنفس نمط DiscountSettingsCard
+// في Sales.tsx. يُدخِله من يحجز موعداً جديداً (NewAppointmentModal)
+// فيمنح خصماً حقيقياً على السعر ويربط عائد ذلك الموعد بهذا المسوّق مباشرة
+// (انظر Appointment.marketer_id/computeCommissionReport في api.ts).
+function MarketerCodeFields({ entry, onSave }: { entry: CommissionEligibility; onSave: (patch: Partial<CommissionEligibility>) => Promise<void> }) {
+  const { t } = useI18n();
+  const [code, setCode] = useState(entry.discount_code ?? '');
+  const [kind, setKind] = useState<SalesDiscountKind>(entry.discount_kind ?? 'percent');
+  const [percent, setPercent] = useState(entry.discount_percent ?? 0);
+  const [amount, setAmount] = useState(entry.discount_amount ?? 0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ discount_code: code.trim(), discount_kind: kind, discount_percent: percent, discount_amount: amount });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      let message = t('تعذّر الحفظ');
+      try {
+        const parsed = JSON.parse((err as Error).message);
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // ignore parse errors, use default message
+      }
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-slate-200 pt-2">
+      <label className="block text-xs">
+        <span className="mb-1 block font-medium text-slate-500">{t('كود الخصم')}</span>
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder={t('مثال: AHMED10')}
+          className="input w-32 py-1 text-xs"
+        />
+      </label>
+      <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5">
+        <button
+          type="button"
+          onClick={() => setKind('percent')}
+          className={`rounded-md px-2 py-1 text-[11px] font-medium ${kind === 'percent' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+        >
+          {t('نسبة مئوية')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setKind('fixed')}
+          className={`rounded-md px-2 py-1 text-[11px] font-medium ${kind === 'fixed' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+        >
+          {t('مبلغ ثابت')}
+        </button>
+      </div>
+      {kind === 'percent' ? (
+        <label className="block text-xs">
+          <span className="mb-1 block font-medium text-slate-500">{t('النسبة (٪)')}</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            value={percent}
+            onChange={(e) => setPercent(Number(e.target.value) || 0)}
+            className="input w-20 py-1 text-xs"
+          />
+        </label>
+      ) : (
+        <label className="block text-xs">
+          <span className="mb-1 block font-medium text-slate-500">{t('المبلغ (ر.س)')}</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(Number(e.target.value) || 0)}
+            className="input w-24 py-1 text-xs"
+          />
+        </label>
+      )}
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+      >
+        {saving ? t('جارِ الحفظ…') : saved ? t('تم الحفظ ✓') : t('حفظ')}
+      </button>
+      {error && <span className="text-xs font-medium text-red-600">{error}</span>}
+    </div>
+  );
+}
+
 // تبويب "العمولات" — إعداد نظام عمولات المسوّق والمشرف (نقطة التعادل،
 // المستهدفات، الشرائح التصاعدية، ومن يستحق فعلياً). هذا تبويب الإعداد
 // فقط — الأرقام الفعلية المحسوبة لكل شهر (الإيراد، من يستحق كم) تُعرَض
@@ -3106,6 +3212,10 @@ function CommissionsTab() {
     if (!window.confirm(t('حذف هذا المستحق؟'))) return;
     await api.del(`/commission-eligibility/${id}`);
     setEligibility((prev) => prev.filter((x) => x.id !== id));
+  }
+  async function saveMarketerCode(id: string, patch: Partial<CommissionEligibility>) {
+    const updated = await api.patch<CommissionEligibility>(`/commission-eligibility/${id}`, patch);
+    setEligibility((prev) => prev.map((x) => (x.id === id ? updated : x)));
   }
 
   return (
@@ -3309,25 +3419,34 @@ function CommissionsTab() {
         </div>
         <div className="space-y-2">
           {eligibility.map((entry) => (
-            <div key={entry.id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
-              <div>
-                <div className="text-sm font-medium text-slate-700">{entry.profile_name}</div>
-                <div className="text-xs text-slate-400">{entry.role === 'marketer' ? t('مسوّق') : t('مشرف')}</div>
+            <div key={entry.id} className="rounded-xl bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium text-slate-700">{entry.profile_name}</div>
+                  <div className="text-xs text-slate-400">{entry.role === 'marketer' ? t('مسوّق') : t('مشرف')}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleEligibilityActive(entry)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}
+                  >
+                    {entry.active ? t('مفعَّل') : t('موقَّف')}
+                  </button>
+                  <button
+                    onClick={() => removeEligibility(entry.id)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => toggleEligibilityActive(entry)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${entry.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}
-                >
-                  {entry.active ? t('مفعَّل') : t('موقَّف')}
-                </button>
-                <button
-                  onClick={() => removeEligibility(entry.id)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {entry.role === 'marketer' && (
+                <MarketerCodeFields
+                  key={`${entry.id}-${entry.discount_code ?? ''}-${entry.discount_kind ?? ''}`}
+                  entry={entry}
+                  onSave={(patch) => saveMarketerCode(entry.id, patch)}
+                />
+              )}
             </div>
           ))}
           {eligibility.length === 0 && <div className="py-4 text-center text-xs text-slate-400">{t('لا يوجد مستحقون بعد')}</div>}

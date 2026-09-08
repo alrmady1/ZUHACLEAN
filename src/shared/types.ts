@@ -1100,6 +1100,18 @@ export interface Appointment {
   // البدئية 'pending_review') — غائب على كل المواعيد الأخرى المُنشأة
   // يدوياً أو من عقد متكرر.
   whatsapp_thread_id?: string;
+  // كود خصم مسوّق (CommissionEligibility.discount_code) طُبِّق عند حجز
+  // هذا الموعد — يُخزَّن كما أُدخِل حرفياً للعرض فقط. marketer_id هو
+  // معرّف المسوّق الفعلي الذي حُلَّ منه (على الخادم، وقت الحجز)، وهو ما
+  // يُستخدَم مباشرة في احتساب العمولات (يتفوّق على customer.marketer_id
+  // لهذا الموعد تحديداً بصرف النظر عمّن يكون مسوّق العميل الثابت).
+  // marketer_discount_amount هو القيمة المخصومة فعلياً بالريال بسبب هذا
+  // الكود — amount أعلاه يعكسها مسبقاً (بعد الخصم)، هذا الحقل للعرض/
+  // الطباعة فقط ولا يدخل في أي حساب لاحق. كل الحقول غائبة يعني: لا كود
+  // استُخدم لهذا الموعد.
+  marketer_code?: string;
+  marketer_id?: string;
+  marketer_discount_amount?: number;
 }
 
 export const VAT_RATE = 0.15;
@@ -1316,6 +1328,21 @@ export interface CommissionEligibility {
   role: 'marketer' | 'supervisor';
   active: boolean;
   created_at: string;
+  // كود خصم خاص بهذا المسوّق فقط (role === 'marketer' — يبقى بلا معنى
+  // لمشرف) يُدخِله من يحجز موعداً جديداً (NewAppointmentModal): يمنح
+  // خصماً حقيقياً على سعر الخدمة، ويربط إيراد ذلك الموعد تحديداً بهذا
+  // المسوّق عند احتساب العمولات (Appointment.marketer_id أدناه) — بدل
+  // الاعتماد فقط على customer.marketer_id الثابت على العميل نفسه. فريد
+  // بين كل سجلات المسوّقين النشطين (يتحقق منه الخادم عند الحفظ)، غير
+  // حسّاس لحالة الأحرف. غياب الحقل يعني: لا كود لهذا المسوّق بعد.
+  discount_code?: string;
+  // 'percent' (افتراضي عند الغياب) أو 'fixed' — نفس النمط المُعاد
+  // استخدامه من SalesDiscountKind (خصم المبيعات)، بلا سقف صارم هنا (على
+  // عكس "الخصم المفتوح" في المبيعات) — المدير العام يملك مطلق الصلاحية
+  // في ضبط نسبة/مبلغ كود كل مسوّق كما يشاء.
+  discount_kind?: SalesDiscountKind;
+  discount_percent?: number;
+  discount_amount?: number;
 }
 
 // مسار العرض — تصنيف/عنوان فقط يظهر على المستند المطبوع، لا يُنشئ عقداً
