@@ -18,6 +18,7 @@ import {
   MessageCircle,
   CalendarPlus,
   FileSpreadsheet,
+  Star,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource, Service } from '../../shared/types.js';
@@ -25,6 +26,7 @@ import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR, CUSTOMER_IMPORT_ROL
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import CustomerHeatMapTab from '../components/CustomerHeatMapTab.js';
+import CustomerRatingsTab from '../components/CustomerRatingsTab.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
@@ -94,10 +96,10 @@ export default function Customers() {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   // تبويب رئيسي جديد فوق كل محتوى الصفحة — "سجل العملاء" (المحتوى الحالي
-  // كاملاً) أو "الخريطة الحرارية" (تبويب جديد، انظر CustomerHeatMapTab
-  // أسفل هذا الملف). لا يؤثر على view أعلاه (تلك خاصة بعرض قائمة/مربعات
-  // داخل تبويب "سجل العملاء" نفسه فقط).
-  const [mainTab, setMainTab] = useState<'list' | 'heatmap'>('list');
+  // كاملاً)، "الخريطة الحرارية"، أو "التقييمات" (انظر CustomerHeatMapTab
+  // وCustomerRatingsTab في src/client/components). لا يؤثر على view أعلاه
+  // (تلك خاصة بعرض قائمة/مربعات داخل تبويب "سجل العملاء" نفسه فقط).
+  const [mainTab, setMainTab] = useState<'list' | 'heatmap' | 'ratings'>('list');
 
   function refresh() {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -286,9 +288,27 @@ export default function Customers() {
         >
           <MapIcon className="h-4 w-4" /> {t('الخريطة الحرارية')}
         </button>
+        <button
+          onClick={() => setMainTab('ratings')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'ratings' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <Star className="h-4 w-4" /> {t('التقييمات')}
+        </button>
       </div>
 
       {mainTab === 'heatmap' && <CustomerHeatMapTab customers={customers} appointments={appointments} />}
+
+      {mainTab === 'ratings' && (
+        <CustomerRatingsTab
+          ratings={ratings}
+          appointments={appointments}
+          onOpenCustomer={(customerId) => {
+            setSearch('');
+            setExpanded((prev) => new Set(prev).add(customerId));
+            setMainTab('list');
+          }}
+        />
+      )}
 
       {mainTab === 'list' && (
         <>
