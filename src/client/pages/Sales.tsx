@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer } from 'lucide-react';
+import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer, BadgePercent } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Invoice, PaymentMethodOption, Appointment } from '../../shared/types.js';
-import { VAT_RATE } from '../../shared/types.js';
+import type { Customer, Invoice, PaymentMethodOption, Appointment, SalesDiscountSettings } from '../../shared/types.js';
+import { VAT_RATE, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+
+type DiscountChoice = 'none' | 'named' | 'open';
 
 type ReportPeriod = 'week' | 'month' | 'year';
 
@@ -60,7 +62,13 @@ function ReportStat({
 
 export default function Sales() {
   const { t, tt, lang } = useI18n();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  // خصم المناسبة يُدار من هنا — لكن الاطّلاع على التقارير المالية وسجل
+  // الفواتير الكامل، وإصدار فاتورة جديدة أصلاً، يبقيان خلف صلاحيتيهما
+  // القائمتين (view_sales_invoices/issue_invoices) كما كان الحال دائماً.
+  const canViewReports = can('view_sales_invoices');
+  const canManageDiscount = can('manage_sales_discount');
+  const canIssueInvoices = can('issue_invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -71,16 +79,31 @@ export default function Sales() {
   const [previewTotal, setPreviewTotal] = useState(0);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
 
+  const [discountSettings, setDiscountSettings] = useState<SalesDiscountSettings>(DEFAULT_SALES_DISCOUNT_SETTINGS);
+  const [discountChoice, setDiscountChoice] = useState<DiscountChoice>('none');
+  const [openDiscountPercent, setOpenDiscountPercent] = useState(0);
+
   function refresh() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
   }
 
+  function refreshDiscountSettings() {
+    api.get<SalesDiscountSettings>('/sales-discount-settings').then(setDiscountSettings);
+  }
+
   useEffect(() => {
-    refresh();
-    api.get<Customer[]>('/customers').then(setCustomers);
-    api.get<Appointment[]>('/appointments').then(setAppointments);
-    api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
-  }, []);
+    if (canViewReports) refresh();
+    if (canIssueInvoices || canManageDiscount) refreshDiscountSettings();
+    // مشرف يملك فقط manage_sales_discount (بلا اطّلاع على المبيعات ولا
+    // إصدار فواتير) لا يحتاج بيانات العملاء/المواعيد/طرق الدفع إطلاقاً —
+    // يرى بطاقة الخصم فقط، فلا داعي لجلبها له.
+    if (canViewReports || canIssueInvoices) {
+      api.get<Customer[]>('/customers').then(setCustomers);
+      api.get<Appointment[]>('/appointments').then(setAppointments);
+      api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewReports, canIssueInvoices, canManageDiscount]);
 
   const methodName = (id?: string) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : '—');
 
@@ -128,30 +151,74 @@ export default function Sales() {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
-    // The field collects the VAT-inclusive amount — back out the pre-tax
-    // subtotal before sending, since that's still what /invoices expects
-    // (it derives vat_amount/total from subtotal itself).
+    // الحقل يجمع المبلغ شامل الضريبة قبل أي خصم — يُستخرَج منه المبلغ قبل
+    // الضريبة كما كان دائماً؛ الخصم (إن وُجد) يُحتسَب على الخادم فقط عند
+    // الإرسال (انظر POST /invoices)، وليس هنا، حتى لا يُعتَد بحساب العميل.
     const totalAmount = Number(form.get('total_amount'));
     const subtotal = Math.round((totalAmount / (1 + VAT_RATE)) * 100) / 100;
+    const payload: Record<string, unknown> = {
+      customer_id: form.get('customer_id'),
+      subtotal,
+      payment_status: form.get('payment_status'),
+      payment_method: form.get('payment_method') || undefined,
+      recorded_by: user?.id,
+      recorded_by_name: user?.full_name,
+    };
+    if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
+      payload.discount_type = 'named';
+    } else if (discountChoice === 'open' && openDiscountPercent > 0) {
+      payload.discount_type = 'open';
+      payload.discount_percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+    }
     try {
-      await api.post('/invoices', {
-        customer_id: form.get('customer_id'),
-        subtotal,
-        payment_status: form.get('payment_status'),
-        payment_method: form.get('payment_method') || undefined,
-        recorded_by: user?.id,
-        recorded_by_name: user?.full_name,
-      });
+      await api.post('/invoices', payload);
       setShowForm(false);
       setPreviewTotal(0);
+      setDiscountChoice('none');
+      setOpenDiscountPercent(0);
       refresh();
     } finally {
       setSubmitting(false);
     }
   }
 
-  const subtotalPreview = Math.round((previewTotal / (1 + VAT_RATE)) * 100) / 100;
-  const vatPreview = Math.round((previewTotal - subtotalPreview) * 100) / 100;
+  const [savingDiscount, setSavingDiscount] = useState(false);
+  const [discountSaved, setDiscountSaved] = useState(false);
+
+  async function handleSaveDiscountSettings(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingDiscount(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      const updated = await api.patch<SalesDiscountSettings>('/sales-discount-settings', {
+        named_discount_enabled: form.get('named_discount_enabled') === 'on',
+        named_discount_label: form.get('named_discount_label'),
+        named_discount_percent: Number(form.get('named_discount_percent') || 0),
+      });
+      setDiscountSettings(updated);
+      setDiscountSaved(true);
+      setTimeout(() => setDiscountSaved(false), 2500);
+    } finally {
+      setSavingDiscount(false);
+    }
+  }
+
+  // المعاينة داخل نموذج "فاتورة جديدة" — نفس ترتيب الحساب المُعتمَد على
+  // الخادم (خصم على المبلغ قبل الضريبة، ثم الضريبة على الباقي)، لعرض
+  // النتيجة فقط؛ القيم الفعلية المحفوظة تُحتسَب هناك من جديد.
+  const effectiveDiscountPercent =
+    discountChoice === 'named'
+      ? discountSettings.named_discount_enabled
+        ? (discountSettings.named_discount_percent ?? 0)
+        : 0
+      : discountChoice === 'open'
+        ? Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT)
+        : 0;
+  const subtotalBeforeDiscountPreview = Math.round((previewTotal / (1 + VAT_RATE)) * 100) / 100;
+  const discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * effectiveDiscountPercent) / 100) * 100) / 100;
+  const subtotalPreview = Math.round((subtotalBeforeDiscountPreview - discountAmountPreview) * 100) / 100;
+  const vatPreview = Math.round(subtotalPreview * VAT_RATE * 100) / 100;
+  const totalPreview = Math.round((subtotalPreview + vatPreview) * 100) / 100;
 
   return (
     <div className="space-y-6">
@@ -160,158 +227,226 @@ export default function Sales() {
           <h1 className="text-xl font-bold text-slate-800">{t('المبيعات والتقارير المالية')}</h1>
           <p className="text-sm text-slate-400">{t('تحليل الإيرادات، التحصيلات النقدية والشبكة، وحجم المبيعات حسب نوع الخدمة')}</p>
         </div>
-        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-          {(Object.keys(PERIOD_LABELS) as ReportPeriod[]).map((p) => (
+        {canViewReports && (
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            {(Object.keys(PERIOD_LABELS) as ReportPeriod[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === p ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+              >
+                {t(PERIOD_LABELS[p])}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {canManageDiscount && (
+        <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded-lg bg-violet-100 p-2 text-violet-600">
+              <BadgePercent className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">{t('خصم المناسبة')}</h2>
+              <p className="text-xs text-slate-500">{t('مثل خصم اليوم الوطني أو خصم يوم التأسيس — يظهر كخيار عند إصدار أي فاتورة طالما بقي مفعّلاً')}</p>
+            </div>
+          </div>
+          <form key={discountSettings.updated_at} onSubmit={handleSaveDiscountSettings} className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_auto_auto] sm:items-end">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-600 sm:pb-2.5">
+              <input type="checkbox" name="named_discount_enabled" defaultChecked={discountSettings.named_discount_enabled} className="h-4 w-4 rounded border-slate-300" />
+              {t('مفعّل')}
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('اسم الخصم')}</span>
+              <input
+                type="text"
+                name="named_discount_label"
+                defaultValue={discountSettings.named_discount_label ?? ''}
+                placeholder={t('مثال: خصم اليوم الوطني')}
+                className="input"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('النسبة (٪)')}</span>
+              <input
+                type="number"
+                name="named_discount_percent"
+                min={0}
+                max={100}
+                step="0.1"
+                defaultValue={discountSettings.named_discount_percent ?? ''}
+                className="input w-24"
+              />
+            </label>
             <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === p ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+              type="submit"
+              disabled={savingDiscount}
+              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
-              {t(PERIOD_LABELS[p])}
+              {savingDiscount ? t('جارِ الحفظ…') : discountSaved ? t('تم الحفظ ✓') : t('حفظ')}
             </button>
-          ))}
+          </form>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <ReportStat
-          icon={CheckCircle2}
-          iconTint="bg-emerald-100 text-emerald-600"
-          label={t('المحصّل الفعلي (SAR)')}
-          value={formatMoney(collectedActual)}
-          sub={tt(`نسبة التحصيل: ${collectionRate}%`, `Collection Rate: ${collectionRate}%`)}
-        />
-        <ReportStat
-          icon={TrendingUp}
-          iconTint="bg-blue-100 text-blue-600"
-          label={t('إجمالي المبيعات (SAR)')}
-          value={formatMoney(totalSales)}
-          sub={t('مجموع قيمة الخدمات المكتملة')}
-        />
-        <ReportStat
-          icon={Sparkles}
-          iconTint="bg-violet-100 text-violet-600"
-          label={t('الخدمات المنجزة')}
-          value={String(servicesCompletedCount)}
-          sub={t('عملية صيانة وتنظيف ناجحة')}
-        />
-        <ReportStat
-          icon={AlertCircle}
-          iconTint="bg-red-100 text-red-600"
-          label={t('المتبقي تحت التحصيل')}
-          value={formatMoney(remainingUnderCollection)}
-          sub={t('مستحقات معلقة على العملاء')}
-        />
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-700">{t('حركة المبيعات اليومية')}</h2>
-        <p className="mb-4 text-xs text-slate-400">{t('تطور حجم المبيعات بالريال السعودي على مدار الفترة')}</p>
-        {dailyMovement.length > 0 ? (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyMovement}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v: number) => formatMoney(v)} />
-                <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+      {canViewReports && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <ReportStat
+              icon={CheckCircle2}
+              iconTint="bg-emerald-100 text-emerald-600"
+              label={t('المحصّل الفعلي (SAR)')}
+              value={formatMoney(collectedActual)}
+              sub={tt(`نسبة التحصيل: ${collectionRate}%`, `Collection Rate: ${collectionRate}%`)}
+            />
+            <ReportStat
+              icon={TrendingUp}
+              iconTint="bg-blue-100 text-blue-600"
+              label={t('إجمالي المبيعات (SAR)')}
+              value={formatMoney(totalSales)}
+              sub={t('مجموع قيمة الخدمات المكتملة')}
+            />
+            <ReportStat
+              icon={Sparkles}
+              iconTint="bg-violet-100 text-violet-600"
+              label={t('الخدمات المنجزة')}
+              value={String(servicesCompletedCount)}
+              sub={t('عملية صيانة وتنظيف ناجحة')}
+            />
+            <ReportStat
+              icon={AlertCircle}
+              iconTint="bg-red-100 text-red-600"
+              label={t('المتبقي تحت التحصيل')}
+              value={formatMoney(remainingUnderCollection)}
+              sub={t('مستحقات معلقة على العملاء')}
+            />
           </div>
-        ) : (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-            {t('لا توجد بيانات حركة مبيعات للفترة المحددة')}
-          </div>
-        )}
-      </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-700">{t('طرق الدفع والتحصيل')}</h2>
-        <p className="mb-4 text-xs text-slate-400">{t('توزيع المبالغ المحصّلة حسب قناة الدفع')}</p>
-        {paymentBreakdown.length > 0 ? (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={paymentBreakdown} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
-                  {paymentBreakdown.map((_, i) => (
-                    <Cell key={i} fill={PIE_TINTS[i % PIE_TINTS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v: number) => formatMoney(v)} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 className="text-sm font-semibold text-slate-700">{t('حركة المبيعات اليومية')}</h2>
+            <p className="mb-4 text-xs text-slate-400">{t('تطور حجم المبيعات بالريال السعودي على مدار الفترة')}</p>
+            {dailyMovement.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyMovement}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip formatter={(v: number) => formatMoney(v)} />
+                    <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-40 items-center justify-center text-sm text-slate-400">
+                {t('لا توجد بيانات حركة مبيعات للفترة المحددة')}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex h-40 items-center justify-center text-sm text-slate-400">{t('لا توجد دفعات مسجلة')}</div>
-        )}
-      </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-800">{t('سجل الفواتير الضريبية')}</h2>
-          <p className="text-sm text-slate-400">{t('تحتسب ضريبة القيمة المضافة (15٪) تلقائياً')}</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 className="text-sm font-semibold text-slate-700">{t('طرق الدفع والتحصيل')}</h2>
+            <p className="mb-4 text-xs text-slate-400">{t('توزيع المبالغ المحصّلة حسب قناة الدفع')}</p>
+            {paymentBreakdown.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={paymentBreakdown} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
+                      {paymentBreakdown.map((_, i) => (
+                        <Cell key={i} fill={PIE_TINTS[i % PIE_TINTS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatMoney(v)} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-40 items-center justify-center text-sm text-slate-400">{t('لا توجد دفعات مسجلة')}</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {(canViewReports || canIssueInvoices) && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">{t('سجل الفواتير الضريبية')}</h2>
+            <p className="text-sm text-slate-400">{t('تحتسب ضريبة القيمة المضافة (15٪) تلقائياً')}</p>
+          </div>
+          {canIssueInvoices && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Plus className="h-4 w-4" /> {t('فاتورة جديدة')}
+            </button>
+          )}
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> {t('فاتورة جديدة')}
-        </button>
-      </div>
+      )}
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-start text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-xs text-slate-400">
-              <th className="p-3 text-start font-medium">{t('رقم الفاتورة')}</th>
-              <th className="p-3 text-start font-medium">{t('العميل')}</th>
-              <th className="p-3 text-start font-medium">{t('قبل الضريبة')}</th>
-              <th className="p-3 text-start font-medium">{t('الضريبة (15٪)')}</th>
-              <th className="p-3 text-start font-medium">{t('الإجمالي')}</th>
-              <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
-              <th className="p-3 text-start font-medium">{t('الحالة')}</th>
-              <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
-              <th className="p-3 text-start font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoices
-              .slice()
-              .reverse()
-              .map((i) => (
-                <tr key={i.id} className="border-b border-slate-50 last:border-0">
-                  <td className="p-3 font-medium text-slate-700">{i.invoice_number}</td>
-                  <td className="p-3 text-slate-600">{i.customer_name_snapshot}</td>
-                  <td className="p-3 text-slate-600">{formatMoney(i.subtotal)}</td>
-                  <td className="p-3 text-slate-600">{formatMoney(i.vat_amount)}</td>
-                  <td className="p-3 font-semibold text-slate-700">{formatMoney(i.total)}</td>
-                  <td className="p-3 text-slate-600">{methodName(i.payment_method)}</td>
-                  <td className="p-3">
-                    <PaymentStatusBadge status={i.payment_status} />
-                  </td>
-                  <td className="p-3 text-slate-500">{i.issue_date}</td>
-                  <td className="p-3">
-                    <button
-                      onClick={() => setViewingInvoice(i)}
-                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> {t('عرض / طباعة')}
-                    </button>
+      {canViewReports && (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table className="w-full text-start text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-xs text-slate-400">
+                <th className="p-3 text-start font-medium">{t('رقم الفاتورة')}</th>
+                <th className="p-3 text-start font-medium">{t('العميل')}</th>
+                <th className="p-3 text-start font-medium">{t('قبل الضريبة')}</th>
+                <th className="p-3 text-start font-medium">{t('الضريبة (15٪)')}</th>
+                <th className="p-3 text-start font-medium">{t('الإجمالي')}</th>
+                <th className="p-3 text-start font-medium">{t('طريقة الدفع')}</th>
+                <th className="p-3 text-start font-medium">{t('الحالة')}</th>
+                <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
+                <th className="p-3 text-start font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices
+                .slice()
+                .reverse()
+                .map((i) => (
+                  <tr key={i.id} className="border-b border-slate-50 last:border-0">
+                    <td className="p-3 font-medium text-slate-700">{i.invoice_number}</td>
+                    <td className="p-3 text-slate-600">{i.customer_name_snapshot}</td>
+                    <td className="p-3 text-slate-600">
+                      {formatMoney(i.subtotal)}
+                      {!!i.discount_percent && (
+                        <div className="text-[11px] text-violet-600">
+                          {t('بعد خصم')} {i.discount_label} ({i.discount_percent}٪)
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-3 text-slate-600">{formatMoney(i.vat_amount)}</td>
+                    <td className="p-3 font-semibold text-slate-700">{formatMoney(i.total)}</td>
+                    <td className="p-3 text-slate-600">{methodName(i.payment_method)}</td>
+                    <td className="p-3">
+                      <PaymentStatusBadge status={i.payment_status} />
+                    </td>
+                    <td className="p-3 text-slate-500">{i.issue_date}</td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => setViewingInvoice(i)}
+                        className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                      >
+                        <Printer className="h-3.5 w-3.5" /> {t('عرض / طباعة')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-slate-400">
+                    {t('لا توجد فواتير بعد')}
                   </td>
                 </tr>
-              ))}
-            {invoices.length === 0 && (
-              <tr>
-                <td colSpan={9} className="p-8 text-center text-slate-400">
-                  {t('لا توجد فواتير بعد')}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
@@ -372,18 +507,54 @@ export default function Sales() {
                 </label>
               </div>
 
+              <div className="space-y-1.5 rounded-xl border border-slate-200 p-3">
+                <span className="block text-sm font-medium text-slate-600">{t('الخصم')}</span>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="radio" checked={discountChoice === 'none'} onChange={() => setDiscountChoice('none')} />
+                  {t('بدون خصم')}
+                </label>
+                {discountSettings.named_discount_enabled && (discountSettings.named_discount_percent ?? 0) > 0 && (
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input type="radio" checked={discountChoice === 'named'} onChange={() => setDiscountChoice('named')} />
+                    {`${discountSettings.named_discount_label || t('خصم مناسبة')} (${discountSettings.named_discount_percent}٪)`}
+                  </label>
+                )}
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="radio" checked={discountChoice === 'open'} onChange={() => setDiscountChoice('open')} />
+                  {tt(`خصم مفتوح (حتى ${OPEN_DISCOUNT_MAX_PERCENT}٪)`, `Open discount (up to ${OPEN_DISCOUNT_MAX_PERCENT}%)`)}
+                </label>
+                {discountChoice === 'open' && (
+                  <input
+                    type="number"
+                    min={0}
+                    max={OPEN_DISCOUNT_MAX_PERCENT}
+                    step="0.1"
+                    value={openDiscountPercent || ''}
+                    onChange={(e) => setOpenDiscountPercent(Math.min(Math.max(Number(e.target.value) || 0, 0), OPEN_DISCOUNT_MAX_PERCENT))}
+                    className="input ms-6 w-28"
+                    placeholder={t('النسبة٪')}
+                  />
+                )}
+              </div>
+
               <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                 <div className="flex justify-between text-slate-500">
-                  <span>{t('المبلغ قبل الضريبة')}</span>
-                  <span>{formatMoney(subtotalPreview)}</span>
+                  <span>{t('المبلغ قبل الخصم والضريبة')}</span>
+                  <span>{formatMoney(subtotalBeforeDiscountPreview)}</span>
                 </div>
+                {effectiveDiscountPercent > 0 && (
+                  <div className="flex justify-between text-violet-600">
+                    <span>{t('الخصم')} ({effectiveDiscountPercent}٪)</span>
+                    <span>-{formatMoney(discountAmountPreview)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-500">
                   <span>{t('الضريبة (15٪)')}</span>
                   <span>{formatMoney(vatPreview)}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-800">
                   <span>{t('الإجمالي شامل الضريبة')}</span>
-                  <span>{formatMoney(previewTotal)}</span>
+                  <span>{formatMoney(totalPreview)}</span>
                 </div>
               </div>
             </div>

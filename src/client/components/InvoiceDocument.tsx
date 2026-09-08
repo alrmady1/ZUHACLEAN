@@ -128,6 +128,20 @@ export default function InvoiceDocument({
           </div>
 
           <div className="mb-6 space-y-1.5 border-t border-dashed border-slate-200 pt-3 text-sm">
+            {!!invoice.discount_percent && (
+              <>
+                <div className="flex justify-between text-slate-500">
+                  <span>{t('الإجمالي قبل الخصم')}</span>
+                  <span>{formatMoney(invoice.pre_discount_subtotal ?? invoice.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-violet-600">
+                  <span>
+                    {invoice.discount_label ?? t('خصم')} ({invoice.discount_percent}٪)
+                  </span>
+                  <span>-{formatMoney(invoice.discount_amount ?? 0)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-slate-500">
               <span>{t('الإجمالي قبل الضريبة')}</span>
               <span>{formatMoney(invoice.subtotal)}</span>

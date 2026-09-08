@@ -29,14 +29,19 @@ export default function Accounting() {
   const { t } = useI18n();
   const { can } = useAuth();
   const canSales = can('view_sales_invoices');
+  // لا تمنح وحدها رؤية التقارير المالية/سجل الفواتير الكامل — فقط تفتح
+  // تبويب "المبيعات" ليصل صاحبها لبطاقة "خصم المناسبة" داخل Sales.tsx
+  // (التي تتولى هي نفسها إخفاء بقية الصفحة عمن لا يملك canSales).
+  const canManageDiscount = can('manage_sales_discount');
   const canExpenses = can('view_expenses_page');
   const canEmployees = can('view_employee_accounts');
   const canCommissions = can('view_commissions');
   const canTax = can('view_tax_page');
   const canContracts = can('view_contracts_page');
-  const availableCount = [canSales, canExpenses, canEmployees, canCommissions, canTax, canContracts].filter(Boolean).length;
+  const canSalesTab = canSales || canManageDiscount;
+  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts].filter(Boolean).length;
   const [tab, setTab] = useState<Tab>(
-    canSales
+    canSalesTab
       ? 'sales'
       : canExpenses
         ? 'expenses'
@@ -58,7 +63,7 @@ export default function Accounting() {
 
       {availableCount > 1 && (
         <div className="flex w-fit flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
-          {canSales && (
+          {canSalesTab && (
             <button
               onClick={() => setTab('sales')}
               className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'sales' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
@@ -109,7 +114,7 @@ export default function Accounting() {
         </div>
       )}
 
-      {tab === 'sales' && canSales && <Sales />}
+      {tab === 'sales' && canSalesTab && <Sales />}
       {tab === 'expenses' && canExpenses && <Expenses />}
       {tab === 'employees' && canEmployees && <EmployeeAccountsTab />}
       {tab === 'commissions' && canCommissions && <CommissionsDashboardTab />}

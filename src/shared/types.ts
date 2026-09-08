@@ -114,7 +114,8 @@ export type PermissionKey =
   | 'edit_delete_expenses'
   | 'view_tax_page'
   | 'view_live_chat'
-  | 'manage_riyadh_zones';
+  | 'manage_riyadh_zones'
+  | 'manage_sales_discount';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -167,6 +168,11 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   // الخارجية، ذاك يبقى تابعاً لصلاحية edit_landing_page كالمعتاد.
   view_live_chat: 'إظهار أيقونة الدردشة المباشرة العائمة',
   manage_riyadh_zones: 'التحكم بتقسيم مناطق الرياض والأحياء التابعة لها',
+  // تعديل خصم المناسبات (اسمه ونسبته وتفعيله/إيقافه) من صفحة المبيعات —
+  // لا تمنح وحدها صلاحية إصدار الفواتير أو الاطلاع على التقارير المالية
+  // الكاملة (تبقيان تحت issue_invoices/view_sales_invoices كسابقاً)، فقط
+  // تفتح بطاقة إعداد الخصم داخل نفس الصفحة. انظر SalesDiscountSettings.
+  manage_sales_discount: 'تعديل خصم المناسبات في المبيعات',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -252,6 +258,10 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   view_tax_page: GM_ADMIN,
   view_live_chat: GM_ADMIN_ADMINSUP,
   manage_riyadh_zones: GM_ADMIN,
+  // بطلب صريح: المدير العام والمشرفَين (الإداري والميداني) معاً — وليس
+  // بالضرورة من يصدر الفواتير فعلياً؛ الفكرة أن يضبط أي منهم خصم مناسبة
+  // (اليوم الوطني، يوم التأسيس...) ليستخدمه لاحقاً من يملك issue_invoices.
+  manage_sales_discount: NOT_TECHNICIAN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -1117,7 +1127,42 @@ export interface Invoice {
   // الموظف (انظر EmployeeAccounts.tsx) لعرض "الفواتير المدفوعة عن طريقه".
   recorded_by?: string;
   recorded_by_name?: string;
+  // خصم اختياري طُبِّق على هذه الفاتورة (خصم مناسبة مفعَّل من صفحة
+  // المبيعات، أو خصم مفتوح بنسبة لا تتجاوز OPEN_DISCOUNT_MAX_PERCENT) —
+  // كل الحقول غائبة يعني بلا خصم. subtotal أعلاه هو المبلغ بعد الخصم (نفس
+  // ما تُحتسَب عليه الضريبة كما كان دائماً)؛ pre_discount_subtotal يحفظ
+  // القيمة قبل الخصم للعرض والطباعة فقط، ولا يدخل في أي حساب آخر.
+  discount_label?: string;
+  discount_percent?: number;
+  discount_amount?: number;
+  pre_discount_subtotal?: number;
 }
+
+// خصم مناسبة قابل للتفعيل (اليوم الوطني، يوم التأسيس...) يُعدِّله المدير
+// العام أو أحد المشرفَين من بطاقة "خصم المناسبة" في صفحة المبيعات (انظر
+// صلاحية manage_sales_discount)، ثم يُطبَّق اختيارياً عند إصدار أي فاتورة
+// من نفس الصفحة طالما ظل مفعَّلاً — سجل واحد فقط (singleton)، لا سجل
+// تاريخي لكل مناسبة سابقة. منفصل تماماً عن "الخصم المفتوح" الذي يُدخِله
+// من يُصدر الفاتورة نفسها كنسبة حرة لا تتجاوز OPEN_DISCOUNT_MAX_PERCENT
+// (لا يُحفَظ كإعداد، فقط يُطبَّق على تلك الفاتورة).
+export interface SalesDiscountSettings {
+  named_discount_enabled: boolean;
+  named_discount_label?: string;
+  // نسبة مئوية (0-100) — بلا سقف صارم كسقف الخصم المفتوح أدناه، فالمدير
+  // العام يملك مطلق الصلاحية في ضبط خصومات المناسبات كما يشاء.
+  named_discount_percent?: number;
+  updated_at: string;
+}
+
+export const DEFAULT_SALES_DISCOUNT_SETTINGS: SalesDiscountSettings = {
+  named_discount_enabled: false,
+  updated_at: new Date(0).toISOString(),
+};
+
+// السقف الأعلى لنسبة "الخصم المفتوح" الذي يُدخِله من يُصدر الفاتورة يدوياً
+// (بلا اسم مناسبة) — مفروض في الواجهة وأيضاً على الخادم (انظر POST
+// /invoices في api.ts) حتى لا يُتجاوَز بطلب مباشر للـ API.
+export const OPEN_DISCOUNT_MAX_PERCENT = 5;
 
 // خصم مالي على موظف (غير سلفية أو عهدة) — مخالفة، تأخير، تلفية، أو أي خصم
 // إداري آخر. يُعرَض في صفحة الموظفين فقط، ولا يؤثر على أي رصيد عهدة أو

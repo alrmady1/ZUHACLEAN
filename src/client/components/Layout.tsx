@@ -67,6 +67,9 @@ const NAV_ITEMS: NavItem[] = [
       'view_commissions',
       'view_tax_page',
       'view_contracts_page',
+      // من يملك فقط تعديل خصم المناسبة (بلا اطّلاع كامل على المبيعات)
+      // يحتاج أيضاً رؤية الرابط ليصل لبطاقة الخصم — انظر Sales.tsx.
+      'manage_sales_discount',
     ],
   },
   // كانت تبويباً داخل صفحة العقود، صارت صفحة مستقلة بعد "المبيعات والفواتير".

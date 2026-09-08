@@ -29,6 +29,7 @@ import type {
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
+  SalesDiscountSettings,
   VisitOutcome,
   ServicePricingTier,
   CustomerType,
@@ -49,6 +50,7 @@ import type {
 } from '../../shared/types.js';
 import {
   VAT_RATE,
+  OPEN_DISCOUNT_MAX_PERCENT,
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
@@ -1498,6 +1500,30 @@ api.patch('/payment-methods/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// خصم المناسبة (اليوم الوطني، يوم التأسيس...) — سجل إعداد واحد يعدِّله
+// المدير العام أو أحد المشرفَين من بطاقة "خصم المناسبة" في صفحة المبيعات
+// (خلف صلاحية manage_sales_discount في الواجهة)، ثم يظهر كخيار اختياري
+// عند إصدار أي فاتورة طالما بقي مفعَّلاً. القراءة عامة بلا قيد (تُستخدَم
+// فقط لعرض حالته الحالية في نموذج فاتورة جديدة)، والتعديل غير مُتحقَّق منه
+// على الخادم — نفس مستوى الحماية (واجهة فقط) لبقية مسارات هذا الملف.
+// ---------------------------------------------------------------------------
+api.get('/sales-discount-settings', (_req, res) => res.json(store.salesDiscountSettings.get()));
+
+api.patch('/sales-discount-settings', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<SalesDiscountSettings> = {};
+  if (body.named_discount_enabled !== undefined) patch.named_discount_enabled = Boolean(body.named_discount_enabled);
+  if (body.named_discount_label !== undefined) patch.named_discount_label = String(body.named_discount_label).trim() || undefined;
+  if (body.named_discount_percent !== undefined) {
+    const percent = Number(body.named_discount_percent);
+    patch.named_discount_percent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined;
+  }
+  const updated = store.salesDiscountSettings.set(patch);
+  logActivity(req, 'تم تعديل إعدادات خصم المناسبة في المبيعات');
+  res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
 // Invoices (VAT 15%)
 // ---------------------------------------------------------------------------
 api.get('/invoices', (req, res) => {
@@ -1512,7 +1538,32 @@ api.get('/invoices', (req, res) => {
 api.post('/invoices', (req, res) => {
   const body = req.body ?? {};
   const customer = store.customers.get(body.customer_id);
-  const subtotal = Number(body.subtotal ?? 0);
+  // المبلغ المُرسَل من العميل يبقى دائماً "قبل الخصم" (سلوك الحقل نفسه
+  // قبل إضافة هذه الميزة) — الخصم، إن وُجد، يُحتسَب هنا على الخادم فقط،
+  // ولا يُوثَق بأي نسبة يحسبها العميل بنفسه.
+  const preDiscountSubtotal = Number(body.subtotal ?? 0);
+
+  let discountPercent: number | undefined;
+  let discountLabel: string | undefined;
+  if (body.discount_type === 'named') {
+    const named = store.salesDiscountSettings.get();
+    if (named.named_discount_enabled && named.named_discount_percent && named.named_discount_percent > 0) {
+      discountPercent = named.named_discount_percent;
+      discountLabel = named.named_discount_label?.trim() || 'خصم مناسبة';
+    }
+  } else if (body.discount_type === 'open') {
+    // سقف صارم غير قابل للتجاوز حتى لو أرسل الطلب نسبة أعلى مباشرةً —
+    // هذا هو التحقق الفعلي الوحيد (الواجهة تمنعه أيضاً، لكن هذا ما يُعتَد
+    // به فعلياً). نسبة صفر أو غير رقمية تعني عملياً "بلا خصم".
+    const requested = Number(body.discount_percent ?? 0);
+    if (Number.isFinite(requested) && requested > 0) {
+      discountPercent = Math.min(requested, OPEN_DISCOUNT_MAX_PERCENT);
+      discountLabel = 'خصم مفتوح';
+    }
+  }
+
+  const discountAmount = discountPercent ? Math.round(preDiscountSubtotal * (discountPercent / 100) * 100) / 100 : 0;
+  const subtotal = Math.round((preDiscountSubtotal - discountAmount) * 100) / 100;
   const vat_amount = Math.round(subtotal * VAT_RATE * 100) / 100;
   const invoice: Invoice = {
     id: store.id(),
@@ -1531,9 +1582,14 @@ api.post('/invoices', (req, res) => {
     notes: body.notes,
     recorded_by: body.recorded_by || undefined,
     recorded_by_name: body.recorded_by_name || undefined,
+    discount_label: discountPercent ? discountLabel : undefined,
+    discount_percent: discountPercent,
+    discount_amount: discountPercent ? discountAmount : undefined,
+    pre_discount_subtotal: discountPercent ? preDiscountSubtotal : undefined,
   };
   store.invoices.insert(invoice);
-  logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س`);
+  const discountNote = discountPercent ? ` بعد خصم "${discountLabel}" (${discountPercent}٪)` : '';
+  logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س${discountNote}`);
   res.status(201).json(invoice);
 });
 
