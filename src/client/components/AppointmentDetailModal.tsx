@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome } from '../../shared/types.js';
+import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome, Rating, CustomerRating } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR, SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
-import { APPT_STATUS_STYLE } from './Badge.js';
+import { APPT_STATUS_STYLE, RatingStars } from './Badge.js';
 import PayAppointmentModal from './PayAppointmentModal.js';
 import InvoiceDocument from './InvoiceDocument.js';
+import CustomerRatingModal from './CustomerRatingModal.js';
 import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -111,6 +112,10 @@ export default function AppointmentDetailModal({
   const canEditServices = can('edit_appointments');
   const canUpdateStatus = can('update_appointment_status');
   const canAddPhotos = can('add_before_after_photos');
+  // نفس الصلاحية التي تتحكم فعلياً بهذا الإجراء في تبويب "المهام
+  // المكتملة" (Appointments.tsx) — لا صلاحية جديدة مستقلة، فقط إتاحته أيضاً
+  // من داخل تفاصيل الموعد نفسه عند اكتماله، دون الحاجة للخروج إلى تبويب آخر.
+  const canRateCustomer = can('view_completed_tasks_page');
   const [busy, setBusy] = useState(false);
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
@@ -157,6 +162,12 @@ export default function AppointmentDetailModal({
   const [visitServiceType, setVisitServiceType] = useState(appointment.visit_service_type ?? '');
   const [visitAmount, setVisitAmount] = useState<number | ''>(appointment.amount || '');
   const [submittingVisit, setSubmittingVisit] = useState<VisitOutcome | null>(null);
+  // تقييم العميل للخدمة (Rating — يُرسِله العميل نفسه عبر رابط "طلب
+  // تقييم" أدناه) وتقييم المشرف للعميل (CustomerRating — عكسه). موعد واحد
+  // = تقييم واحد على الأكثر من كل نوع.
+  const [serviceRating, setServiceRating] = useState<Rating | null>(null);
+  const [customerRating, setCustomerRating] = useState<CustomerRating | null>(null);
+  const [showRateCustomer, setShowRateCustomer] = useState(false);
 
   // Look up whether this appointment already has an invoice, so a
   // "reprint" option can be offered once the work is completed and paid.
@@ -165,6 +176,13 @@ export default function AppointmentDetailModal({
       .get<Invoice[]>(`/invoices?appointment_id=${appointment.id}`)
       .then((list) => setInvoice(list[list.length - 1] ?? null));
   }, [appointment.id, appointment.total_paid]);
+
+  // تقييم العميل للخدمة (إن وجد) وتقييم المشرف له — يُعرَضان معاً في قسم
+  // المدفوعات أسفل هذه النافذة عند اكتمال الموعد (انظر ذاك القسم).
+  useEffect(() => {
+    api.get<Rating[]>(`/ratings?appointment_id=${appointment.id}`).then((list) => setServiceRating(list[0] ?? null));
+    api.get<CustomerRating[]>(`/customer-ratings?appointment_id=${appointment.id}`).then((list) => setCustomerRating(list[0] ?? null));
+  }, [appointment.id]);
 
   useEffect(() => {
     api.get<LeaveRecord[]>('/leaves').then(setLeaves);
@@ -1319,7 +1337,7 @@ export default function AppointmentDetailModal({
                     <Printer className="h-3.5 w-3.5" /> {t('إعادة طباعة الفاتورة')}
                   </button>
                 )}
-                {invoice && appointment.status === 'completed' && customer?.phone && (
+                {invoice && appointment.status === 'completed' && customer?.phone && !serviceRating && (
                   <a
                     href={waLink(
                       customer.phone,
@@ -1336,8 +1354,36 @@ export default function AppointmentDetailModal({
                     <Star className="h-3.5 w-3.5" /> {t('طلب تقييم')}
                   </a>
                 )}
+                {appointment.status === 'completed' && canRateCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRateCustomer(true)}
+                    title={t('تقييم العميل')}
+                    className="flex items-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                  >
+                    <Star className="h-3.5 w-3.5" /> {customerRating ? t('تعديل تقييم العميل') : t('تقييم العميل')}
+                  </button>
+                )}
               </div>
             </div>
+            {(serviceRating || customerRating) && (
+              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {serviceRating && (
+                  <div className="rounded-xl bg-amber-50 p-3">
+                    <div className="mb-1 text-xs font-semibold text-amber-700">{t('تقييم العميل للخدمة')}</div>
+                    <RatingStars value={serviceRating.stars} />
+                    {serviceRating.comment && <p className="mt-1 text-xs text-slate-500">"{serviceRating.comment}"</p>}
+                  </div>
+                )}
+                {customerRating && (
+                  <div className="rounded-xl bg-violet-50 p-3">
+                    <div className="mb-1 text-xs font-semibold text-violet-700">{t('تقييمك للعميل')}</div>
+                    <RatingStars value={customerRating.stars} />
+                    {customerRating.notes && <p className="mt-1 text-xs text-slate-500">"{customerRating.notes}"</p>}
+                  </div>
+                )}
+              </div>
+            )}
             {appointment.remaining_amount > 0 && appointment.status !== 'completed' && (
               <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
                 {tt(
@@ -1388,6 +1434,14 @@ export default function AppointmentDetailModal({
           )}
         </div>
       </div>
+
+      {showRateCustomer && (
+        <CustomerRatingModal
+          existing={{ appointmentId: appointment.id, stars: customerRating?.stars ?? 0, notes: customerRating?.notes }}
+          onClose={() => setShowRateCustomer(false)}
+          onSaved={(r) => setCustomerRating(r)}
+        />
+      )}
 
       {editingPayment && (
         <EditPaymentModal

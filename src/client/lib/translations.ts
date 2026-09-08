@@ -213,6 +213,8 @@ export const AR_TO_EN: Record<string, string> = {
   "المدة (دقيقة)": "Duration (minutes)",
   "تم إضافة الموعد بواسطة:": "Appointment added by:",
   "تقييم الخدمة": "Service Rating",
+  "تقييم العميل للخدمة": "Customer's Service Rating",
+  "تقييمك للعميل": "Your Rating of the Customer",
   "تقييم العميل": "Customer Rating",
   "لم يُقيَّم العميل بعد": "Customer not rated yet",
   "أضف تقييمك للعميل بعد اكتمال الطلب": "Add your rating of the customer after completing the order",

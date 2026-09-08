@@ -419,7 +419,14 @@ api.post('/public/ratings', async (req, res) => {
   res.status(201).json(rating);
 });
 
-api.get('/ratings', (_req, res) => res.json(store.ratings.list()));
+api.get('/ratings', (req, res) => {
+  const { appointment_id } = req.query;
+  let list = store.ratings.list();
+  if (appointment_id && typeof appointment_id === 'string') {
+    list = list.filter((r) => r.appointment_id === appointment_id);
+  }
+  res.json(list);
+});
 
 api.delete('/ratings/:id', (req, res) => {
   const removed = store.ratings.remove(req.params.id);
@@ -433,7 +440,14 @@ api.delete('/ratings/:id', (req, res) => {
 // داخل التطبيق (تبويب "المهام المكتملة")، لا رابط عام. موعد واحد = تقييم
 // عميل واحد فقط لكنه يُستبدَل بإعادة الإرسال (upsert) لا يُمنَع.
 // ---------------------------------------------------------------------------
-api.get('/customer-ratings', (_req, res) => res.json(store.customerRatings.list()));
+api.get('/customer-ratings', (req, res) => {
+  const { appointment_id } = req.query;
+  let list = store.customerRatings.list();
+  if (appointment_id && typeof appointment_id === 'string') {
+    list = list.filter((r) => r.appointment_id === appointment_id);
+  }
+  res.json(list);
+});
 
 api.post('/customer-ratings', (req, res) => {
   const { appointment_id, stars, notes, rated_by } = req.body ?? {};
