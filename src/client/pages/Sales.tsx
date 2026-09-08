@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer, BadgePercent } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Invoice, PaymentMethodOption, Appointment, SalesDiscountSettings } from '../../shared/types.js';
+import type { Customer, Invoice, PaymentMethodOption, Appointment, SalesDiscountSettings, SalesDiscountKind } from '../../shared/types.js';
 import { VAT_RATE, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
@@ -60,6 +60,124 @@ function ReportStat({
   );
 }
 
+// بطاقة "خصم المناسبة" — عنصر مستقل (لا جزء من return الأب) حتى يحمل حالة
+// محلية خاصة به لنوع الخصم (نسبة/مبلغ ثابت)، تُهيَّأ من الإعدادات الحالية
+// عند كل mount. الأب يمرِّر `key={settings.updated_at}` عند استخدامه، فتُعاد
+// تهيئته تلقائياً من جديد بعد كل جلب أو حفظ ناجح — بلا حاجة لـ useEffect
+// لمزامنة الحالة يدوياً.
+function DiscountSettingsCard({
+  settings,
+  onSave,
+}: {
+  settings: SalesDiscountSettings;
+  onSave: (patch: Partial<SalesDiscountSettings>) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [kind, setKind] = useState<SalesDiscountKind>(settings.named_discount_kind ?? 'percent');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSaving(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await onSave({
+        named_discount_enabled: form.get('named_discount_enabled') === 'on',
+        named_discount_label: form.get('named_discount_label') as string,
+        named_discount_kind: kind,
+        named_discount_percent: Number(form.get('named_discount_percent') || 0),
+        named_discount_amount: Number(form.get('named_discount_amount') || 0),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="rounded-lg bg-violet-100 p-2 text-violet-600">
+          <BadgePercent className="h-4 w-4" />
+        </span>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">{t('خصم المناسبة')}</h2>
+          <p className="text-xs text-slate-500">{t('مثل خصم اليوم الوطني أو خصم يوم التأسيس — يظهر كخيار عند إصدار أي فاتورة طالما بقي مفعّلاً')}</p>
+        </div>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
+            <input type="checkbox" name="named_discount_enabled" defaultChecked={settings.named_discount_enabled} className="h-4 w-4 rounded border-slate-300" />
+            {t('مفعّل')}
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('اسم الخصم')}</span>
+            <input
+              type="text"
+              name="named_discount_label"
+              defaultValue={settings.named_discount_label ?? ''}
+              placeholder={t('مثال: خصم اليوم الوطني')}
+              className="input"
+            />
+          </label>
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setKind('percent')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${kind === 'percent' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}
+            >
+              {t('نسبة مئوية')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setKind('fixed')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${kind === 'fixed' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}
+            >
+              {t('مبلغ ثابت')}
+            </button>
+          </div>
+          {kind === 'percent' ? (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('النسبة (٪)')}</span>
+              <input
+                type="number"
+                name="named_discount_percent"
+                min={0}
+                max={100}
+                step="0.1"
+                defaultValue={settings.named_discount_percent ?? ''}
+                className="input w-24"
+              />
+            </label>
+          ) : (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
+              <input
+                type="number"
+                name="named_discount_amount"
+                min={0}
+                step="0.01"
+                defaultValue={settings.named_discount_amount ?? ''}
+                className="input w-28"
+              />
+            </label>
+          )}
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            {saving ? t('جارِ الحفظ…') : saved ? t('تم الحفظ ✓') : t('حفظ')}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function Sales() {
   const { t, tt, lang } = useI18n();
   const { user, can } = useAuth();
@@ -81,7 +199,9 @@ export default function Sales() {
 
   const [discountSettings, setDiscountSettings] = useState<SalesDiscountSettings>(DEFAULT_SALES_DISCOUNT_SETTINGS);
   const [discountChoice, setDiscountChoice] = useState<DiscountChoice>('none');
+  const [openDiscountKind, setOpenDiscountKind] = useState<SalesDiscountKind>('percent');
   const [openDiscountPercent, setOpenDiscountPercent] = useState(0);
+  const [openDiscountAmount, setOpenDiscountAmount] = useState(0);
 
   function refresh() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
@@ -166,56 +286,63 @@ export default function Sales() {
     };
     if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
       payload.discount_type = 'named';
-    } else if (discountChoice === 'open' && openDiscountPercent > 0) {
-      payload.discount_type = 'open';
-      payload.discount_percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+    } else if (discountChoice === 'open') {
+      if (openDiscountKind === 'fixed' && openDiscountAmount > 0) {
+        payload.discount_type = 'open';
+        payload.discount_kind = 'fixed';
+        payload.discount_amount = openDiscountAmount;
+      } else if (openDiscountKind === 'percent' && openDiscountPercent > 0) {
+        payload.discount_type = 'open';
+        payload.discount_kind = 'percent';
+        payload.discount_percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+      }
     }
     try {
       await api.post('/invoices', payload);
       setShowForm(false);
       setPreviewTotal(0);
       setDiscountChoice('none');
+      setOpenDiscountKind('percent');
       setOpenDiscountPercent(0);
+      setOpenDiscountAmount(0);
       refresh();
     } finally {
       setSubmitting(false);
     }
   }
 
-  const [savingDiscount, setSavingDiscount] = useState(false);
-  const [discountSaved, setDiscountSaved] = useState(false);
-
-  async function handleSaveDiscountSettings(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSavingDiscount(true);
-    const form = new FormData(e.currentTarget);
-    try {
-      const updated = await api.patch<SalesDiscountSettings>('/sales-discount-settings', {
-        named_discount_enabled: form.get('named_discount_enabled') === 'on',
-        named_discount_label: form.get('named_discount_label'),
-        named_discount_percent: Number(form.get('named_discount_percent') || 0),
-      });
-      setDiscountSettings(updated);
-      setDiscountSaved(true);
-      setTimeout(() => setDiscountSaved(false), 2500);
-    } finally {
-      setSavingDiscount(false);
-    }
+  async function handleSaveDiscountSettings(patch: Partial<SalesDiscountSettings>) {
+    const updated = await api.patch<SalesDiscountSettings>('/sales-discount-settings', patch);
+    setDiscountSettings(updated);
   }
 
   // المعاينة داخل نموذج "فاتورة جديدة" — نفس ترتيب الحساب المُعتمَد على
   // الخادم (خصم على المبلغ قبل الضريبة، ثم الضريبة على الباقي)، لعرض
-  // النتيجة فقط؛ القيم الفعلية المحفوظة تُحتسَب هناك من جديد.
-  const effectiveDiscountPercent =
-    discountChoice === 'named'
-      ? discountSettings.named_discount_enabled
-        ? (discountSettings.named_discount_percent ?? 0)
-        : 0
-      : discountChoice === 'open'
-        ? Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT)
-        : 0;
+  // النتيجة فقط؛ القيم الفعلية المحفوظة تُحتسَب هناك من جديد. تدعم كِلا
+  // نوعي الخصم (نسبة/مبلغ ثابت) للخصمَين معاً (المناسبة والمفتوح).
   const subtotalBeforeDiscountPreview = Math.round((previewTotal / (1 + VAT_RATE)) * 100) / 100;
-  const discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * effectiveDiscountPercent) / 100) * 100) / 100;
+  const openMaxFixedAmount = Math.round(((subtotalBeforeDiscountPreview * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
+
+  let discountKindPreview: SalesDiscountKind = 'percent';
+  let discountPercentPreview: number | undefined;
+  let discountAmountPreview = 0;
+  if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
+    discountKindPreview = discountSettings.named_discount_kind ?? 'percent';
+    if (discountKindPreview === 'fixed') {
+      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, subtotalBeforeDiscountPreview);
+    } else {
+      discountPercentPreview = discountSettings.named_discount_percent ?? 0;
+      discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * discountPercentPreview) / 100) * 100) / 100;
+    }
+  } else if (discountChoice === 'open') {
+    discountKindPreview = openDiscountKind;
+    if (openDiscountKind === 'fixed') {
+      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, subtotalBeforeDiscountPreview);
+    } else {
+      discountPercentPreview = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+      discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * discountPercentPreview) / 100) * 100) / 100;
+    }
+  }
   const subtotalPreview = Math.round((subtotalBeforeDiscountPreview - discountAmountPreview) * 100) / 100;
   const vatPreview = Math.round(subtotalPreview * VAT_RATE * 100) / 100;
   const totalPreview = Math.round((subtotalPreview + vatPreview) * 100) / 100;
@@ -242,54 +369,7 @@ export default function Sales() {
         )}
       </div>
 
-      {canManageDiscount && (
-        <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="rounded-lg bg-violet-100 p-2 text-violet-600">
-              <BadgePercent className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">{t('خصم المناسبة')}</h2>
-              <p className="text-xs text-slate-500">{t('مثل خصم اليوم الوطني أو خصم يوم التأسيس — يظهر كخيار عند إصدار أي فاتورة طالما بقي مفعّلاً')}</p>
-            </div>
-          </div>
-          <form key={discountSettings.updated_at} onSubmit={handleSaveDiscountSettings} className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_auto_auto] sm:items-end">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-600 sm:pb-2.5">
-              <input type="checkbox" name="named_discount_enabled" defaultChecked={discountSettings.named_discount_enabled} className="h-4 w-4 rounded border-slate-300" />
-              {t('مفعّل')}
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">{t('اسم الخصم')}</span>
-              <input
-                type="text"
-                name="named_discount_label"
-                defaultValue={discountSettings.named_discount_label ?? ''}
-                placeholder={t('مثال: خصم اليوم الوطني')}
-                className="input"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">{t('النسبة (٪)')}</span>
-              <input
-                type="number"
-                name="named_discount_percent"
-                min={0}
-                max={100}
-                step="0.1"
-                defaultValue={discountSettings.named_discount_percent ?? ''}
-                className="input w-24"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={savingDiscount}
-              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-            >
-              {savingDiscount ? t('جارِ الحفظ…') : discountSaved ? t('تم الحفظ ✓') : t('حفظ')}
-            </button>
-          </form>
-        </div>
-      )}
+      {canManageDiscount && <DiscountSettingsCard key={discountSettings.updated_at} settings={discountSettings} onSave={handleSaveDiscountSettings} />}
 
       {canViewReports && (
         <>
@@ -413,9 +493,9 @@ export default function Sales() {
                     <td className="p-3 text-slate-600">{i.customer_name_snapshot}</td>
                     <td className="p-3 text-slate-600">
                       {formatMoney(i.subtotal)}
-                      {!!i.discount_percent && (
+                      {!!i.discount_amount && (
                         <div className="text-[11px] text-violet-600">
-                          {t('بعد خصم')} {i.discount_label} ({i.discount_percent}٪)
+                          {t('بعد خصم')} {i.discount_label} ({i.discount_kind === 'fixed' ? formatMoney(i.discount_amount) : `${i.discount_percent}٪`})
                         </div>
                       )}
                     </td>
@@ -513,27 +593,69 @@ export default function Sales() {
                   <input type="radio" checked={discountChoice === 'none'} onChange={() => setDiscountChoice('none')} />
                   {t('بدون خصم')}
                 </label>
-                {discountSettings.named_discount_enabled && (discountSettings.named_discount_percent ?? 0) > 0 && (
-                  <label className="flex items-center gap-2 text-sm text-slate-600">
-                    <input type="radio" checked={discountChoice === 'named'} onChange={() => setDiscountChoice('named')} />
-                    {`${discountSettings.named_discount_label || t('خصم مناسبة')} (${discountSettings.named_discount_percent}٪)`}
-                  </label>
-                )}
+                {discountSettings.named_discount_enabled &&
+                  ((discountSettings.named_discount_kind ?? 'percent') === 'fixed'
+                    ? (discountSettings.named_discount_amount ?? 0) > 0
+                    : (discountSettings.named_discount_percent ?? 0) > 0) && (
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input type="radio" checked={discountChoice === 'named'} onChange={() => setDiscountChoice('named')} />
+                      {(discountSettings.named_discount_kind ?? 'percent') === 'fixed'
+                        ? `${discountSettings.named_discount_label || t('خصم مناسبة')} (${formatMoney(discountSettings.named_discount_amount ?? 0)})`
+                        : `${discountSettings.named_discount_label || t('خصم مناسبة')} (${discountSettings.named_discount_percent}٪)`}
+                    </label>
+                  )}
                 <label className="flex items-center gap-2 text-sm text-slate-600">
                   <input type="radio" checked={discountChoice === 'open'} onChange={() => setDiscountChoice('open')} />
-                  {tt(`خصم مفتوح (حتى ${OPEN_DISCOUNT_MAX_PERCENT}٪)`, `Open discount (up to ${OPEN_DISCOUNT_MAX_PERCENT}%)`)}
+                  {t('خصم مفتوح')}
                 </label>
                 {discountChoice === 'open' && (
-                  <input
-                    type="number"
-                    min={0}
-                    max={OPEN_DISCOUNT_MAX_PERCENT}
-                    step="0.1"
-                    value={openDiscountPercent || ''}
-                    onChange={(e) => setOpenDiscountPercent(Math.min(Math.max(Number(e.target.value) || 0, 0), OPEN_DISCOUNT_MAX_PERCENT))}
-                    className="input ms-6 w-28"
-                    placeholder={t('النسبة٪')}
-                  />
+                  <div className="ms-6 space-y-1.5">
+                    <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
+                      <button
+                        type="button"
+                        onClick={() => setOpenDiscountKind('percent')}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium ${openDiscountKind === 'percent' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+                      >
+                        {t('نسبة مئوية')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOpenDiscountKind('fixed')}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium ${openDiscountKind === 'fixed' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+                      >
+                        {t('مبلغ ثابت')}
+                      </button>
+                    </div>
+                    {openDiscountKind === 'percent' ? (
+                      <input
+                        type="number"
+                        min={0}
+                        max={OPEN_DISCOUNT_MAX_PERCENT}
+                        step="0.1"
+                        value={openDiscountPercent || ''}
+                        onChange={(e) => setOpenDiscountPercent(Math.min(Math.max(Number(e.target.value) || 0, 0), OPEN_DISCOUNT_MAX_PERCENT))}
+                        className="input w-28"
+                        placeholder={t('النسبة٪')}
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min={0}
+                        max={openMaxFixedAmount}
+                        step="0.01"
+                        value={openDiscountAmount || ''}
+                        onChange={(e) => setOpenDiscountAmount(Math.min(Math.max(Number(e.target.value) || 0, 0), openMaxFixedAmount))}
+                        className="input w-28"
+                        placeholder={t('المبلغ (ر.س)')}
+                      />
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      {tt(
+                        `الحد الأقصى المسموح به: ${openDiscountKind === 'percent' ? `${OPEN_DISCOUNT_MAX_PERCENT}٪` : formatMoney(openMaxFixedAmount)} (ما يعادل ${OPEN_DISCOUNT_MAX_PERCENT}٪ من المبلغ قبل الخصم)`,
+                        `Maximum allowed: ${openDiscountKind === 'percent' ? `${OPEN_DISCOUNT_MAX_PERCENT}%` : formatMoney(openMaxFixedAmount)} (equivalent to ${OPEN_DISCOUNT_MAX_PERCENT}% of the amount before discount)`,
+                      )}
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -542,9 +664,11 @@ export default function Sales() {
                   <span>{t('المبلغ قبل الخصم والضريبة')}</span>
                   <span>{formatMoney(subtotalBeforeDiscountPreview)}</span>
                 </div>
-                {effectiveDiscountPercent > 0 && (
+                {discountAmountPreview > 0 && (
                   <div className="flex justify-between text-violet-600">
-                    <span>{t('الخصم')} ({effectiveDiscountPercent}٪)</span>
+                    <span>
+                      {t('الخصم')} {discountKindPreview === 'percent' && discountPercentPreview ? `(${discountPercentPreview}٪)` : ''}
+                    </span>
                     <span>-{formatMoney(discountAmountPreview)}</span>
                   </div>
                 )}

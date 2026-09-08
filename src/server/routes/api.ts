@@ -30,6 +30,7 @@ import type {
   LandingService,
   MobileAppSettings,
   SalesDiscountSettings,
+  SalesDiscountKind,
   VisitOutcome,
   ServicePricingTier,
   CustomerType,
@@ -1514,9 +1515,16 @@ api.patch('/sales-discount-settings', (req, res) => {
   const patch: Partial<SalesDiscountSettings> = {};
   if (body.named_discount_enabled !== undefined) patch.named_discount_enabled = Boolean(body.named_discount_enabled);
   if (body.named_discount_label !== undefined) patch.named_discount_label = String(body.named_discount_label).trim() || undefined;
+  if (body.named_discount_kind !== undefined) {
+    patch.named_discount_kind = body.named_discount_kind === 'fixed' ? 'fixed' : 'percent';
+  }
   if (body.named_discount_percent !== undefined) {
     const percent = Number(body.named_discount_percent);
     patch.named_discount_percent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined;
+  }
+  if (body.named_discount_amount !== undefined) {
+    const amount = Number(body.named_discount_amount);
+    patch.named_discount_amount = Number.isFinite(amount) ? Math.max(0, amount) : undefined;
   }
   const updated = store.salesDiscountSettings.set(patch);
   logActivity(req, 'تم تعديل إعدادات خصم المناسبة في المبيعات');
@@ -1535,34 +1543,66 @@ api.get('/invoices', (req, res) => {
   res.json(list);
 });
 
+// نتيجة حسم موحَّدة (نسبة أو مبلغ ثابت على حدٍّ سواء) — amount هو المصدر
+// الموثوق الوحيد للقيمة المخصومة فعلياً بالريال؛ percent يُحفَظ فقط للعرض
+// عندما يكون الخصم نسبياً (غائب لخصم بمبلغ ثابت).
+interface ResolvedDiscount {
+  label: string;
+  kind: SalesDiscountKind;
+  percent?: number;
+  amount: number;
+}
+
+// خصم المناسبة المفعَّل حالياً من صفحة المبيعات — يُقرأ من الخادم مباشرة،
+// لا يُوثَق بأي شيء يرسله العميل عدا اختياره تطبيقه أصلاً (discount_type
+// === 'named'). preDiscountSubtotal يُستخدَم فقط لتقييد خصم المبلغ الثابت
+// بألا يتجاوز قيمة الفاتورة نفسها (لا يمكن أن يصبح الإجمالي سالباً).
+function resolveNamedDiscount(preDiscountSubtotal: number): ResolvedDiscount | null {
+  const s = store.salesDiscountSettings.get();
+  if (!s.named_discount_enabled) return null;
+  const label = s.named_discount_label?.trim() || 'خصم مناسبة';
+  if (s.named_discount_kind === 'fixed') {
+    const amount = Number(s.named_discount_amount ?? 0);
+    if (!(amount > 0)) return null;
+    return { label, kind: 'fixed', amount: Math.min(amount, preDiscountSubtotal) };
+  }
+  const percent = Number(s.named_discount_percent ?? 0);
+  if (!(percent > 0)) return null;
+  return { label, kind: 'percent', percent, amount: Math.round(((preDiscountSubtotal * percent) / 100) * 100) / 100 };
+}
+
+// "الخصم المفتوح" الذي يُدخِله من يُصدر الفاتورة نفسها — نسبة أو مبلغ
+// ثابت، كلاهما مقيَّد هنا على الخادم بألا يتجاوز ما يعادل
+// OPEN_DISCOUNT_MAX_PERCENT من قيمة الفاتورة (سقف صارم غير قابل للتجاوز
+// حتى لو أرسل الطلب قيمة أعلى مباشرةً — هذا هو التحقق الفعلي الوحيد،
+// الواجهة تمنعه أيضاً لكن هذا ما يُعتَد به فعلياً).
+function resolveOpenDiscount(body: Record<string, unknown>, preDiscountSubtotal: number): ResolvedDiscount | null {
+  const label = 'خصم مفتوح';
+  const maxFixedAmount = Math.round(((preDiscountSubtotal * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
+  if (body.discount_kind === 'fixed') {
+    const requested = Number(body.discount_amount ?? 0);
+    if (!(Number.isFinite(requested) && requested > 0)) return null;
+    return { label, kind: 'fixed', amount: Math.min(requested, maxFixedAmount, preDiscountSubtotal) };
+  }
+  const requested = Number(body.discount_percent ?? 0);
+  if (!(Number.isFinite(requested) && requested > 0)) return null;
+  const percent = Math.min(requested, OPEN_DISCOUNT_MAX_PERCENT);
+  return { label, kind: 'percent', percent, amount: Math.round(((preDiscountSubtotal * percent) / 100) * 100) / 100 };
+}
+
 api.post('/invoices', (req, res) => {
   const body = req.body ?? {};
   const customer = store.customers.get(body.customer_id);
   // المبلغ المُرسَل من العميل يبقى دائماً "قبل الخصم" (سلوك الحقل نفسه
   // قبل إضافة هذه الميزة) — الخصم، إن وُجد، يُحتسَب هنا على الخادم فقط،
-  // ولا يُوثَق بأي نسبة يحسبها العميل بنفسه.
+  // ولا يُوثَق بأي نسبة أو مبلغ يحسبه العميل بنفسه.
   const preDiscountSubtotal = Number(body.subtotal ?? 0);
 
-  let discountPercent: number | undefined;
-  let discountLabel: string | undefined;
-  if (body.discount_type === 'named') {
-    const named = store.salesDiscountSettings.get();
-    if (named.named_discount_enabled && named.named_discount_percent && named.named_discount_percent > 0) {
-      discountPercent = named.named_discount_percent;
-      discountLabel = named.named_discount_label?.trim() || 'خصم مناسبة';
-    }
-  } else if (body.discount_type === 'open') {
-    // سقف صارم غير قابل للتجاوز حتى لو أرسل الطلب نسبة أعلى مباشرةً —
-    // هذا هو التحقق الفعلي الوحيد (الواجهة تمنعه أيضاً، لكن هذا ما يُعتَد
-    // به فعلياً). نسبة صفر أو غير رقمية تعني عملياً "بلا خصم".
-    const requested = Number(body.discount_percent ?? 0);
-    if (Number.isFinite(requested) && requested > 0) {
-      discountPercent = Math.min(requested, OPEN_DISCOUNT_MAX_PERCENT);
-      discountLabel = 'خصم مفتوح';
-    }
-  }
+  let discount: ResolvedDiscount | null = null;
+  if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountSubtotal);
+  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, preDiscountSubtotal);
 
-  const discountAmount = discountPercent ? Math.round(preDiscountSubtotal * (discountPercent / 100) * 100) / 100 : 0;
+  const discountAmount = discount?.amount ?? 0;
   const subtotal = Math.round((preDiscountSubtotal - discountAmount) * 100) / 100;
   const vat_amount = Math.round(subtotal * VAT_RATE * 100) / 100;
   const invoice: Invoice = {
@@ -1582,13 +1622,16 @@ api.post('/invoices', (req, res) => {
     notes: body.notes,
     recorded_by: body.recorded_by || undefined,
     recorded_by_name: body.recorded_by_name || undefined,
-    discount_label: discountPercent ? discountLabel : undefined,
-    discount_percent: discountPercent,
-    discount_amount: discountPercent ? discountAmount : undefined,
-    pre_discount_subtotal: discountPercent ? preDiscountSubtotal : undefined,
+    discount_label: discount?.label,
+    discount_kind: discount?.kind,
+    discount_percent: discount?.percent,
+    discount_amount: discount ? discountAmount : undefined,
+    pre_discount_subtotal: discount ? preDiscountSubtotal : undefined,
   };
   store.invoices.insert(invoice);
-  const discountNote = discountPercent ? ` بعد خصم "${discountLabel}" (${discountPercent}٪)` : '';
+  const discountNote = discount
+    ? ` بعد خصم "${discount.label}" (${discount.kind === 'fixed' ? `${discountAmount} ر.س` : `${discount.percent}٪`})`
+    : '';
   logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س${discountNote}`);
   res.status(201).json(invoice);
 });
