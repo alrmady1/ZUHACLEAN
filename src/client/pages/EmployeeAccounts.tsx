@@ -20,6 +20,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import type {
   Expense,
   CustodyInvoice,
@@ -198,6 +199,12 @@ export function EmployeeAccountsTab() {
   const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
   const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  // إضافة موظف جديد مباشرة من هنا — نفس نموذج زهى ← الإعدادات ← المستخدمون
+  // (EmployeeFormModal مشترك بين الصفحتين)، بلا تكرار منطق الحفظ. هذا
+  // التبويب نفسه مقيَّد أصلاً بصلاحية view_employee_accounts (المدير العام
+  // ومدير النظام فقط، افتراضياً) — نفس من يملك صلاحية الوصول لصفحة
+  // المستخدمين أصلاً، فلا حاجة لصلاحية إضافية مستقلة هنا.
+  const [showAddEmployee, setShowAddEmployee] = useState(false);
 
   function refresh() {
     api.get<Expense[]>('/expenses').then(setExpenses);
@@ -272,15 +279,33 @@ export function EmployeeAccountsTab() {
   const openSummary = summaries.find((s) => s.profile.id === openId) ?? null;
   const canEdit = can('edit_custody_expenses');
   const canDelete = user ? CAN_DELETE_CUSTODY_ROLES.includes(user.role) : false;
+  const supervisorsForNewEmployee = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold text-slate-800">{t('الموظفين')}</h2>
-        <p className="text-sm text-slate-400">
-          {t('الراتب الشهري وصافيه بعد الخصميات، والسلفيات والعهدة والفواتير المحصَّلة لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل')}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">{t('الموظفين')}</h2>
+          <p className="text-sm text-slate-400">
+            {t('الراتب الشهري وصافيه بعد الخصميات، والسلفيات والعهدة والفواتير المحصَّلة لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل')}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddEmployee(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> {t('إضافة موظف')}
+        </button>
       </div>
+
+      {showAddEmployee && (
+        <EmployeeFormModal
+          editing={null}
+          supervisors={supervisorsForNewEmployee}
+          onClose={() => setShowAddEmployee(false)}
+          onSaved={() => {}}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {summaries.map((s) => {

@@ -85,6 +85,7 @@ import { WEEKDAYS } from '../../shared/weekdays.js';
 import { leaveTypeDisplay } from '../../shared/leaves.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
+import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
@@ -156,7 +157,6 @@ function UsersTab() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [search, setSearch] = useState('');
@@ -178,37 +178,6 @@ function UsersTab() {
   function switchToAccount(p: Profile) {
     loginAs(p.id);
     navigate('/');
-  }
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSubmitting(true);
-    const form = new FormData(e.currentTarget);
-    const payload = {
-      full_name: form.get('full_name'),
-      email: form.get('email') || undefined,
-      phone: form.get('phone') || undefined,
-      role: form.get('role'),
-      // null (not undefined) — JSON.stringify drops undefined keys
-      // entirely, so an empty selection would never reach the server at
-      // all and silently fail to clear an existing supervisor link.
-      supervisor_id: form.get('supervisor_id') || null,
-      username: form.get('username') || undefined,
-      password: form.get('password') || undefined,
-    };
-    try {
-      if (editing) {
-        await api.patch(`/profiles/${editing.id}`, payload);
-      } else {
-        await api.post('/profiles', payload);
-      }
-      setShowForm(false);
-      setEditing(null);
-      refresh();
-      refreshProfiles();
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   async function handleDeleteUser(p: Profile) {
@@ -541,61 +510,15 @@ function UsersTab() {
       )}
 
       {showForm && (
-        <Modal
-          title={editing ? tt(`تعديل ${editing.full_name}`, `Edit ${editing.full_name}`) : t('مستخدم جديد')}
+        <EmployeeFormModal
+          editing={editing}
+          supervisors={supervisors}
           onClose={() => {
             setShowForm(false);
             setEditing(null);
           }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <Field label={t('الاسم الكامل')}>
-              <input name="full_name" defaultValue={editing?.full_name} required className="input" />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('البريد الإلكتروني')}>
-                <input type="email" name="email" defaultValue={editing?.email} className="input" />
-              </Field>
-              <Field label={t('الجوال')}>
-                <input name="phone" defaultValue={editing?.phone} className="input" placeholder="05xxxxxxxx" />
-              </Field>
-            </div>
-            <Field label={t('الوظيفة')}>
-              <select name="role" defaultValue={editing?.role ?? 'technician'} required className="input">
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('المشرف المسؤول (للفنيين)')}>
-              <select name="supervisor_id" defaultValue={editing?.supervisor_id ?? ''} className="input">
-                <option value="">{t('بدون تحديد')}</option>
-                {supervisors.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('اسم المستخدم')}>
-                <input name="username" defaultValue={editing?.username} className="input" placeholder="username" />
-              </Field>
-              <Field label={editing ? t('كلمة مرور جديدة (اختياري)') : t('كلمة المرور')}>
-                <input type="password" name="password" className="input" placeholder="••••••" />
-              </Field>
-            </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-            >
-              {submitting ? t('جارِ الحفظ…') : editing ? t('حفظ التعديلات') : t('حفظ المستخدم')}
-            </button>
-          </form>
-        </Modal>
+          onSaved={refresh}
+        />
       )}
     </div>
   );

@@ -5,6 +5,9 @@
 export const AR_TO_EN: Record<string, string> = {
   "زهى | نظام التشغيل والصيانة": "Zaha | Operations and Maintenance System",
   "الموظفين": "Employees",
+  "إضافة موظف": "Add Employee",
+  "موظف جديد": "New Employee",
+  "حفظ الموظف": "Save Employee",
   "الراتب الشهري وصافيه بعد الخصميات، والسلفيات والعهدة والفواتير المحصَّلة لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل": "Monthly salary and its net after deductions, plus advances, custody, and collected invoices for each employee — click any employee for details",
   "الراتب الشهري": "Monthly Salary",
   "غير محدَّد": "Not Set",
