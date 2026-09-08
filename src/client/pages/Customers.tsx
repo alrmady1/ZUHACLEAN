@@ -24,6 +24,7 @@ import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSour
 import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR, CUSTOMER_IMPORT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
+import CustomerHeatMapTab from '../components/CustomerHeatMapTab.js';
 import { formatDateAr, formatTimeAr, formatMoney } from '../lib/date.js';
 import { waLink } from '../lib/whatsapp.js';
 import { useI18n } from '../lib/i18n.js';
@@ -92,6 +93,11 @@ export default function Customers() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
+  // تبويب رئيسي جديد فوق كل محتوى الصفحة — "سجل العملاء" (المحتوى الحالي
+  // كاملاً) أو "الخريطة الحرارية" (تبويب جديد، انظر CustomerHeatMapTab
+  // أسفل هذا الملف). لا يؤثر على view أعلاه (تلك خاصة بعرض قائمة/مربعات
+  // داخل تبويب "سجل العملاء" نفسه فقط).
+  const [mainTab, setMainTab] = useState<'list' | 'heatmap'>('list');
 
   function refresh() {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -267,6 +273,25 @@ export default function Customers() {
         </div>
       </div>
 
+      <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+        <button
+          onClick={() => setMainTab('list')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'list' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          {t('سجل العملاء')}
+        </button>
+        <button
+          onClick={() => setMainTab('heatmap')}
+          className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'heatmap' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+        >
+          <MapIcon className="h-4 w-4" /> {t('الخريطة الحرارية')}
+        </button>
+      </div>
+
+      {mainTab === 'heatmap' && <CustomerHeatMapTab customers={customers} appointments={appointments} />}
+
+      {mainTab === 'list' && (
+        <>
       <div className="relative">
         <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
@@ -459,6 +484,8 @@ export default function Customers() {
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-400">
           {t('لا يوجد عملاء مطابقون')}
         </div>
+      )}
+        </>
       )}
 
       {showForm && (

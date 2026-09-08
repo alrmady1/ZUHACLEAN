@@ -38,6 +38,7 @@ import type {
   LiveChatMessage,
   RiyadhZone,
   NeighborhoodZoneAssignment,
+  DistrictGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
   LandingPageSettings,
@@ -136,6 +137,10 @@ interface DbShape {
   // بها — انظر RiyadhZone/NeighborhoodZoneAssignment في src/shared/types.ts.
   riyadhZones: RiyadhZone[];
   neighborhoodZoneAssignments: NeighborhoodZoneAssignment[];
+  // ذاكرة تخزين مؤقت لمواقع الأحياء جغرافياً (Nominatim) — تُستخدَم في
+  // "الخريطة الحرارية" بصفحة العملاء. انظر DistrictGeocode في
+  // src/shared/types.ts.
+  districtGeocodes: DistrictGeocode[];
   // نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) على نفس الخريطة —
   // انظر WorkersHousingLocation في src/shared/types.ts.
   workersHousingLocation: WorkersHousingLocation;
@@ -446,6 +451,7 @@ function seed(): DbShape {
     liveChatThreads: [],
     riyadhZones: defaultRiyadhZones(now),
     neighborhoodZoneAssignments: defaultNeighborhoodAssignments(),
+    districtGeocodes: [],
     workersHousingLocation: { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: now },
     companyBankAccount: { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: now },
     commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
@@ -591,6 +597,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.liveChatThreads) parsed.liveChatThreads = [];
     if (!parsed.riyadhZones) parsed.riyadhZones = defaultRiyadhZones(new Date().toISOString());
     if (!parsed.neighborhoodZoneAssignments) parsed.neighborhoodZoneAssignments = defaultNeighborhoodAssignments();
+    if (!parsed.districtGeocodes) parsed.districtGeocodes = [];
     if (!parsed.workersHousingLocation) parsed.workersHousingLocation = { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: new Date().toISOString() };
     if (!parsed.companyBankAccount) parsed.companyBankAccount = { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: new Date().toISOString() };
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
@@ -1138,6 +1145,17 @@ export const store = {
       db.customerRatings.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  districtGeocodes: {
+    list: () => db.districtGeocodes,
+    // اسم الحيّ هو المفتاح — يستبدل أي نتيجة سابقة لنفس الاسم بدل تكرارها.
+    upsert: (g: DistrictGeocode) => {
+      const idx = db.districtGeocodes.findIndex((x) => x.district === g.district);
+      if (idx === -1) db.districtGeocodes.push(g);
+      else db.districtGeocodes[idx] = g;
+      persist();
+      return g;
     },
   },
   ratings: {

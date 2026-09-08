@@ -46,6 +46,7 @@ import type {
   LiveChatThread,
   RiyadhZone,
   NeighborhoodZoneAssignment,
+  DistrictGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
 } from '../../shared/types.js';
@@ -2560,6 +2561,28 @@ api.delete('/neighborhood-zones/:id', (req, res) => {
   const removed = store.neighborhoodZoneAssignments.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// ذاكرة تخزين مؤقت لمواقع الأحياء جغرافياً (Nominatim) — تُستخدَم في
+// "الخريطة الحرارية" بصفحة العملاء (Customers.tsx). العميل نفسه يبحث عبر
+// Nominatim مباشرة (نفس ما يفعله تبويب "مناطق الرياض")، ثم يحفظ هنا كل
+// نتيجة جديدة عبر POST حتى لا يُعاد البحث عن نفس الحيّ من متصفح آخر أو
+// زيارة لاحقة لنفس الصفحة.
+// ---------------------------------------------------------------------------
+api.get('/district-geocodes', (_req, res) => res.json(store.districtGeocodes.list()));
+
+api.post('/district-geocodes', (req, res) => {
+  const body = req.body ?? {};
+  const district = typeof body.district === 'string' ? body.district.trim() : '';
+  const lat = Number(body.lat);
+  const lng = Number(body.lng);
+  if (!district || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'district وlat وlng مطلوبة' });
+  }
+  const entry: DistrictGeocode = { district, lat, lng, resolved_at: new Date().toISOString() };
+  store.districtGeocodes.upsert(entry);
+  res.status(201).json(entry);
 });
 
 // نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) — نفس خريطة مناطق
