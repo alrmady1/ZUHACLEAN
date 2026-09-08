@@ -18,6 +18,8 @@ import {
   UserX,
   AlertTriangle,
   Camera,
+  LayoutGrid,
+  Rows3,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
@@ -205,6 +207,9 @@ export function EmployeeAccountsTab() {
   // ومدير النظام فقط، افتراضياً) — نفس من يملك صلاحية الوصول لصفحة
   // المستخدمين أصلاً، فلا حاجة لصلاحية إضافية مستقلة هنا.
   const [showAddEmployee, setShowAddEmployee] = useState(false);
+  // مربعات (الافتراضي، كل بطاقة تعرض كل الأرقام) أو أسطر (صف مختصر لكل
+  // موظف، أنسب لعدد أكبر من الموظفين دفعة واحدة).
+  const [view, setView] = useState<'grid' | 'list'>('grid');
 
   function refresh() {
     api.get<Expense[]>('/expenses').then(setExpenses);
@@ -290,12 +295,30 @@ export function EmployeeAccountsTab() {
             {t('الراتب الشهري وصافيه بعد الخصميات، والسلفيات والعهدة والفواتير المحصَّلة لكل موظف — اضغط على أي موظف للاطلاع على التفاصيل')}
           </p>
         </div>
-        <button
-          onClick={() => setShowAddEmployee(true)}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> {t('إضافة موظف')}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setShowAddEmployee(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> {t('إضافة موظف')}
+          </button>
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              onClick={() => setView('grid')}
+              title={t('مربعات')}
+              className={`rounded-lg p-1.5 ${view === 'grid' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setView('list')}
+              title={t('صفوف')}
+              className={`rounded-lg p-1.5 ${view === 'list' ? 'bg-brand-50 text-brand-700' : 'text-slate-400'}`}
+            >
+              <Rows3 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {showAddEmployee && (
@@ -307,6 +330,7 @@ export function EmployeeAccountsTab() {
         />
       )}
 
+      {view === 'grid' && (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {summaries.map((s) => {
           return (
@@ -393,6 +417,84 @@ export function EmployeeAccountsTab() {
           </div>
         )}
       </div>
+      )}
+
+      {view === 'list' && (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <div className="min-w-[980px] divide-y divide-slate-100">
+            {summaries.map((s) => (
+              <button
+                key={s.profile.id}
+                onClick={() => setOpenId(s.profile.id)}
+                className={`flex w-full items-center gap-4 whitespace-nowrap p-3 text-start transition hover:bg-slate-50 ${
+                  s.profile.termination_date ? 'opacity-60' : ''
+                }`}
+              >
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    s.profile.termination_date ? 'bg-slate-400' : 'bg-brand-600'
+                  }`}
+                >
+                  {s.profile.full_name.trim().charAt(0)}
+                </div>
+                <div className="flex w-40 shrink-0 items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold text-slate-800">{s.profile.full_name}</span>
+                  {s.profile.termination_date && (
+                    <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                      {t('منتهي الخدمة')}
+                    </span>
+                  )}
+                </div>
+                <div className="w-32 shrink-0">
+                  <div className="text-[11px] text-slate-400">{t('الراتب الشهري')}</div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    {s.profile.monthly_salary ? formatMoney(s.profile.monthly_salary) : t('غير محدَّد')}
+                  </div>
+                </div>
+                <div className="w-28 shrink-0">
+                  <div className="text-[11px] text-slate-400">{t('السلفيات')}</div>
+                  <div className="text-sm font-semibold text-slate-700">{formatMoney(s.advanceTotal)}</div>
+                </div>
+                <div className="w-28 shrink-0">
+                  <div className="text-[11px] text-slate-400">{t('رصيد العهدة')}</div>
+                  <div className={`text-sm font-semibold ${s.custodyRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {formatMoney(s.custodyRemaining)}
+                  </div>
+                </div>
+                <div className="w-28 shrink-0">
+                  <div className="text-[11px] text-slate-400">{t('فواتير محصَّلة')}</div>
+                  <div className="text-sm font-semibold text-slate-700">{formatMoney(s.invoicesTotal)}</div>
+                </div>
+                <div className="w-32 shrink-0">
+                  <div className="text-[11px] text-slate-400">{t('خصميات وسلفيات هذا الشهر')}</div>
+                  <div
+                    className={`text-sm font-semibold ${
+                      s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal > 0 ? 'text-red-600' : 'text-slate-700'
+                    }`}
+                  >
+                    {formatMoney(s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal)}
+                  </div>
+                </div>
+                {s.commissionDue > 0 && (
+                  <div className="w-28 shrink-0">
+                    <div className="text-[11px] text-slate-400">{t('عمولة هذا الشهر')}</div>
+                    <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.commissionDue)}</div>
+                  </div>
+                )}
+                {s.netSalary !== null && (
+                  <div className="me-auto w-32 shrink-0 rounded-xl bg-brand-50 px-3 py-1.5 text-center">
+                    <div className="text-[11px] font-medium text-brand-700">{t('صافي الراتب المتوقع')}</div>
+                    <div className="text-sm font-bold text-brand-700">{formatMoney(s.netSalary)}</div>
+                  </div>
+                )}
+              </button>
+            ))}
+            {summaries.length === 0 && (
+              <div className="p-10 text-center text-slate-400">{t('لا يوجد موظفون بعد')}</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {openSummary && (
         <EmployeeDetail
