@@ -7,6 +7,7 @@ import Contracts from './pages/Contracts.js';
 import Quotes from './pages/Quotes.js';
 import Leads from './pages/Leads.js';
 import OrderPage from './pages/OrderPage.js';
+import BookingWizardPage from './pages/BookingWizardPage.js';
 import Accounting from './pages/Accounting.js';
 import Customers from './pages/Customers.js';
 import CustomerImport from './pages/CustomerImport.js';
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/rate/:appointmentId" element={<RatePage />} />
       <Route path="/order" element={<OrderPage />} />
+      <Route path="/order/book" element={<BookingWizardPage />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/appointments" element={<Appointments />} />

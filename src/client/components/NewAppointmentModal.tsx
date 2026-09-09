@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility, PreferredTimeOfDay } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
@@ -81,7 +81,24 @@ export interface NewAppointmentInitialLead {
   area?: string;
   serviceName?: string;
   message?: string;
+  // من مسار "اطلب خدمتك الآن" متعدد الخطوات فقط (BookingWizardPage.tsx)
+  // — غائبة على أي طلب من الاستمارة السريعة القديمة. lat/lng يبنيان رابط
+  // خرائط جوجل الابتدائي لحقل الموقع أدناه إن لم يكن للعميل موقع محفوظ
+  // مسبقاً. preferredDate/preferredTime تقريبيان فقط — تُعبِّئان تاريخ
+  // ووقت الموعد الابتدائيين، يبقى تعديلهما بحرية كأي حجز عادي.
+  lat?: number;
+  lng?: number;
+  preferredDate?: string;
+  preferredTime?: PreferredTimeOfDay;
 }
+
+// وقت تمثيلي (24 ساعة) لكل فترة مفضَّلة — نقطة انطلاق معقولة فقط، الوقت
+// الفعلي يبقى قابلاً للتعديل بحرية كأي حجز عادي.
+const PREFERRED_TIME_OF_DAY_DEFAULT_HOUR: Record<PreferredTimeOfDay, string> = {
+  morning: '10:00',
+  afternoon: '13:00',
+  evening: '17:00',
+};
 
 export default function NewAppointmentModal({
   customers,
@@ -135,7 +152,10 @@ export default function NewAppointmentModal({
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const customerBoxRef = useRef<HTMLDivElement>(null);
   const [address, setAddress] = useState(matchedLeadCustomer?.address ?? initialLead?.area ?? '');
-  const [locationUrl, setLocationUrl] = useState(matchedLeadCustomer?.location_url ?? '');
+  const [locationUrl, setLocationUrl] = useState(
+    matchedLeadCustomer?.location_url ??
+      (initialLead?.lat && initialLead?.lng ? `https://www.google.com/maps?q=${initialLead.lat},${initialLead.lng}` : ''),
+  );
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0 || (!!initialLead && !matchedLeadCustomer));
   const [addingCustomer, setAddingCustomer] = useState(false);
 
@@ -165,8 +185,8 @@ export default function NewAppointmentModal({
   // بدل 120) — قابلة للتعديل بالطبع لو احتاج المشرف وقتاً أطول.
   const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120));
 
-  const [date, setDate] = useState(today);
-  const [time, setTime] = useState('10:00');
+  const [date, setDate] = useState(initialLead?.preferredDate ?? today);
+  const [time, setTime] = useState(initialLead?.preferredTime ? PREFERRED_TIME_OF_DAY_DEFAULT_HOUR[initialLead.preferredTime] : '10:00');
   const [supervisorId, setSupervisorId] = useState('');
   const [technicianId, setTechnicianId] = useState('');
 

@@ -2381,6 +2381,8 @@ api.post('/public/leads', (req, res) => {
   if (!name || !phone) {
     return res.status(400).json({ error: 'الاسم ورقم الجوال مطلوبان' });
   }
+  const lat = Number(body.lat);
+  const lng = Number(body.lng);
   const lead: Lead = {
     id: store.id(),
     name: name.slice(0, 200),
@@ -2390,6 +2392,10 @@ api.post('/public/leads', (req, res) => {
     message: typeof body.message === 'string' && body.message.trim() ? body.message.trim().slice(0, 1000) : undefined,
     status: 'new',
     created_at: new Date().toISOString(),
+    lat: Number.isFinite(lat) ? lat : undefined,
+    lng: Number.isFinite(lng) ? lng : undefined,
+    preferred_date: typeof body.preferred_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.preferred_date) ? body.preferred_date : undefined,
+    preferred_time: ['morning', 'afternoon', 'evening'].includes(body.preferred_time) ? body.preferred_time : undefined,
   };
   store.leads.insert(lead);
   logActivity(req, `طلب جديد من العميل "${lead.name}"${lead.service_name ? ` (${lead.service_name})` : ''} عبر صفحة اطلب الخدمة`);

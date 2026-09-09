@@ -4,7 +4,7 @@ import { Trash2, MessageCircle, CalendarPlus, CheckCircle2 } from 'lucide-react'
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import type { Lead, LeadStatus, Customer, Service, Appointment } from '../../shared/types.js';
-import { LEAD_STATUS_LABELS_AR } from '../../shared/types.js';
+import { LEAD_STATUS_LABELS_AR, PREFERRED_TIME_OF_DAY_LABELS_AR } from '../../shared/types.js';
 import { formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -74,6 +74,7 @@ export default function Leads() {
               <th className="p-3 text-start font-medium">{t('الجوال')}</th>
               <th className="p-3 text-start font-medium">{t('الخدمة')}</th>
               <th className="p-3 text-start font-medium">{t('المنطقة')}</th>
+              <th className="p-3 text-start font-medium">{t('الوقت المفضَّل')}</th>
               <th className="p-3 text-start font-medium">{t('التاريخ')}</th>
               <th className="p-3 text-start font-medium">{t('الحالة')}</th>
               <th className="p-3 text-start font-medium">{t('إجراء')}</th>
@@ -88,7 +89,29 @@ export default function Leads() {
                 </td>
                 <td className="p-3 text-slate-600" dir="ltr">{l.phone}</td>
                 <td className="p-3 text-slate-600">{l.service_name || '—'}</td>
-                <td className="p-3 text-slate-600">{l.area || '—'}</td>
+                <td className="p-3 text-slate-600">
+                  {l.area || '—'}
+                  {l.lat && l.lng && (
+                    <a
+                      href={`https://www.google.com/maps?q=${l.lat},${l.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-0.5 block text-[11px] font-medium text-brand-600 hover:underline"
+                    >
+                      {t('عرض الموقع على الخريطة')}
+                    </a>
+                  )}
+                </td>
+                <td className="p-3 text-slate-600">
+                  {l.preferred_date ? (
+                    <>
+                      <div dir="ltr">{l.preferred_date}</div>
+                      {l.preferred_time && <div className="text-xs text-slate-400">{t(PREFERRED_TIME_OF_DAY_LABELS_AR[l.preferred_time])}</div>}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="p-3 text-slate-600" dir="ltr">{formatDateAr(l.created_at)}</td>
                 <td className="p-3">
                   <select
@@ -139,7 +162,7 @@ export default function Leads() {
             ))}
             {leads.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">
+                <td colSpan={8} className="p-8 text-center text-slate-400">
                   {t('لا توجد طلبات واردة بعد')}
                 </td>
               </tr>
@@ -160,6 +183,10 @@ export default function Leads() {
             area: bookingFor.area,
             serviceName: bookingFor.service_name,
             message: bookingFor.message,
+            lat: bookingFor.lat,
+            lng: bookingFor.lng,
+            preferredDate: bookingFor.preferred_date,
+            preferredTime: bookingFor.preferred_time,
           }}
           onClose={() => setBookingFor(null)}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}

@@ -562,6 +562,19 @@ export const LEAD_STATUS_LABELS_AR: Record<LeadStatus, string> = {
   appointment_booked: 'تم عمل موعد',
 };
 
+// وقت مفضَّل تقريبي (لا موعد دقيق فعلي — يبقى القرار النهائي للفريق عند
+// التواصل) يختاره العميل في الخطوة الرابعة من "اطلب خدمتك الآن"
+// (BookingWizardPage.tsx). نفس القيم تُستخدَم لاقتراح وقت مبدئي عند تحويل
+// الطلب إلى موعد فعلي (انظر PREFERRED_TIME_OF_DAY_DEFAULT_HOUR في
+// NewAppointmentModal.tsx).
+export type PreferredTimeOfDay = 'morning' | 'afternoon' | 'evening';
+
+export const PREFERRED_TIME_OF_DAY_LABELS_AR: Record<PreferredTimeOfDay, string> = {
+  morning: 'صباحاً (٩ص - ١٢م)',
+  afternoon: 'ظهراً (١٢م - ٤م)',
+  evening: 'مساءً (٤م - ٨م)',
+};
+
 export interface Lead {
   id: string;
   name: string;
@@ -574,6 +587,16 @@ export interface Lead {
   // (زر "تحديد موعد") — رابط مرجعي فقط، لا يمنع حذف الموعد لاحقاً.
   linked_appointment_id?: string;
   created_at: string;
+  // الحقول الأربعة التالية تُملأ فقط من مسار "اطلب خدمتك الآن" متعدد
+  // الخطوات (BookingWizardPage.tsx) — غائبة تماماً على أي طلب من الاستمارة
+  // السريعة القديمة في OrderPage.tsx (area يحمل هناك نص المنطقة الحر فقط،
+  // بلا إحداثيات). lat/lng من تحديد الموقع على الخريطة (اختياري — العميل
+  // قد يكتفي بكتابة العنوان يدوياً بلا تحديد نقطة). preferred_date/
+  // preferred_time تقريبيان دائماً، لا يُنشئان موعداً فعلياً بأنفسهما.
+  lat?: number;
+  lng?: number;
+  preferred_date?: string;
+  preferred_time?: PreferredTimeOfDay;
 }
 
 // محادثة واتساب واحدة مع رقم عميل واحد — يُنشئها ويُحدِّثها الرد الآلي
