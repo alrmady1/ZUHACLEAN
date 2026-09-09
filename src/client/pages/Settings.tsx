@@ -75,6 +75,7 @@ import type {
   TranslationLanguage,
   Vehicle,
   VehicleOwnershipType,
+  Expense,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG, VEHICLE_OWNERSHIP_TYPE_LABELS_AR } from '../../shared/types.js';
 import {
@@ -3057,13 +3058,19 @@ function VehiclesTab() {
   const { t, tt, roleLabel } = useI18n();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
 
   function refresh() {
     api.get<Vehicle[]>('/vehicles').then(setVehicles);
     api.get<Profile[]>('/profiles').then(setProfiles);
+    // كل مصروفات النظام — تُفلتَر محلياً حسب vehicle_id عند عرض تفاصيل
+    // مركبة بعينها (انظر VehicleDetailModal أدناه)، بدل نقطة API منفصلة
+    // لكل مركبة.
+    api.get<Expense[]>('/expenses').then(setExpenses);
   }
   useEffect(refresh, []);
 
@@ -3153,6 +3160,9 @@ function VehiclesTab() {
                 <td className={`p-3 ${vehicleExpiryClass(v.insurance_expiry)}`} dir="ltr">{v.insurance_expiry || '—'}</td>
                 <td className="p-3">
                   <div className="flex items-center gap-3">
+                    <button onClick={() => setViewingVehicle(v)} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:underline">
+                      <Eye className="h-3.5 w-3.5" /> {t('التفاصيل')}
+                    </button>
                     <button
                       onClick={() => {
                         setEditing(v);
@@ -3270,7 +3280,51 @@ function VehiclesTab() {
           </form>
         </Modal>
       )}
+
+      {viewingVehicle && (
+        <VehicleDetailModal vehicle={viewingVehicle} expenses={expenses} onClose={() => setViewingVehicle(null)} />
+      )}
     </div>
+  );
+}
+
+// تفاصيل مركبة — كل المصروفات المرتبطة بها (Expense.vehicle_id، تُسجَّل من
+// نموذج إضافة مصروف عام عند اختيار تصنيف "مركبات") مجمَّعة في مكان واحد،
+// مع إجماليها. عرض فقط، بلا تعديل — التعديل يبقى من نفس صفحة المصروفات.
+function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; expenses: Expense[]; onClose: () => void }) {
+  const { t, tt } = useI18n();
+  const linked = expenses
+    .filter((e) => e.vehicle_id === vehicle.id)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const total = linked.reduce((s, e) => s + (e.entry_type === 'income' ? -e.amount : e.amount), 0);
+
+  return (
+    <Modal title={tt(`مصروفات مركبة "${vehicle.type}" (${vehicle.plate_number})`, `Expenses for "${vehicle.type}" (${vehicle.plate_number})`)} onClose={onClose}>
+      <div className="mb-3 rounded-xl bg-slate-50 p-3 text-center">
+        <div className="text-xs text-slate-400">{t('إجمالي المصروفات')}</div>
+        <div className="text-lg font-bold text-slate-800">{formatMoney(total)}</div>
+      </div>
+      {linked.length > 0 ? (
+        <div className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto">
+          {linked.map((e) => (
+            <div key={e.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
+              <div>
+                <div className="font-medium text-slate-700">{e.title}</div>
+                <div className="text-xs text-slate-400">
+                  {e.date} — {e.category}
+                  {e.sub_category ? ` — ${e.sub_category}` : ''}
+                </div>
+              </div>
+              <span className={`text-sm font-semibold ${e.entry_type === 'income' ? 'text-emerald-600' : 'text-slate-700'}`}>
+                {formatMoney(e.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="py-6 text-center text-sm text-slate-400">{t('لا توجد مصروفات مرتبطة بهذه المركبة بعد')}</p>
+      )}
+    </Modal>
   );
 }
 

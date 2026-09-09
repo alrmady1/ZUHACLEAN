@@ -57,6 +57,7 @@ import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
+  VEHICLE_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
@@ -1400,6 +1401,8 @@ api.post('/expenses', async (req, res) => {
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
   const isAdvance = body.category === ADVANCE_CATEGORY_NAME;
   const isSalary = body.category === SALARY_CATEGORY_NAME;
+  const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
+  const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
   // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
   // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
   const linksEmployee = isCustody || isAdvance || isSalary;
@@ -1441,6 +1444,8 @@ api.post('/expenses', async (req, res) => {
     supervisor_name: body.supervisor_name,
     custody_holder_id: linksEmployee ? body.custody_holder_id || undefined : undefined,
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
+    vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
+    vehicle_label: linkedVehicle ? `${linkedVehicle.type} — ${linkedVehicle.plate_number}` : undefined,
     // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما isAdvance، تبقى
     // 'none' (بلا استقطاع تلقائي) افتراضياً حتى يُختار وضع صراحةً.
     advance_deduction_mode: isAdvance && body.advance_deduction_mode ? body.advance_deduction_mode : 'none',
@@ -1464,7 +1469,9 @@ api.post('/expenses', async (req, res) => {
           ? `تم إضافة راتب "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
           : entryType === 'income'
             ? `تم تسجيل إيراد (${EXPENSE_INCOME_TYPE_LABELS_AR[incomeType ?? 'return']}) "${expense.title}" بقيمة ${expense.amount} ر.س`
-            : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+            : isVehicle && expense.vehicle_label
+              ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمركبة "${expense.vehicle_label}"`
+              : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
 });
@@ -1478,6 +1485,7 @@ api.patch('/expenses/:id', async (req, res) => {
   const isCustody = (body.category ?? target.category) === CUSTODY_CATEGORY_NAME;
   const isAdvance = (body.category ?? target.category) === ADVANCE_CATEGORY_NAME;
   const isSalary = (body.category ?? target.category) === SALARY_CATEGORY_NAME;
+  const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
   const linksEmployee = isCustody || isAdvance || isSalary;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
@@ -1494,6 +1502,12 @@ api.patch('/expenses/:id', async (req, res) => {
     const holderId = linksEmployee ? body.custody_holder_id ?? target.custody_holder_id : undefined;
     patch.custody_holder_id = holderId || undefined;
     patch.custody_holder_name = holderId ? store.profiles.get(holderId)?.full_name : undefined;
+  }
+  if (body.vehicle_id !== undefined || body.category !== undefined) {
+    const vehicleId = isVehicle ? body.vehicle_id ?? target.vehicle_id : undefined;
+    const vehicle = vehicleId ? store.vehicles.get(vehicleId) : undefined;
+    patch.vehicle_id = vehicleId || undefined;
+    patch.vehicle_label = vehicle ? `${vehicle.type} — ${vehicle.plate_number}` : undefined;
   }
   // جدولة استقطاع السلفية — قابلة للتعديل لاحقاً (مثلاً تحويلها من "بلا
   // استقطاع" إلى مُقسَّطة)، لا تُلمَس إن لم تُرسَل في الطلب.

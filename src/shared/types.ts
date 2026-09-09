@@ -346,6 +346,11 @@ export const ADVANCE_CATEGORY_NAME = 'سلفية';
 // مصروفات "رواتب" مُسجَّلة قبل هذا التعديل بلا موظف محدَّد لن تظهر تحت أي
 // كشف حساب (لا يمكن ربطها بأثر رجعي).
 export const SALARY_CATEGORY_NAME = 'رواتب';
+// اسم فئة مصروفات "مركبات" — نفس مطابقة الاسم أيضاً، ويُظهر منتقي
+// "المركبة" (بدل الموظف) في نموذج إضافة مصروف عام، فيربط كل مصروف
+// (بنزين، صيانة...) بمركبة بعينها من صفحة الإعدادات ← المركبات — انظر
+// Expense.vehicle_id أدناه وVehiclesTab في Settings.tsx.
+export const VEHICLE_CATEGORY_NAME = 'مركبات';
 
 // لغة الواجهة الافتراضية عند تسجيل الدخول — نفس قيم Lang في
 // src/client/lib/date.ts حرفياً (لا يمكن استيراد ذاك النوع هنا، ملف خادم
@@ -1053,6 +1058,12 @@ export interface Expense {
   // to avoid a schema migration.
   custody_holder_id?: string;
   custody_holder_name?: string;
+  // Set when category === VEHICLE_CATEGORY_NAME (مركبات): which registered
+  // vehicle (Settings ← المركبات) this expense belongs to — لعرضها لاحقاً
+  // مجمَّعة في صفحة تفاصيل تلك المركبة. vehicle_label هو لقطة عرض جاهزة
+  // (النوع — رقم اللوحة) وقت التسجيل، بنفس نمط custody_holder_name.
+  vehicle_id?: string;
+  vehicle_label?: string;
   // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما
   // category === ADVANCE_CATEGORY_NAME، تُضبَط عند تسجيل السلفية نفسها
   // (أو لاحقاً بالتعديل). 'none' (الافتراضي) يعني بلا استقطاع تلقائي

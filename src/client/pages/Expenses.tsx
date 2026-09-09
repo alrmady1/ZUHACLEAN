@@ -11,11 +11,13 @@ import type {
   ExpenseEntryType,
   ExpenseIncomeType,
   AdvanceDeductionMode,
+  Vehicle,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
+  VEHICLE_CATEGORY_NAME,
   CAN_SEE_CUSTODY_ROLES,
   VAT_RATE,
   EXPENSE_INCOME_TYPE_LABELS_AR,
@@ -338,9 +340,11 @@ function GeneralExpensesTab() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
+  const [vehicleId, setVehicleId] = useState('');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [amount, setAmount] = useState('');
   const [isTaxInvoice, setIsTaxInvoice] = useState(false);
@@ -358,6 +362,9 @@ function GeneralExpensesTab() {
   // تعليق هذا الحقل في shared/types.ts.
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
+  // تصنيف "مركبات" يحتاج ربط المركبة (vehicle_id) بدل الموظف — انظر
+  // Expense.vehicle_id في shared/types.ts وصفحة الإعدادات ← المركبات.
+  const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
   const [advanceMode, setAdvanceMode] = useState<AdvanceDeductionMode>('none');
   const [advanceInstallmentMonths, setAdvanceInstallmentMonths] = useState('1');
   const [advancePeriodStart, setAdvancePeriodStart] = useState('');
@@ -383,6 +390,7 @@ function GeneralExpensesTab() {
   useEffect(() => {
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+    api.get<Vehicle[]>('/vehicles').then(setVehicles);
     api.get<ExpenseCategoryItem[]>('/expense-categories').then((list) => {
       setCategories(list);
       const firstMain = list.find((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME && c.name !== SALARY_CATEGORY_NAME);
@@ -438,6 +446,7 @@ function GeneralExpensesTab() {
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
         custody_holder_id: needsEmployeeLink ? advanceEmployeeId || undefined : undefined,
+        vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -448,6 +457,7 @@ function GeneralExpensesTab() {
       setShowForm(false);
       setSubCategory('');
       setAdvanceEmployeeId('');
+      setVehicleId('');
       setInvoiceFile(null);
       setAmount('');
       setIsTaxInvoice(false);
@@ -530,6 +540,7 @@ function GeneralExpensesTab() {
                       {e.sub_category ? ` — ${e.sub_category}` : ''}
                     </span>
                     {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
+                    {e.vehicle_label && <div className="mt-1 text-xs text-slate-400">{e.vehicle_label}</div>}
                   </td>
                   <td className={`p-3 font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
                     {formatMoney(signedAmount(e))}
@@ -634,6 +645,7 @@ function GeneralExpensesTab() {
                     setCategory(e.target.value);
                     setSubCategory('');
                     setAdvanceEmployeeId('');
+                    setVehicleId('');
                   }}
                 >
                   {creatableCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
@@ -673,6 +685,22 @@ function GeneralExpensesTab() {
                       </option>
                     ))}
                   </select>
+                </label>
+              )}
+              {needsVehicleLink && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المركبة')}</span>
+                  <select required className="input" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                    <option value="">{t('اختر مركبة')}</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.type} — {v.plate_number}
+                      </option>
+                    ))}
+                  </select>
+                  {vehicles.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">{t('لا توجد مركبات مسجَّلة — أضِفها من الإعدادات ← المركبات')}</p>
+                  )}
                 </label>
               )}
               {isAdvanceCategory && (
@@ -798,6 +826,7 @@ function GeneralExpensesTab() {
           allCategories={categories}
           paymentMethods={paymentMethods}
           allProfiles={allProfiles}
+          vehicles={vehicles}
           onClose={() => setViewingExpense(null)}
           onSaved={(updated) => {
             setExpenses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
@@ -822,6 +851,7 @@ function ExpenseDetailModal({
   allCategories,
   paymentMethods,
   allProfiles,
+  vehicles,
   onClose,
   onSaved,
   onDeleted,
@@ -831,6 +861,7 @@ function ExpenseDetailModal({
   allCategories: ExpenseCategoryItem[];
   paymentMethods: PaymentMethodOption[];
   allProfiles: Profile[];
+  vehicles: Vehicle[];
   onClose: () => void;
   onSaved: (updated: Expense) => void;
   onDeleted: (id: string) => void;
@@ -847,6 +878,7 @@ function ExpenseDetailModal({
   const [paymentMethod, setPaymentMethod] = useState(expense.payment_method);
   const [notes, setNotes] = useState(expense.notes ?? '');
   const [holderId, setHolderId] = useState(expense.custody_holder_id ?? '');
+  const [vehicleId, setVehicleId] = useState(expense.vehicle_id ?? '');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
   const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
@@ -859,6 +891,7 @@ function ExpenseDetailModal({
 
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
+  const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
 
@@ -879,6 +912,7 @@ function ExpenseDetailModal({
         payment_method: paymentMethod,
         notes: notes || undefined,
         custody_holder_id: needsEmployeeLink ? holderId || undefined : undefined,
+        vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -949,6 +983,7 @@ function ExpenseDetailModal({
                 <div>{t('طريقة الدفع')}: {methodName(expense.payment_method)}</div>
                 {expense.invoice_number && <div>{t('رقم الفاتورة')}: {expense.invoice_number}</div>}
                 {expense.custody_holder_name && <div>{t('الموظف')}: {expense.custody_holder_name}</div>}
+                {expense.vehicle_label && <div>{t('المركبة')}: {expense.vehicle_label}</div>}
                 {expense.recorded_by_name && <div>{t('سجّله')}: {expense.recorded_by_name}</div>}
                 {expense.notes && <div>{t('ملاحظات')}: {expense.notes}</div>}
               </div>
@@ -1046,6 +1081,19 @@ function ExpenseDetailModal({
                   {allProfiles.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {needsVehicleLink && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('المركبة')}</span>
+                <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="input">
+                  <option value="">{t('اختر مركبة')}</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.type} — {v.plate_number}
                     </option>
                   ))}
                 </select>
