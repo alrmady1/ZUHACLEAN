@@ -1150,6 +1150,7 @@ export const AR_TO_EN: Record<string, string> = {
     "A short, distinct code (usually two letters, like en or fr) used internally only — actually enabling the language in the language switcher needs a separate, small code change.",
   "جارِ الإضافة…": "Adding…",
   "إضافة اللغة": "Add Language",
+  "متبقي المبيعات للوصول إلى المستهدف": "Sales Remaining to Reach the Target",
 };
 
 // قاموس الترجمة إلى اللغة البنغالية — لتطبيق ذلك، مقصورٌ عمداً على الشاشات
@@ -1347,6 +1348,7 @@ export const AR_TO_BN: Record<string, string> = {
   "متبقٍ": "বাকি",
   "عدد الرواتب للتقسيط عليها": "কিস্তিতে প্রদেয় বেতনের সংখ্যা",
   "تقسيطها على عدة رواتب": "একাধিক বেতনের কিস্তিতে পরিশোধ",
+  "متبقي المبيعات للوصول إلى المستهدف": "লক্ষ্যে পৌঁছাতে বাকি বিক্রয়",
 };
 
 // قاموس الترجمة إلى اللغة الأردية — مصدره ملف ترجمة كامل (zaha-translations.xlsx)
@@ -2151,4 +2153,5 @@ export const AR_TO_UR: Record<string, string> = {
     "ایک مختصر منفرد کوڈ (عام طور پر دو حروف، جیسے en یا fr) جو صرف اندرونی طور پر استعمال ہوتا ہے — زبان کو زبان کے سوئچر میں فعال طور پر شامل کرنے کے لیے ایک الگ، معمولی کوڈ تبدیلی درکار ہے۔",
   "جارِ الإضافة…": "شامل کیا جا رہا ہے…",
   "إضافة اللغة": "زبان شامل کریں",
+  "متبقي المبيعات للوصول إلى المستهدف": "ہدف تک پہنچنے کے لیے باقی فروخت",
 };

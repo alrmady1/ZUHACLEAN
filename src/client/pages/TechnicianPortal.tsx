@@ -11,6 +11,7 @@ import { compressImageToDataUrl } from '../lib/image.js';
 import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 import DayClock from '../components/DayClock.js';
 import PersonalInfoTab from '../components/PersonalInfoTab.js';
+import AccountingTab from '../components/AccountingTab.js';
 
 function AppointmentCard({
   appt,
@@ -300,10 +301,11 @@ export default function TechnicianPortal() {
   // القرص مباشرة، بنفس بطاقة عرضي "الكل"/"يومي" (صور، حالة...).
   const [clockSelectedId, setClockSelectedId] = useState<string | null>(null);
   // تبويب رئيسي جديد فوق كل محتوى الصفحة — "مهامي" (المحتوى الحالي
-  // كاملاً) أو "المعلومات الشخصية" (تبويب جديد، PersonalInfoTab.tsx)،
-  // يظهر فقط للفني الميداني نفسه (لا لمن يستعرض "عرض كـ فني" من حساب
-  // مدير/مدير نظام). لا يؤثر على view أعلاه (خاص بعرض المواعيد فقط).
-  const [mainTab, setMainTab] = useState<'tasks' | 'personal'>('tasks');
+  // كاملاً)، "المعلومات الشخصية" (PersonalInfoTab.tsx)، أو "المحاسبة"
+  // (السلفيات — AccountingTab.tsx)، يظهر فقط للفني الميداني نفسه (لا لمن
+  // يستعرض "عرض كـ فني" من حساب مدير/مدير نظام). لا يؤثر على view أعلاه
+  // (خاص بعرض المواعيد فقط).
+  const [mainTab, setMainTab] = useState<'tasks' | 'personal' | 'accounting'>('tasks');
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -415,11 +417,19 @@ export default function TechnicianPortal() {
           >
             {t('المعلومات الشخصية')}
           </button>
+          <button
+            onClick={() => setMainTab('accounting')}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'accounting' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            {t('المحاسبة')}
+          </button>
         </div>
       )}
 
       {mainTab === 'personal' && user?.role === 'technician' ? (
-        <PersonalInfoTab showSupervisorExtras={false} />
+        <PersonalInfoTab />
+      ) : mainTab === 'accounting' && user?.role === 'technician' ? (
+        <AccountingTab showSupervisorExtras={false} />
       ) : (
         <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

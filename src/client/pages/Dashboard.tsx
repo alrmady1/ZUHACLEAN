@@ -21,6 +21,7 @@ import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import DayClock from '../components/DayClock.js';
 import StatCard from '../components/StatCard.js';
 import PersonalInfoTab from '../components/PersonalInfoTab.js';
+import AccountingTab from '../components/AccountingTab.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -54,9 +55,10 @@ export default function Dashboard() {
   const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [newApptAlert, setNewApptAlert] = useState<Appointment | null>(null);
   // تبويب رئيسي جديد فوق محتوى لوحة التحكم — "لوحة التحكم" (المحتوى
-  // الحالي كاملاً) أو "المعلومات الشخصية" (تبويب جديد، PersonalInfoTab.tsx)،
-  // يظهر فقط للمشرف الميداني نفسه.
-  const [mainTab, setMainTab] = useState<'dashboard' | 'personal'>('dashboard');
+  // الحالي كاملاً)، "المعلومات الشخصية" (PersonalInfoTab.tsx)، أو
+  // "المحاسبة" (السلفيات والعهدة والعمولة — AccountingTab.tsx)، يظهر فقط
+  // للمشرف الميداني نفسه.
+  const [mainTab, setMainTab] = useState<'dashboard' | 'personal' | 'accounting'>('dashboard');
   // null = لم نحمّل القائمة بعد؛ أول تحميل يسجّل المعرّفات الحالية بصمت
   // (بدون تنبيه)، وأي معرّف يظهر بعدها يُعتبر موعداً جديداً فعلاً.
   const knownApptIds = useRef<Set<string> | null>(null);
@@ -186,11 +188,19 @@ export default function Dashboard() {
           >
             {t('المعلومات الشخصية')}
           </button>
+          <button
+            onClick={() => setMainTab('accounting')}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'accounting' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            {t('المحاسبة')}
+          </button>
         </div>
       )}
 
       {mainTab === 'personal' && user?.role === 'supervisor' ? (
-        <PersonalInfoTab showSupervisorExtras />
+        <PersonalInfoTab />
+      ) : mainTab === 'accounting' && user?.role === 'supervisor' ? (
+        <AccountingTab showSupervisorExtras />
       ) : (
         <>
       <DayClock appointments={appointments} customers={customers} onSelectAppointment={setViewingAppt} />
