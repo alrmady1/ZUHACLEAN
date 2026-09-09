@@ -43,6 +43,7 @@ import type {
   CompanyBankAccount,
   TranslationOverride,
   TranslationLanguage,
+  Vehicle,
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
@@ -162,6 +163,8 @@ interface DbShape {
   // لغات إضافية أُضيفت من نفس الصفحة، بعد الأربع الأساسية — انظر
   // TranslationLanguage في src/shared/types.ts.
   translationLanguages: TranslationLanguage[];
+  // صفحة الإعدادات ← المركبات — انظر Vehicle في src/shared/types.ts.
+  vehicles: Vehicle[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -475,6 +478,7 @@ function seed(): DbShape {
     commissionEligibility: [],
     translationOverrides: [],
     translationLanguages: [],
+    vehicles: [],
   };
 }
 
@@ -616,6 +620,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
     if (!parsed.translationOverrides) parsed.translationOverrides = [];
     if (!parsed.translationLanguages) parsed.translationLanguages = [];
+    if (!parsed.vehicles) parsed.vehicles = [];
     // عقود قديمة قبل إضافة سجل الدفعات (payments) — تبقى paid_amount/
     // remaining_amount المحفوظتان سابقاً كما هي (لا يمكن إعادة بناء سجل
     // دفعات تفصيلي من رقم إجمالي محفوظ فقط)، فقط تُضاف مصفوفة فارغة حتى
@@ -1362,6 +1367,25 @@ export const store = {
       db.translationLanguages = languages;
       persist();
       return db.translationLanguages;
+    },
+  },
+  vehicles: {
+    list: () => db.vehicles,
+    get: (id: string) => db.vehicles.find((v) => v.id === id),
+    insert: (v: Vehicle) => { db.vehicles.push(v); persist(); return v; },
+    update: (id: string, patch: Partial<Vehicle>) => {
+      const idx = db.vehicles.findIndex((v) => v.id === id);
+      if (idx === -1) return undefined;
+      db.vehicles[idx] = { ...db.vehicles[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.vehicles[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.vehicles.findIndex((v) => v.id === id);
+      if (idx === -1) return false;
+      db.vehicles.splice(idx, 1);
+      persist();
+      return true;
     },
   },
 };

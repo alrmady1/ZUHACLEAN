@@ -1486,6 +1486,28 @@ export const DEFAULT_COMPANY_BANK_ACCOUNT: CompanyBankAccount = {
   updated_at: new Date(0).toISOString(),
 };
 
+// مركبات الشركة — صفحة الإعدادات ← المركبات (VehiclesTab في Settings.tsx).
+// سجل بيانات لكل مركبة (لا علاقة له بجدولة المواعيد أو تتبّع الموقع) —
+// فقط معلومات ثابتة/شبه ثابتة يحتاجها صاحب العمل: الاستمارة، اللوحة،
+// التأمين، الفحص الدوري، من يقودها، والمشرف التابعة له.
+export interface Vehicle {
+  id: string;
+  type: string; // النوع (مثال: تويوتا هايلكس ٢٠٢٣)
+  registration_number?: string; // رقم الاستمارة
+  owner?: string; // المالك (اسم صاحب الاستمارة — قد يكون الشركة نفسها أو فرداً)
+  plate_number: string; // رقم اللوحة
+  serial_number?: string; // الرقم التسلسلي (VIN)
+  registration_expiry?: string; // تاريخ انتهاء الاستمارة
+  inspection_expiry?: string; // تاريخ انتهاء الفحص الدوري
+  insurance_expiry?: string; // تاريخ انتهاء التأمين
+  authorized_driver?: string; // الشخص المفوض بالقيادة
+  supervisor_id?: string; // تابعة لأي مشرف — يربط بـ Profile
+  last_oil_change?: string; // تاريخ آخر تغيير زيت
+  waei_number?: string; // رقم المركبة في منصة "واعي"
+  created_at: string;
+  updated_at: string;
+}
+
 // نظام إدارة الترجمة — صفحة الإعدادات ← الترجمة (TranslationsTab في
 // Settings.tsx). القائمة الكاملة بالكلمات العربية القابلة للترجمة تبقى
 // مُشتقّة آلياً من قواميس translations.ts الثابتة (AR_TO_EN بصفتها الأشمل)

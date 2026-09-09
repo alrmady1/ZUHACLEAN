@@ -49,6 +49,7 @@ import type {
   DistrictGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
+  Vehicle,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -208,6 +209,69 @@ api.patch('/translations/languages', (req, res) => {
   const updated = store.translationLanguages.update(languages);
   logActivity(req, 'تم تعديل قائمة لغات الترجمة');
   res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
+// مركبات الشركة — صفحة الإعدادات ← المركبات (VehiclesTab). سجل بيانات فقط
+// (استمارة/لوحة/تأمين/فحص دوري...) بلا أي منطق تشغيلي آخر مرتبط به.
+// ---------------------------------------------------------------------------
+api.get('/vehicles', (_req, res) => res.json(store.vehicles.list()));
+
+api.post('/vehicles', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.type || !body.plate_number) {
+    return res.status(400).json({ error: 'type وplate_number مطلوبان' });
+  }
+  const now = new Date().toISOString();
+  const vehicle: Vehicle = {
+    id: store.id(),
+    type: body.type,
+    registration_number: body.registration_number || undefined,
+    owner: body.owner || undefined,
+    plate_number: body.plate_number,
+    serial_number: body.serial_number || undefined,
+    registration_expiry: body.registration_expiry || undefined,
+    inspection_expiry: body.inspection_expiry || undefined,
+    insurance_expiry: body.insurance_expiry || undefined,
+    authorized_driver: body.authorized_driver || undefined,
+    supervisor_id: body.supervisor_id || undefined,
+    last_oil_change: body.last_oil_change || undefined,
+    waei_number: body.waei_number || undefined,
+    created_at: now,
+    updated_at: now,
+  };
+  store.vehicles.insert(vehicle);
+  logActivity(req, `تم إضافة مركبة "${vehicle.type}" (${vehicle.plate_number})`);
+  res.status(201).json(vehicle);
+});
+
+api.patch('/vehicles/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<Vehicle> = {};
+  if (body.type !== undefined) patch.type = body.type;
+  if (body.registration_number !== undefined) patch.registration_number = body.registration_number || undefined;
+  if (body.owner !== undefined) patch.owner = body.owner || undefined;
+  if (body.plate_number !== undefined) patch.plate_number = body.plate_number;
+  if (body.serial_number !== undefined) patch.serial_number = body.serial_number || undefined;
+  if (body.registration_expiry !== undefined) patch.registration_expiry = body.registration_expiry || undefined;
+  if (body.inspection_expiry !== undefined) patch.inspection_expiry = body.inspection_expiry || undefined;
+  if (body.insurance_expiry !== undefined) patch.insurance_expiry = body.insurance_expiry || undefined;
+  if (body.authorized_driver !== undefined) patch.authorized_driver = body.authorized_driver || undefined;
+  if (body.supervisor_id !== undefined) patch.supervisor_id = body.supervisor_id || undefined;
+  if (body.last_oil_change !== undefined) patch.last_oil_change = body.last_oil_change || undefined;
+  if (body.waei_number !== undefined) patch.waei_number = body.waei_number || undefined;
+  const updated = store.vehicles.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'vehicle not found' });
+  logActivity(req, `تم تعديل بيانات مركبة "${updated.type}" (${updated.plate_number})`);
+  res.json(updated);
+});
+
+api.delete('/vehicles/:id', (req, res) => {
+  const vehicle = store.vehicles.list().find((v) => v.id === req.params.id);
+  const removed = store.vehicles.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'vehicle not found' });
+  if (vehicle) logActivity(req, `تم حذف مركبة "${vehicle.type}" (${vehicle.plate_number})`);
+  res.status(204).end();
 });
 
 // Strip the password hash before a profile ever leaves the server.

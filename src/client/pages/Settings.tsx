@@ -47,6 +47,7 @@ import {
   MessageCircle as LiveChatIcon,
   Map as RiyadhZonesIcon,
   Languages as TranslationsIcon,
+  Car as VehiclesIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -72,6 +73,7 @@ import type {
   CompanyBankAccount,
   SalesDiscountKind,
   TranslationLanguage,
+  Vehicle,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
@@ -3038,6 +3040,217 @@ function AddLanguageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (cod
 }
 
 // ---------------------------------------------------------------------------
+// Vehicles tab — صفحة الإعدادات ← المركبات: سجل بيانات مركبات الشركة
+// (استمارة، لوحة، تأمين، فحص دوري، من يقودها، والمشرف التابعة له). لا
+// علاقة له بجدولة المواعيد أو تتبّع الموقع — بيانات ثابتة/شبه ثابتة فقط.
+// ---------------------------------------------------------------------------
+function vehicleExpiryClass(dateStr?: string): string {
+  if (!dateStr) return 'text-slate-400';
+  const diffDays = (new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return 'font-semibold text-red-600';
+  if (diffDays <= 30) return 'font-semibold text-amber-600';
+  return 'text-slate-700';
+}
+
+function VehiclesTab() {
+  const { t, tt } = useI18n();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [editing, setEditing] = useState<Vehicle | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  function refresh() {
+    api.get<Vehicle[]>('/vehicles').then(setVehicles);
+    api.get<Profile[]>('/profiles').then(setProfiles);
+  }
+  useEffect(refresh, []);
+
+  const supervisors = profiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
+  const supervisorName = (id?: string) => (id ? profiles.find((p) => p.id === id)?.full_name : undefined);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const payload = {
+      type: form.get('type'),
+      registration_number: form.get('registration_number') || undefined,
+      owner: form.get('owner') || undefined,
+      plate_number: form.get('plate_number'),
+      serial_number: form.get('serial_number') || undefined,
+      registration_expiry: form.get('registration_expiry') || undefined,
+      inspection_expiry: form.get('inspection_expiry') || undefined,
+      insurance_expiry: form.get('insurance_expiry') || undefined,
+      authorized_driver: form.get('authorized_driver') || undefined,
+      supervisor_id: form.get('supervisor_id') || undefined,
+      last_oil_change: form.get('last_oil_change') || undefined,
+      waei_number: form.get('waei_number') || undefined,
+    };
+    try {
+      if (editing) {
+        await api.patch(`/vehicles/${editing.id}`, payload);
+      } else {
+        await api.post('/vehicles', payload);
+      }
+      setShowForm(false);
+      setEditing(null);
+      refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(v: Vehicle) {
+    if (!window.confirm(tt(`حذف مركبة "${v.type}" (${v.plate_number})؟ لا يمكن التراجع عن هذا الإجراء.`, `Delete vehicle "${v.type}" (${v.plate_number})? This action cannot be undone.`)))
+      return;
+    await api.del(`/vehicles/${v.id}`);
+    refresh();
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-400">{t('بيانات مركبات الشركة: الاستمارة، اللوحة، التأمين، الفحص الدوري، ومن يقودها')}</p>
+        <button
+          onClick={() => {
+            setEditing(null);
+            setShowForm(true);
+          }}
+          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> {t('مركبة جديدة')}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="p-3 text-start font-medium">{t('النوع')}</th>
+              <th className="p-3 text-start font-medium">{t('رقم اللوحة')}</th>
+              <th className="p-3 text-start font-medium">{t('المالك')}</th>
+              <th className="p-3 text-start font-medium">{t('تابعة لأي مشرف')}</th>
+              <th className="p-3 text-start font-medium">{t('انتهاء الاستمارة')}</th>
+              <th className="p-3 text-start font-medium">{t('انتهاء الفحص الدوري')}</th>
+              <th className="p-3 text-start font-medium">{t('انتهاء التأمين')}</th>
+              <th className="p-3 text-start font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {vehicles.map((v) => (
+              <tr key={v.id} className="border-b border-slate-50 last:border-0">
+                <td className="p-3 font-medium text-slate-700">{v.type}</td>
+                <td className="p-3 text-slate-700" dir="ltr">{v.plate_number}</td>
+                <td className="p-3 text-slate-600">{v.owner || '—'}</td>
+                <td className="p-3 text-slate-600">{supervisorName(v.supervisor_id) || '—'}</td>
+                <td className={`p-3 ${vehicleExpiryClass(v.registration_expiry)}`} dir="ltr">{v.registration_expiry || '—'}</td>
+                <td className={`p-3 ${vehicleExpiryClass(v.inspection_expiry)}`} dir="ltr">{v.inspection_expiry || '—'}</td>
+                <td className={`p-3 ${vehicleExpiryClass(v.insurance_expiry)}`} dir="ltr">{v.insurance_expiry || '—'}</td>
+                <td className="p-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setEditing(v);
+                        setShowForm(true);
+                      }}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
+                    </button>
+                    <button onClick={() => handleDelete(v)} className="flex items-center gap-1 text-xs font-medium text-red-500 hover:underline">
+                      <Trash2 className="h-3.5 w-3.5" /> {t('حذف')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {vehicles.length === 0 && (
+              <tr>
+                <td colSpan={8} className="p-8 text-center text-slate-400">
+                  {t('لا توجد مركبات مسجَّلة بعد')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <Modal
+          title={editing ? tt(`تعديل مركبة "${editing.type}"`, `Edit vehicle "${editing.type}"`) : t('مركبة جديدة')}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+          }}
+        >
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('النوع')}>
+                <input name="type" defaultValue={editing?.type} required className="input" placeholder={t('مثال: تويوتا هايلكس ٢٠٢٣')} />
+              </Field>
+              <Field label={t('رقم اللوحة')}>
+                <input name="plate_number" defaultValue={editing?.plate_number} required className="input" dir="ltr" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('رقم الاستمارة')}>
+                <input name="registration_number" defaultValue={editing?.registration_number} className="input" dir="ltr" />
+              </Field>
+              <Field label={t('المالك')}>
+                <input name="owner" defaultValue={editing?.owner} className="input" />
+              </Field>
+            </div>
+            <Field label={t('الرقم التسلسلي')}>
+              <input name="serial_number" defaultValue={editing?.serial_number} className="input" dir="ltr" placeholder={t('رقم الهيكل (VIN)')} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('تاريخ انتهاء الاستمارة')}>
+                <input type="date" name="registration_expiry" defaultValue={editing?.registration_expiry} className="input" />
+              </Field>
+              <Field label={t('تاريخ انتهاء الفحص الدوري')}>
+                <input type="date" name="inspection_expiry" defaultValue={editing?.inspection_expiry} className="input" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('تاريخ انتهاء التأمين')}>
+                <input type="date" name="insurance_expiry" defaultValue={editing?.insurance_expiry} className="input" />
+              </Field>
+              <Field label={t('تاريخ آخر تغيير زيت')}>
+                <input type="date" name="last_oil_change" defaultValue={editing?.last_oil_change} className="input" />
+              </Field>
+            </div>
+            <Field label={t('الشخص المفوَّض بالقيادة')}>
+              <input name="authorized_driver" defaultValue={editing?.authorized_driver} className="input" />
+            </Field>
+            <Field label={t('تابعة لأي مشرف')}>
+              <select name="supervisor_id" defaultValue={editing?.supervisor_id ?? ''} className="input">
+                <option value="">{t('بدون تحديد')}</option>
+                {supervisors.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.full_name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('رقم المركبة في واعي')}>
+              <input name="waei_number" defaultValue={editing?.waei_number} className="input" dir="ltr" />
+            </Field>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {submitting ? t('جارِ الحفظ…') : editing ? t('حفظ التعديلات') : t('حفظ المركبة')}
+            </button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -3771,6 +3984,7 @@ export default function Settings() {
   const canLandingPage = can('edit_landing_page');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
   const canTranslations = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
+  const canVehicles = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
@@ -3786,6 +4000,7 @@ export default function Settings() {
     | 'mobile_app'
     | 'permissions'
     | 'translations'
+    | 'vehicles'
     | 'commissions'
     | 'riyadh_zones'
     | 'activity_log';
@@ -3801,6 +4016,7 @@ export default function Settings() {
     if (canLandingPage) return 'landing_page';
     if (canPermissions) return 'permissions';
     if (canTranslations) return 'translations';
+    if (canVehicles) return 'vehicles';
     if (canCommissions) return 'commissions';
     if (canRiyadhZones) return 'riyadh_zones';
     return 'activity_log';
@@ -3899,6 +4115,14 @@ export default function Settings() {
             <TranslationsIcon className="h-4 w-4" /> {t('الترجمة')}
           </button>
         )}
+        {canVehicles && (
+          <button
+            onClick={() => setTab('vehicles')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'vehicles' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <VehiclesIcon className="h-4 w-4" /> {t('المركبات')}
+          </button>
+        )}
         {canCommissions && (
           <button
             onClick={() => setTab('commissions')}
@@ -3945,6 +4169,8 @@ export default function Settings() {
         <PermissionsTab />
       ) : tab === 'translations' && canTranslations ? (
         <TranslationsTab />
+      ) : tab === 'vehicles' && canVehicles ? (
+        <VehiclesTab />
       ) : tab === 'commissions' && canCommissions ? (
         <CommissionsTab />
       ) : tab === 'riyadh_zones' && canRiyadhZones ? (
