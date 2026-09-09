@@ -245,6 +245,10 @@ api.patch('/profiles/:id', async (req, res) => {
   if (body.hire_date !== undefined) patch.hire_date = body.hire_date || undefined;
   if (body.legal_full_name !== undefined) patch.legal_full_name = body.legal_full_name || undefined;
   if (body.job_title !== undefined) patch.job_title = body.job_title || undefined;
+  if (body.nationality !== undefined) patch.nationality = body.nationality || undefined;
+  if (body.default_lang !== undefined) {
+    patch.default_lang = ['ar', 'en', 'bn', 'ur'].includes(body.default_lang) ? body.default_lang : undefined;
+  }
   // صورة الهوية/الإقامة — نفس منطق ملف فاتورة المصروف بالضبط (رفع جديد
   // يستبدل القديم، ملف قديم على Supabase Storage يبقى يتيماً بلا مشكلة).
   if (body.id_photo_data_url) {

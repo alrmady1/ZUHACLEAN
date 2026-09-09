@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Profile, PermissionKey, UserRole } from '../../shared/types.js';
 import { DEFAULT_PERMISSIONS } from '../../shared/types.js';
 import { api } from './api.js';
+import { useI18n } from './i18n.js';
 
 interface AuthState {
   user: Profile | null;
@@ -30,6 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissions, setPermissions] = useState<Partial<Record<PermissionKey, UserRole[]>>>({});
+  // AuthProvider مُتداخل داخل I18nProvider (انظر main.tsx)، فيمكنه استدعاء
+  // setLang مباشرة عند كل تسجيل دخول جديد فعلي (login/loginAs) — وليس عند
+  // استعادة الجلسة من التخزين المحلي في useEffect أدناه، حتى لا تُفرَض
+  // اللغة الافتراضية من جديد على جلسة قائمة بالفعل قد يكون المستخدم غيّر
+  // لغتها بنفسه يدوياً.
+  const { setLang } = useI18n();
 
   function refreshPermissions() {
     api
@@ -80,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(STORAGE_KEY);
     (remember ? localStorage : sessionStorage).setItem(STORAGE_KEY, profile.id);
+    if (profile.default_lang) setLang(profile.default_lang);
   };
 
   // Manager-only account impersonation from Settings (jump into another
@@ -88,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const profile = allProfiles.find((p) => p.id === profileId) ?? null;
     setUser(profile);
     if (profile) localStorage.setItem(STORAGE_KEY, profile.id);
+    if (profile?.default_lang) setLang(profile.default_lang);
   };
 
   const logout = () => {

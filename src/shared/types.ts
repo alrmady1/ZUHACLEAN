@@ -337,6 +337,20 @@ export const ADVANCE_CATEGORY_NAME = 'سلفية';
 // كشف حساب (لا يمكن ربطها بأثر رجعي).
 export const SALARY_CATEGORY_NAME = 'رواتب';
 
+// لغة الواجهة الافتراضية عند تسجيل الدخول — نفس قيم Lang في
+// src/client/lib/date.ts حرفياً (لا يمكن استيراد ذاك النوع هنا، ملف خادم
+// أيضاً)، تُطبَّق مرة واحدة فقط عند كل تسجيل دخول جديد (انظر
+// src/client/lib/auth.tsx)، ثم يبقى المستخدم حراً بتغييرها من مبدِّل
+// اللغة المعتاد كما هو الحال دائماً — لا تُفرَض على جلسة قائمة بالفعل.
+export type UserLanguage = 'ar' | 'en' | 'bn' | 'ur';
+
+export const USER_LANGUAGE_LABELS_AR: Record<UserLanguage, string> = {
+  ar: 'العربية',
+  en: 'الإنجليزية',
+  bn: 'البنغالية',
+  ur: 'الأردية',
+};
+
 export interface Profile {
   id: string;
   full_name: string;
@@ -406,6 +420,10 @@ export interface Profile {
   // صورة الهوية/الإقامة — رابط موقَّع طويل الأمد (10 سنوات) على Supabase
   // Storage، نفس نمط باقي صور النظام (انظر uploadEmployeeIdPhoto).
   id_photo_url?: string;
+  // الجنسية — نص حر (لا قائمة ثابتة، تجنّباً لحصر الجنسيات الممكنة).
+  nationality?: string;
+  // لغة الواجهة الافتراضية عند تسجيل الدخول — انظر UserLanguage أعلاه.
+  default_lang?: UserLanguage;
 }
 
 // سبب انتهاء العقد — يُحدِّد نسبة الاستحقاق من مكافأة نهاية الخدمة وفق

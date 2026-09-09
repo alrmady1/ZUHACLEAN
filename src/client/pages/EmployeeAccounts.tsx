@@ -34,6 +34,7 @@ import type {
   CommissionEligibility,
   TerminationReason,
   AdvanceDeductionMode,
+  UserLanguage,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
@@ -43,6 +44,7 @@ import {
   DEDUCTION_CATEGORY_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   ADVANCE_DEDUCTION_MODE_LABELS_AR,
+  USER_LANGUAGE_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
@@ -547,6 +549,8 @@ function EmployeeDetail({
   const [nationalIdInput, setNationalIdInput] = useState(summary.profile.national_id ?? '');
   const [nationalIdExpiryInput, setNationalIdExpiryInput] = useState(summary.profile.national_id_expiry ?? '');
   const [hireDateInput, setHireDateInput] = useState(summary.profile.hire_date ?? '');
+  const [nationalityInput, setNationalityInput] = useState(summary.profile.nationality ?? '');
+  const [defaultLangInput, setDefaultLangInput] = useState<UserLanguage | ''>(summary.profile.default_lang ?? '');
   const [idPhotoFile, setIdPhotoFile] = useState<File | null>(null);
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingEligibility, setSavingEligibility] = useState(false);
@@ -587,6 +591,8 @@ function EmployeeDetail({
     setNationalIdInput(summary.profile.national_id ?? '');
     setNationalIdExpiryInput(summary.profile.national_id_expiry ?? '');
     setHireDateInput(summary.profile.hire_date ?? '');
+    setNationalityInput(summary.profile.nationality ?? '');
+    setDefaultLangInput(summary.profile.default_lang ?? '');
     setIdPhotoFile(null);
     setEditingPersonal(true);
   }
@@ -602,6 +608,8 @@ function EmployeeDetail({
         national_id: nationalIdInput || null,
         national_id_expiry: nationalIdExpiryInput || null,
         hire_date: hireDateInput || null,
+        nationality: nationalityInput || null,
+        default_lang: defaultLangInput || null,
         id_photo_data_url,
       });
       setIdPhotoFile(null);
@@ -762,6 +770,23 @@ function EmployeeDetail({
                   />
                 </label>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('الجنسية')}</span>
+                  <input value={nationalityInput} onChange={(e) => setNationalityInput(e.target.value)} className="input" />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('لغة الواجهة الافتراضية')}</span>
+                  <select value={defaultLangInput} onChange={(e) => setDefaultLangInput(e.target.value as UserLanguage | '')} className="input">
+                    <option value="">{t('بلا تحديد (عربي)')}</option>
+                    {(Object.keys(USER_LANGUAGE_LABELS_AR) as UserLanguage[]).map((lang) => (
+                      <option key={lang} value={lang}>
+                        {t(USER_LANGUAGE_LABELS_AR[lang])}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('صورة الهوية / الإقامة')}</span>
                 {summary.profile.id_photo_url && !idPhotoFile && (
@@ -802,7 +827,7 @@ function EmployeeDetail({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div>
                   <div className="text-xs text-slate-400">{t('الاسم الكامل (حسب الهوية)')}</div>
                   <div className="font-medium text-slate-700">{summary.profile.legal_full_name || '—'}</div>
@@ -810,6 +835,16 @@ function EmployeeDetail({
                 <div>
                   <div className="text-xs text-slate-400">{t('المسمى الوظيفي')}</div>
                   <div className="font-medium text-slate-700">{summary.profile.job_title || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('الجنسية')}</div>
+                  <div className="font-medium text-slate-700">{summary.profile.nationality || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400">{t('لغة الواجهة الافتراضية')}</div>
+                  <div className="font-medium text-slate-700">
+                    {summary.profile.default_lang ? t(USER_LANGUAGE_LABELS_AR[summary.profile.default_lang]) : t('عربي (افتراضي)')}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
