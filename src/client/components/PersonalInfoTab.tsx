@@ -1,5 +1,8 @@
-import { IdCard, UserCog, CalendarOff } from 'lucide-react';
-import { USER_LANGUAGE_LABELS_AR } from '../../shared/types.js';
+import { useEffect, useState } from 'react';
+import { IdCard, UserCog, CalendarOff, Car } from 'lucide-react';
+import { api } from '../lib/api.js';
+import type { Vehicle } from '../../shared/types.js';
+import { USER_LANGUAGE_LABELS_AR, VEHICLE_OWNERSHIP_TYPE_LABELS_AR } from '../../shared/types.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -15,20 +18,39 @@ function ageFromBirthDate(dob: string): number {
   return age;
 }
 
+// نفس منطق تلوين تواريخ الانتهاء في VehiclesTab (Settings.tsx) بالضبط —
+// أحمر لو انتهت فعلاً، برتقالي لو خلال ٣٠ يوماً.
+function vehicleExpiryClass(dateStr?: string): string {
+  if (!dateStr) return 'text-slate-400';
+  const diffDays = (new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return 'font-semibold text-red-600';
+  if (diffDays <= 30) return 'font-semibold text-amber-600';
+  return 'text-slate-700';
+}
+
 // تبويب "المعلومات الشخصية" — عرض ذاتي (لا يعدّل شيئاً) لبيانات المستخدم
 // الحالي نفسه فقط، يظهر للفني الميداني (داخل TechnicianPortal.tsx)
 // والمشرف الميداني (داخل Dashboard.tsx) تحديداً — انظر مكان استخدامه في
 // كلا الملفين. يعرض نفس حقول "البيانات الشخصية" المُدارة من المحاسبة ←
 // الموظفين (EmployeeAccounts.tsx) لكن للقراءة فقط، بالإضافة إلى الإجازة
-// الأسبوعية والمشرف المسؤول. السلفيات والعهدة والعمولة انتقلت إلى تبويب
-// "المحاسبة" المستقل — انظر AccountingTab.tsx.
+// الأسبوعية والمشرف المسؤول، بالإضافة إلى بيانات المركبة المخصَّصة له إن
+// وُجدت (Vehicle.assigned_profile_id، تُدار من الإعدادات ← المركبات).
+// السلفيات والعهدة والعمولة انتقلت إلى تبويب "المحاسبة" المستقل — انظر
+// AccountingTab.tsx.
 export default function PersonalInfoTab() {
   const { user, allProfiles } = useAuth();
   const { t, tt } = useI18n();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    api.get<Vehicle[]>('/vehicles').then(setVehicles);
+  }, [user?.id]);
 
   if (!user) return null;
 
   const supervisor = allProfiles.find((p) => p.id === user.supervisor_id);
+  const myVehicle = vehicles.find((v) => v.assigned_profile_id === user.id);
 
   return (
     <div className="space-y-5">
@@ -121,6 +143,54 @@ export default function PersonalInfoTab() {
           )}
         </div>
       </div>
+
+      {/* مركبتك — تظهر فقط لمن لديه مركبة مخصَّصة له فعلياً (الإعدادات ←
+          المركبات ← تابعة لـ). */}
+      {myVehicle && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <Car className="h-4 w-4 text-brand-600" /> {t('مركبتك')}
+          </h2>
+          <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+            <div>
+              <div className="text-xs text-slate-400">{t('النوع')}</div>
+              <div className="font-medium text-slate-700">{myVehicle.type}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('رقم اللوحة')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">{myVehicle.plate_number}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('نوع التملك')}</div>
+              <div className="font-medium text-slate-700">
+                {myVehicle.ownership_type ? t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR[myVehicle.ownership_type]) : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('تاريخ انتهاء الاستمارة')}</div>
+              <div dir="ltr" className={vehicleExpiryClass(myVehicle.registration_expiry)}>{myVehicle.registration_expiry || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('تاريخ انتهاء الفحص الدوري')}</div>
+              <div dir="ltr" className={vehicleExpiryClass(myVehicle.inspection_expiry)}>{myVehicle.inspection_expiry || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('تاريخ انتهاء التأمين')}</div>
+              <div dir="ltr" className={vehicleExpiryClass(myVehicle.insurance_expiry)}>{myVehicle.insurance_expiry || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('تاريخ آخر تغيير زيت')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">{myVehicle.last_oil_change || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">{t('العداد وقت تغيير الزيت')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">
+                {myVehicle.last_oil_change_odometer != null ? tt(`${myVehicle.last_oil_change_odometer} كم`, `${myVehicle.last_oil_change_odometer} km`) : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

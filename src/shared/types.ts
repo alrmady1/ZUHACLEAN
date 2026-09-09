@@ -1486,10 +1486,20 @@ export const DEFAULT_COMPANY_BANK_ACCOUNT: CompanyBankAccount = {
   updated_at: new Date(0).toISOString(),
 };
 
+// نوع تملّك المركبة — صفحة الإعدادات ← المركبات.
+export type VehicleOwnershipType = 'company' | 'installments' | 'rented';
+export const VEHICLE_OWNERSHIP_TYPE_LABELS_AR: Record<VehicleOwnershipType, string> = {
+  company: 'ملكية الشركة',
+  installments: 'أقساط',
+  rented: 'مستأجرة',
+};
+
 // مركبات الشركة — صفحة الإعدادات ← المركبات (VehiclesTab في Settings.tsx).
 // سجل بيانات لكل مركبة (لا علاقة له بجدولة المواعيد أو تتبّع الموقع) —
 // فقط معلومات ثابتة/شبه ثابتة يحتاجها صاحب العمل: الاستمارة، اللوحة،
-// التأمين، الفحص الدوري، من يقودها، والمشرف التابعة له.
+// التأمين، الفحص الدوري، من يقودها، ومن هي تابعة له. assigned_profile_id
+// يربط بأي موظف (فني، مشرف ميداني، أو أي دور آخر) — تُعرَض تلقائياً في
+// تبويب "المعلومات الشخصية" الخاص بذلك الموظف (انظر PersonalInfoTab.tsx).
 export interface Vehicle {
   id: string;
   type: string; // النوع (مثال: تويوتا هايلكس ٢٠٢٣)
@@ -1501,9 +1511,10 @@ export interface Vehicle {
   inspection_expiry?: string; // تاريخ انتهاء الفحص الدوري
   insurance_expiry?: string; // تاريخ انتهاء التأمين
   authorized_driver?: string; // الشخص المفوض بالقيادة
-  supervisor_id?: string; // تابعة لأي مشرف — يربط بـ Profile
+  assigned_profile_id?: string; // تابعة لـ — يربط بأي Profile
+  ownership_type?: VehicleOwnershipType; // نوع التملك
   last_oil_change?: string; // تاريخ آخر تغيير زيت
-  waei_number?: string; // رقم المركبة في منصة "واعي"
+  last_oil_change_odometer?: number; // قراءة العداد وقت آخر تغيير زيت
   created_at: string;
   updated_at: string;
 }

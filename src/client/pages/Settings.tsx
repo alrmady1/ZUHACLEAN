@@ -74,8 +74,9 @@ import type {
   SalesDiscountKind,
   TranslationLanguage,
   Vehicle,
+  VehicleOwnershipType,
 } from '../../shared/types.js';
-import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
+import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG, VEHICLE_OWNERSHIP_TYPE_LABELS_AR } from '../../shared/types.js';
 import {
   SETTINGS_ACCESS_ROLES,
   PERMISSIONS_ACCESS_ROLES,
@@ -3053,7 +3054,7 @@ function vehicleExpiryClass(dateStr?: string): string {
 }
 
 function VehiclesTab() {
-  const { t, tt } = useI18n();
+  const { t, tt, roleLabel } = useI18n();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -3066,8 +3067,8 @@ function VehiclesTab() {
   }
   useEffect(refresh, []);
 
-  const supervisors = profiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
-  const supervisorName = (id?: string) => (id ? profiles.find((p) => p.id === id)?.full_name : undefined);
+  // أي موظف (فني، مشرف ميداني، أو أي دور آخر) — وليس المشرفين فقط.
+  const assigneeName = (id?: string) => (id ? profiles.find((p) => p.id === id)?.full_name : undefined);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -3083,9 +3084,10 @@ function VehiclesTab() {
       inspection_expiry: form.get('inspection_expiry') || undefined,
       insurance_expiry: form.get('insurance_expiry') || undefined,
       authorized_driver: form.get('authorized_driver') || undefined,
-      supervisor_id: form.get('supervisor_id') || undefined,
+      assigned_profile_id: form.get('assigned_profile_id') || undefined,
+      ownership_type: form.get('ownership_type') || undefined,
       last_oil_change: form.get('last_oil_change') || undefined,
-      waei_number: form.get('waei_number') || undefined,
+      last_oil_change_odometer: form.get('last_oil_change_odometer') || undefined,
     };
     try {
       if (editing) {
@@ -3130,7 +3132,8 @@ function VehiclesTab() {
               <th className="p-3 text-start font-medium">{t('النوع')}</th>
               <th className="p-3 text-start font-medium">{t('رقم اللوحة')}</th>
               <th className="p-3 text-start font-medium">{t('المالك')}</th>
-              <th className="p-3 text-start font-medium">{t('تابعة لأي مشرف')}</th>
+              <th className="p-3 text-start font-medium">{t('تابعة لـ')}</th>
+              <th className="p-3 text-start font-medium">{t('نوع التملك')}</th>
               <th className="p-3 text-start font-medium">{t('انتهاء الاستمارة')}</th>
               <th className="p-3 text-start font-medium">{t('انتهاء الفحص الدوري')}</th>
               <th className="p-3 text-start font-medium">{t('انتهاء التأمين')}</th>
@@ -3143,7 +3146,8 @@ function VehiclesTab() {
                 <td className="p-3 font-medium text-slate-700">{v.type}</td>
                 <td className="p-3 text-slate-700" dir="ltr">{v.plate_number}</td>
                 <td className="p-3 text-slate-600">{v.owner || '—'}</td>
-                <td className="p-3 text-slate-600">{supervisorName(v.supervisor_id) || '—'}</td>
+                <td className="p-3 text-slate-600">{assigneeName(v.assigned_profile_id) || '—'}</td>
+                <td className="p-3 text-slate-600">{v.ownership_type ? t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR[v.ownership_type]) : '—'}</td>
                 <td className={`p-3 ${vehicleExpiryClass(v.registration_expiry)}`} dir="ltr">{v.registration_expiry || '—'}</td>
                 <td className={`p-3 ${vehicleExpiryClass(v.inspection_expiry)}`} dir="ltr">{v.inspection_expiry || '—'}</td>
                 <td className={`p-3 ${vehicleExpiryClass(v.insurance_expiry)}`} dir="ltr">{v.insurance_expiry || '—'}</td>
@@ -3167,7 +3171,7 @@ function VehiclesTab() {
             ))}
             {vehicles.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
+                <td colSpan={9} className="p-8 text-center text-slate-400">
                   {t('لا توجد مركبات مسجَّلة بعد')}
                 </td>
               </tr>
@@ -3216,25 +3220,45 @@ function VehiclesTab() {
               <Field label={t('تاريخ انتهاء التأمين')}>
                 <input type="date" name="insurance_expiry" defaultValue={editing?.insurance_expiry} className="input" />
               </Field>
+              <Field label={t('نوع التملك')}>
+                <select name="ownership_type" defaultValue={editing?.ownership_type ?? ''} className="input">
+                  <option value="">{t('بدون تحديد')}</option>
+                  {(Object.keys(VEHICLE_OWNERSHIP_TYPE_LABELS_AR) as VehicleOwnershipType[]).map((k) => (
+                    <option key={k} value={k}>
+                      {t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR[k])}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <Field label={t('تاريخ آخر تغيير زيت')}>
                 <input type="date" name="last_oil_change" defaultValue={editing?.last_oil_change} className="input" />
+              </Field>
+              <Field label={t('العداد وقت تغيير الزيت')}>
+                <input
+                  type="number"
+                  name="last_oil_change_odometer"
+                  defaultValue={editing?.last_oil_change_odometer}
+                  className="input"
+                  dir="ltr"
+                  min={0}
+                  placeholder={t('بالكيلومتر')}
+                />
               </Field>
             </div>
             <Field label={t('الشخص المفوَّض بالقيادة')}>
               <input name="authorized_driver" defaultValue={editing?.authorized_driver} className="input" />
             </Field>
-            <Field label={t('تابعة لأي مشرف')}>
-              <select name="supervisor_id" defaultValue={editing?.supervisor_id ?? ''} className="input">
+            <Field label={t('تابعة لـ')}>
+              <select name="assigned_profile_id" defaultValue={editing?.assigned_profile_id ?? ''} className="input">
                 <option value="">{t('بدون تحديد')}</option>
-                {supervisors.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name}
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name} — {roleLabel(p.role)}
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label={t('رقم المركبة في واعي')}>
-              <input name="waei_number" defaultValue={editing?.waei_number} className="input" dir="ltr" />
             </Field>
             <button
               type="submit"

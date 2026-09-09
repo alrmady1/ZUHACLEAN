@@ -234,9 +234,12 @@ api.post('/vehicles', (req, res) => {
     inspection_expiry: body.inspection_expiry || undefined,
     insurance_expiry: body.insurance_expiry || undefined,
     authorized_driver: body.authorized_driver || undefined,
-    supervisor_id: body.supervisor_id || undefined,
+    assigned_profile_id: body.assigned_profile_id || undefined,
+    ownership_type: body.ownership_type || undefined,
     last_oil_change: body.last_oil_change || undefined,
-    waei_number: body.waei_number || undefined,
+    last_oil_change_odometer: body.last_oil_change_odometer !== undefined && body.last_oil_change_odometer !== ''
+      ? Number(body.last_oil_change_odometer)
+      : undefined,
     created_at: now,
     updated_at: now,
   };
@@ -257,9 +260,12 @@ api.patch('/vehicles/:id', (req, res) => {
   if (body.inspection_expiry !== undefined) patch.inspection_expiry = body.inspection_expiry || undefined;
   if (body.insurance_expiry !== undefined) patch.insurance_expiry = body.insurance_expiry || undefined;
   if (body.authorized_driver !== undefined) patch.authorized_driver = body.authorized_driver || undefined;
-  if (body.supervisor_id !== undefined) patch.supervisor_id = body.supervisor_id || undefined;
+  if (body.assigned_profile_id !== undefined) patch.assigned_profile_id = body.assigned_profile_id || undefined;
+  if (body.ownership_type !== undefined) patch.ownership_type = body.ownership_type || undefined;
   if (body.last_oil_change !== undefined) patch.last_oil_change = body.last_oil_change || undefined;
-  if (body.waei_number !== undefined) patch.waei_number = body.waei_number || undefined;
+  if (body.last_oil_change_odometer !== undefined) {
+    patch.last_oil_change_odometer = body.last_oil_change_odometer !== '' ? Number(body.last_oil_change_odometer) : undefined;
+  }
   const updated = store.vehicles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'vehicle not found' });
   logActivity(req, `تم تعديل بيانات مركبة "${updated.type}" (${updated.plate_number})`);
