@@ -58,9 +58,7 @@ export default function OrderPage() {
   const [services, setServices] = useState<LandingService[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [area, setArea] = useState('');
   const [serviceName, setServiceName] = useState('');
-  const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [done, setDone] = useState(false);
@@ -104,9 +102,7 @@ export default function OrderPage() {
       await api.post('/public/leads', {
         name: name.trim(),
         phone: phone.trim(),
-        area: area.trim() || undefined,
         service_name: serviceName || undefined,
-        message: message.trim() || undefined,
       });
       setDone(true);
     } catch {
@@ -287,26 +283,6 @@ export default function OrderPage() {
                     </select>
                   </label>
                 </div>
-                <label className="block text-sm">
-                  <span className="sr-only">المنطقة / الحي</span>
-                  <input
-                    value={area}
-                    onChange={(e) => setArea(e.target.value)}
-                    placeholder="المنطقة / الحي (مثال: حي الملقا، الرياض)"
-                    className="input text-slate-500 placeholder:text-slate-500"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="sr-only">ملاحظات إضافية (اختياري)</span>
-                  <textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="ملاحظات إضافية (اختياري) — اكتب أي تفاصيل تساعدنا على خدمتك بشكل أفضل"
-                    className="input resize-none text-slate-500 placeholder:text-slate-500"
-                  />
-                </label>
 
                 {submitError && (
                   <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
