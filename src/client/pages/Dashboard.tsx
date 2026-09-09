@@ -20,6 +20,7 @@ import NewAppointmentModal from '../components/NewAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import DayClock from '../components/DayClock.js';
 import StatCard from '../components/StatCard.js';
+import PersonalInfoTab from '../components/PersonalInfoTab.js';
 import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -52,6 +53,10 @@ export default function Dashboard() {
   const [showNewAppt, setShowNewAppt] = useState(false);
   const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [newApptAlert, setNewApptAlert] = useState<Appointment | null>(null);
+  // تبويب رئيسي جديد فوق محتوى لوحة التحكم — "لوحة التحكم" (المحتوى
+  // الحالي كاملاً) أو "المعلومات الشخصية" (تبويب جديد، PersonalInfoTab.tsx)،
+  // يظهر فقط للمشرف الميداني نفسه.
+  const [mainTab, setMainTab] = useState<'dashboard' | 'personal'>('dashboard');
   // null = لم نحمّل القائمة بعد؛ أول تحميل يسجّل المعرّفات الحالية بصمت
   // (بدون تنبيه)، وأي معرّف يظهر بعدها يُعتبر موعداً جديداً فعلاً.
   const knownApptIds = useRef<Set<string> | null>(null);
@@ -167,6 +172,27 @@ export default function Dashboard() {
         </h1>
       </div>
 
+      {user?.role === 'supervisor' && (
+        <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+          <button
+            onClick={() => setMainTab('dashboard')}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'dashboard' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            {t('لوحة التحكم')}
+          </button>
+          <button
+            onClick={() => setMainTab('personal')}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium ${mainTab === 'personal' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            {t('المعلومات الشخصية')}
+          </button>
+        </div>
+      )}
+
+      {mainTab === 'personal' && user?.role === 'supervisor' ? (
+        <PersonalInfoTab showSupervisorExtras />
+      ) : (
+        <>
       <DayClock appointments={appointments} customers={customers} onSelectAppointment={setViewingAppt} />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -338,6 +364,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {showNewAppt && (
