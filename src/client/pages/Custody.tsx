@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { X, Plus, Wallet, Receipt, FileText, TrendingUp, Trash2 } from 'lucide-react';
+import { X, Plus, Wallet, Receipt, FileText, TrendingUp, Trash2, Paperclip } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, CustodyInvoice, Profile, PaymentMethodOption } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES } from '../../shared/types.js';
+import type { Expense, CustodyInvoice, Profile, PaymentMethodOption, ExpenseCategoryItem } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { compressImageToDataUrl } from '../lib/image.js';
+
+// نفس منطق احتساب الضريبة في computeExpenseTax على السيرفر بالضبط —
+// معاينة حيّة فقط قبل الحفظ (مطابق تماماً لـ previewExpenseTax في
+// Expenses.tsx).
+const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 
 interface HolderSummary {
   holderId: string;
@@ -33,6 +39,7 @@ export function CustodyTab() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
   const [openHolderId, setOpenHolderId] = useState<string | null>(null);
   const [showNewGrant, setShowNewGrant] = useState(false);
 
@@ -42,6 +49,7 @@ export function CustodyTab() {
   }
 
   useEffect(() => {
+    api.get<ExpenseCategoryItem[]>('/expense-categories').then(setCategories);
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
@@ -143,6 +151,7 @@ export function CustodyTab() {
           holder={openHolder}
           allProfiles={allProfiles}
           paymentMethods={paymentMethods}
+          categories={categories}
           recordedById={user?.id}
           recordedByName={user?.full_name}
           onClose={() => setOpenHolderId(null)}
@@ -171,6 +180,7 @@ function HolderDetail({
   holder,
   allProfiles,
   paymentMethods,
+  categories,
   recordedById,
   recordedByName,
   onClose,
@@ -179,6 +189,7 @@ function HolderDetail({
   holder: HolderSummary;
   allProfiles: Profile[];
   paymentMethods: PaymentMethodOption[];
+  categories: ExpenseCategoryItem[];
   recordedById?: string;
   recordedByName?: string;
   onClose: () => void;
@@ -190,23 +201,54 @@ function HolderDetail({
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // نفس تصنيفات صفحة المصروفات العامة (باستثناء "عهدة" — لا معنى لتصنيف
+  // فاتورة خصم منها كـ"عهدة" جديدة — و"رواتب" التي تُسجَّل من صفحة
+  // الموظفين فقط)، حتى تظهر فاتورة العهدة أيضاً ضمن المصاريف الشهرية
+  // بتصنيف صحيح — انظر Expense.paid_via_custody.
+  const creatableCategories = categories.filter(
+    (c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME && c.name !== SALARY_CATEGORY_NAME,
+  );
+  const [invoiceCategory, setInvoiceCategory] = useState('');
+  const [invoiceSubCategory, setInvoiceSubCategory] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceIsTaxInvoice, setInvoiceIsTaxInvoice] = useState(false);
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const invoiceSubCategories = categories.filter(
+    (c) => c.parent_id === creatableCategories.find((m) => m.name === invoiceCategory)?.id,
+  );
+
+  function resetInvoiceForm() {
+    setInvoiceCategory('');
+    setInvoiceSubCategory('');
+    setInvoiceAmount('');
+    setInvoiceIsTaxInvoice(false);
+    setInvoiceFile(null);
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     try {
+      const invoice_file_data_url = invoiceFile ? await compressImageToDataUrl(invoiceFile) : undefined;
       await api.post('/custody-invoices', {
         custody_holder_id: holder.holderId,
         title: form.get('title'),
-        amount: Number(form.get('amount')),
+        vendor_name: form.get('vendor_name') || undefined,
+        category: invoiceCategory,
+        sub_category: invoiceSubCategory || undefined,
+        amount: Number(invoiceAmount),
+        is_tax_invoice: invoiceIsTaxInvoice,
         invoice_number: form.get('invoice_number') || undefined,
         date: form.get('date'),
         notes: form.get('notes') || undefined,
+        invoice_file_data_url,
+        invoice_file_name: invoiceFile?.name || undefined,
         recorded_by: recordedById,
         recorded_by_name: recordedByName,
       });
       setShowInvoiceForm(false);
+      resetInvoiceForm();
       onChanged();
     } finally {
       setSubmitting(false);
@@ -224,8 +266,24 @@ function HolderDetail({
   }
 
   const timeline = [
-    ...holder.grants.map((g) => ({ kind: 'grant' as const, id: g.id, date: g.date, title: g.title, amount: g.amount, ref: undefined as string | undefined })),
-    ...holder.invoices.map((i) => ({ kind: 'invoice' as const, id: i.id, date: i.date, title: i.title, amount: i.amount, ref: i.invoice_number })),
+    ...holder.grants.map((g) => ({
+      kind: 'grant' as const,
+      id: g.id,
+      date: g.date,
+      title: g.title,
+      amount: g.amount,
+      ref: undefined as string | undefined,
+      vendor: undefined as string | undefined,
+    })),
+    ...holder.invoices.map((i) => ({
+      kind: 'invoice' as const,
+      id: i.id,
+      date: i.date,
+      title: i.title,
+      amount: i.amount,
+      ref: i.invoice_number,
+      vendor: i.vendor_name,
+    })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
@@ -277,7 +335,10 @@ function HolderDetail({
               <TrendingUp className="h-3.5 w-3.5" /> {t('زيادة العهدة')}
             </button>
             <button
-              onClick={() => setShowInvoiceForm(true)}
+              onClick={() => {
+                setInvoiceCategory((prev) => prev || creatableCategories[0]?.name || '');
+                setShowInvoiceForm(true);
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
             >
               <Plus className="h-3.5 w-3.5" /> {t('إضافة فاتورة لخصمها من العهدة')}
@@ -301,7 +362,10 @@ function HolderDetail({
               {timeline.map((row) => (
                 <tr key={row.id} className="border-b border-slate-50 last:border-0">
                   <td className="p-3 text-slate-600">{formatDateAr(row.date)}</td>
-                  <td className="p-3 font-medium text-slate-700">{row.title}</td>
+                  <td className="p-3 font-medium text-slate-700">
+                    {row.title}
+                    {row.vendor && <div className="text-xs font-normal text-slate-400">{row.vendor}</div>}
+                  </td>
                   <td className="p-3 text-slate-500">{row.ref ?? '—'}</td>
                   <td className="p-3">
                     <span
@@ -349,7 +413,14 @@ function HolderDetail({
               <h2 className="text-lg font-bold text-slate-800">
                 {tt(`فاتورة جديدة — خصم من عهدة ${holder.name}`, `New Invoice — Deduct from ${holder.name}'s Custody`)}
               </h2>
-              <button type="button" onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-600">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInvoiceForm(false);
+                  resetInvoiceForm();
+                }}
+                className="text-slate-400 hover:text-slate-600"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -360,10 +431,54 @@ function HolderDetail({
                 </span>
                 <input name="title" required className="input" placeholder={t('مثال: فاتورة قطع غيار سيارة')} />
               </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('اسم التاجر (اختياري)')}</span>
+                <input name="vendor_name" className="input" placeholder={t('مثال: محلات الوطنية لقطع الغيار')} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('التصنيف')}</span>
+                <select
+                  required
+                  className="input"
+                  value={invoiceCategory}
+                  onChange={(e) => {
+                    setInvoiceCategory(e.target.value);
+                    setInvoiceSubCategory('');
+                  }}
+                >
+                  {creatableCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
+                  {creatableCategories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {invoiceSubCategories.length > 0 && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('البند الفرعي (اختياري)')}</span>
+                  <select className="input" value={invoiceSubCategory} onChange={(e) => setInvoiceSubCategory(e.target.value)}>
+                    <option value="">{t('بدون تحديد')}</option>
+                    {invoiceSubCategories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المبلغ (ر.س)')}</span>
-                  <input type="number" name="amount" min={0} step="0.01" required className="input" />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    required
+                    className="input"
+                    value={invoiceAmount}
+                    onChange={(e) => setInvoiceAmount(e.target.value)}
+                  />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
@@ -373,6 +488,34 @@ function HolderDetail({
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('رقم الفاتورة (اختياري)')}</span>
                 <input name="invoice_number" className="input" />
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={invoiceIsTaxInvoice}
+                  onChange={(e) => setInvoiceIsTaxInvoice(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                />
+                <span className="font-medium text-slate-600">{t('فاتورة ضريبية (تُحتسب ضمن ضريبة القيمة المضافة)')}</span>
+              </label>
+              {invoiceIsTaxInvoice && Number(invoiceAmount) > 0 && (
+                <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+                  {t('قيمة الضريبة المحتسبة')}: {formatMoney(previewExpenseTax(Number(invoiceAmount)))}
+                </div>
+              )}
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('ملف الفاتورة (صورة أو PDF، اختياري)')}</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)}
+                  className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                />
+                {invoiceFile && (
+                  <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                    <Paperclip className="h-3 w-3" /> {invoiceFile.name}
+                  </span>
+                )}
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>

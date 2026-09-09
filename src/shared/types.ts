@@ -1064,6 +1064,13 @@ export interface Expense {
   // (النوع — رقم اللوحة) وقت التسجيل، بنفس نمط custody_holder_name.
   vehicle_id?: string;
   vehicle_label?: string;
+  vendor_name?: string; // اسم التاجر — مصدره غالباً فاتورة عهدة، انظر paid_via_custody
+  // صحيح فقط لمصروف وُلِد تلقائياً من فاتورة عهدة (POST /custody-invoices
+  // ← linked_expense_id): custody_holder_id هنا يعني "مَن دفعها من عهدته
+  // الشخصية" — عكس معناه المعتاد أعلاه (عهدة/سلفية/رواتب، حيث يعني "مَن
+  // استلم المبلغ"). يُستخدَم لعرض "مدفوعة من عهدة فلان" في قائمة
+  // المصروفات العامة بدل نقداً/شبكة.
+  paid_via_custody?: boolean;
   // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما
   // category === ADVANCE_CATEGORY_NAME، تُضبَط عند تسجيل السلفية نفسها
   // (أو لاحقاً بالتعديل). 'none' (الافتراضي) يعني بلا استقطاع تلقائي
@@ -1105,6 +1112,21 @@ export interface CustodyInvoice {
   title: string;
   amount: number;
   invoice_number?: string;
+  vendor_name?: string; // اسم التاجر
+  // تصنيف المصروف (نفس تصنيفات صفحة المصروفات العامة، مثال "مركبات") —
+  // مطلوب حتى يُسجَّل هذا كمصروف عادي أيضاً (انظر linked_expense_id أدناه).
+  category?: string;
+  sub_category?: string;
+  is_tax_invoice?: boolean;
+  tax_amount?: number;
+  invoice_file_url?: string;
+  invoice_file_name?: string;
+  // معرّف المصروف المرآتي (Expense) الذي أُنشئ تلقائياً مع هذه الفاتورة —
+  // نفس القيد يظهر أيضاً ضمن المصروفات العامة الشهرية، موسوماً
+  // paid_via_custody ليتضح أنه مدفوع من عهدة الموظف لا نقداً من الصندوق.
+  // يُحذَف معه تلقائياً عند حذف هذه الفاتورة (انظر DELETE
+  // /custody-invoices/:id في api.ts).
+  linked_expense_id?: string;
   date: string;
   notes?: string;
   recorded_by?: string;

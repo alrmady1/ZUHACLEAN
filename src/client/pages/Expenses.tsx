@@ -539,7 +539,14 @@ function GeneralExpensesTab() {
                       {e.category}
                       {e.sub_category ? ` — ${e.sub_category}` : ''}
                     </span>
-                    {e.custody_holder_name && <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>}
+                    {e.custody_holder_name &&
+                      (e.paid_via_custody ? (
+                        <div className="mt-1 text-xs text-slate-400">
+                          {t('مدفوعة من عهدة')}: {e.custody_holder_name}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>
+                      ))}
                     {e.vehicle_label && <div className="mt-1 text-xs text-slate-400">{e.vehicle_label}</div>}
                   </td>
                   <td className={`p-3 font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
@@ -982,7 +989,10 @@ function ExpenseDetailModal({
                 <div>{t('التاريخ')}: {expense.date}</div>
                 <div>{t('طريقة الدفع')}: {methodName(expense.payment_method)}</div>
                 {expense.invoice_number && <div>{t('رقم الفاتورة')}: {expense.invoice_number}</div>}
-                {expense.custody_holder_name && <div>{t('الموظف')}: {expense.custody_holder_name}</div>}
+                {expense.custody_holder_name && (
+                  <div>{t(expense.paid_via_custody ? 'مدفوعة من عهدة' : 'الموظف')}: {expense.custody_holder_name}</div>
+                )}
+                {expense.vendor_name && <div>{t('اسم التاجر')}: {expense.vendor_name}</div>}
                 {expense.vehicle_label && <div>{t('المركبة')}: {expense.vehicle_label}</div>}
                 {expense.recorded_by_name && <div>{t('سجّله')}: {expense.recorded_by_name}</div>}
                 {expense.notes && <div>{t('ملاحظات')}: {expense.notes}</div>}

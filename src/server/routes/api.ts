@@ -1610,6 +1610,13 @@ api.delete('/expense-categories/:id', (req, res) => {
 // spent out of their custody (عهدة). Each one deducts from that employee's
 // running balance; the balance itself is derived on the client from the
 // custody-category expenses (money handed to them) minus these invoices.
+//
+// كل فاتورة عهدة تُسجَّل أيضاً كمصروف عادي مرآتي (store.expenses، بنفس
+// تصنيفات صفحة المصروفات العامة) موسوماً paid_via_custody، حتى تظهر ضمن
+// المصاريف الشهرية وتقاريرها لا في دفتر العهدة وحده — انظر Expense.
+// paid_via_custody وCustodyInvoice.linked_expense_id في shared/types.ts.
+// القيدان يُنشآن معاً هنا ويُحذَفان معاً في DELETE أدناه؛ لا تعديل بعد
+// الإنشاء لأي منهما حالياً (لا PATCH لفاتورة عهدة)، فلا خطر تباعد بينهما.
 // ---------------------------------------------------------------------------
 api.get('/custody-invoices', (req, res) => {
   const { custody_holder_id } = req.query;
@@ -1620,23 +1627,85 @@ api.get('/custody-invoices', (req, res) => {
   res.json(list);
 });
 
-api.post('/custody-invoices', (req, res) => {
+// طريقة الدفع الثابتة لكل مصروف مرآتي من فاتورة عهدة — تُنشأ مرة واحدة
+// فقط عند أول استخدام (نفس نمط "فئة مصروفات جديدة تُضاف عند الحاجة" في
+// load() أعلاه)، ثم تُعاد نفس القيمة دائماً بعدها فتبقى معرَّفة كطريقة دفع
+// عادية قابلة لإعادة التسمية/الإيقاف من الإعدادات ← طرق الدفع.
+function ensureCustodyPaymentMethodId(): string {
+  const existing = store.paymentMethods.list().find((m) => m.name === 'مدفوعة من العهدة');
+  if (existing) return existing.id;
+  return store.paymentMethods.insert({ id: store.id(), name: 'مدفوعة من العهدة', is_active: true }).id;
+}
+
+api.post('/custody-invoices', async (req, res) => {
   const body = req.body ?? {};
-  if (!body.custody_holder_id || !body.title || body.amount === undefined) {
-    return res.status(400).json({ error: 'custody_holder_id، title و amount مطلوبة' });
+  if (!body.custody_holder_id || !body.title || body.amount === undefined || !body.category) {
+    return res.status(400).json({ error: 'custody_holder_id، title، amount وcategory مطلوبة' });
   }
+  const amount = Number(body.amount) || 0;
+  const isTaxInvoice = Boolean(body.is_tax_invoice);
+  const taxAmount = computeExpenseTax(isTaxInvoice, amount);
+  const date = body.date ?? new Date().toISOString().slice(0, 10);
+  const holderName = store.profiles.get(body.custody_holder_id)?.full_name ?? body.custody_holder_name;
+  const now = new Date().toISOString();
+
+  // المصروف المرآتي أولاً — يُنشَأ معرّفه سلفاً حتى يُستخدَم كمجلد ملف
+  // الفاتورة على Supabase Storage (نفس نمط POST /expenses بالضبط).
+  const expenseId = store.id();
+  let invoiceFileUrl: string | undefined;
+  if (body.invoice_file_data_url) {
+    try {
+      invoiceFileUrl = await uploadExpenseInvoice(expenseId, body.invoice_file_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع ملف فاتورة العهدة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+    }
+  }
+
+  store.expenses.insert({
+    id: expenseId,
+    title: body.title,
+    category: body.category,
+    sub_category: body.sub_category || undefined,
+    period_type: 'daily',
+    amount,
+    is_tax_invoice: isTaxInvoice,
+    tax_amount: taxAmount,
+    date,
+    invoice_number: body.invoice_number || undefined,
+    vendor_name: body.vendor_name || undefined,
+    recorded_by: body.recorded_by ?? 'unknown',
+    recorded_by_name: body.recorded_by_name,
+    custody_holder_id: body.custody_holder_id,
+    custody_holder_name: holderName,
+    paid_via_custody: true,
+    payment_method: ensureCustodyPaymentMethodId(),
+    notes: body.notes || undefined,
+    invoice_file_url: invoiceFileUrl,
+    invoice_file_name: invoiceFileUrl ? body.invoice_file_name || undefined : undefined,
+    created_at: now,
+  });
+
   const invoice: CustodyInvoice = {
     id: store.id(),
     custody_holder_id: body.custody_holder_id,
-    custody_holder_name: store.profiles.get(body.custody_holder_id)?.full_name ?? body.custody_holder_name,
+    custody_holder_name: holderName,
     title: body.title,
-    amount: Number(body.amount) || 0,
+    amount,
     invoice_number: body.invoice_number || undefined,
-    date: body.date ?? new Date().toISOString().slice(0, 10),
+    vendor_name: body.vendor_name || undefined,
+    category: body.category,
+    sub_category: body.sub_category || undefined,
+    is_tax_invoice: isTaxInvoice,
+    tax_amount: taxAmount,
+    invoice_file_url: invoiceFileUrl,
+    invoice_file_name: invoiceFileUrl ? body.invoice_file_name || undefined : undefined,
+    linked_expense_id: expenseId,
+    date,
     notes: body.notes || undefined,
     recorded_by: body.recorded_by || undefined,
     recorded_by_name: body.recorded_by_name || undefined,
-    created_at: new Date().toISOString(),
+    created_at: now,
   };
   store.custodyInvoices.insert(invoice);
   logActivity(req, `تم إضافة سند عهدة "${invoice.title}" لـ "${invoice.custody_holder_name ?? ''}"`);
@@ -1649,6 +1718,9 @@ api.delete('/custody-invoices/:id', (req, res) => {
   const target = store.custodyInvoices.list().find((i) => i.id === req.params.id);
   const removed = store.custodyInvoices.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  // يحذف المصروف المرآتي معها — وإلا يبقى ظاهراً في المصروفات العامة رغم
+  // حذف الفاتورة الأصلية، ويُحسَب مرتين لو أُعيدت الفاتورة لاحقاً.
+  if (target?.linked_expense_id) store.expenses.remove(target.linked_expense_id);
   logActivity(req, `تم حذف سند عهدة "${target?.title ?? ''}"`);
   res.status(204).end();
 });
