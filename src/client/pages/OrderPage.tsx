@@ -135,14 +135,26 @@ export default function OrderPage() {
           <a href="#why" className="transition hover:text-white">لماذا زهى</a>
           <a href="#contact" className="transition hover:text-white">تواصل معنا</a>
         </nav>
-        <a
-          href={`tel:${COMPANY_PHONE}`}
-          dir="ltr"
-          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold sm:text-sm"
-          style={{ backgroundColor: GREEN, color: NAVY }}
-        >
-          <Phone className="h-4 w-4" /> {COMPANY_PHONE}
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            target="_blank"
+            rel="noreferrer"
+            title="تواصل عبر واتساب"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
+            style={{ backgroundColor: '#25D366' }}
+          >
+            <MessageCircle className="h-4 w-4" />
+          </a>
+          <a
+            href={`tel:${COMPANY_PHONE}`}
+            title="اتصال"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-90"
+            style={{ backgroundColor: GREEN, color: NAVY }}
+          >
+            <Phone className="h-4 w-4" />
+          </a>
+        </div>
       </header>
 
       {/* ================== الهيرو + استمارة الطلب السريع ================== */}
