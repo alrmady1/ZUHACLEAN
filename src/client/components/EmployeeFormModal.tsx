@@ -5,7 +5,7 @@ import type { Profile, UserRole } from '../../shared/types.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
-const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician', 'marketer', 'accountant'];
+const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'marketer', 'accountant', 'technician'];
 
 // نموذج إضافة/تعديل موظف — منقول حرفياً من UsersTab في Settings.tsx (كان
 // معرَّفاً هناك فقط) إلى عنصر مشترك، حتى تستخدمه أيضاً EmployeeAccountsTab
