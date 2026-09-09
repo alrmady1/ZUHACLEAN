@@ -120,7 +120,7 @@ export default function OrderPage() {
         style={{ backgroundColor: NAVY }}
       >
         <div className="flex items-center gap-2.5">
-          <img src="/icon-192.png" alt={COMPANY_NAME} className="h-10 w-10 rounded-xl" />
+          <img src="/order-page-logo.png" alt={COMPANY_NAME} className="h-10 w-10 rounded-xl" />
           <div>
             <div className="text-lg font-extrabold text-white">{COMPANY_NAME}</div>
             <div className="text-[11px] text-white/60">{settings.tagline}</div>
