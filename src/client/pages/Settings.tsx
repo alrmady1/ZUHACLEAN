@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Plus,
@@ -46,8 +46,10 @@ import {
   UserCheck,
   MessageCircle as LiveChatIcon,
   Map as RiyadhZonesIcon,
+  Languages as TranslationsIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
 import type {
   Profile,
   Service,
@@ -69,6 +71,7 @@ import type {
   CommissionEligibility,
   CompanyBankAccount,
   SalesDiscountKind,
+  TranslationLanguage,
 } from '../../shared/types.js';
 import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG } from '../../shared/types.js';
 import {
@@ -2808,6 +2811,233 @@ function MobileAppTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Translations tab — صفحة الإعدادات ← الترجمة: كل كلمة عربية تُستخدَم في
+// الموقع (اتحاد مفاتيح قواميس translations.ts الثابتة الثلاثة — AR_TO_EN
+// بصفتها الأشمل — بالإضافة لأي كلمة أُضيف لها تعديل يدوي فقط)، مقابلها
+// خانة نص لكل لغة يُعدَّل عليها هنا مباشرة (PATCH /translations، دمج فوري
+// عند كل خروج من الخانة). أي كلمة جديدة يُستحدثها تحديث لاحق للنظام تظهر
+// هنا تلقائياً بخانات فارغة بانتظار ترجمتها، دون أي إعداد إضافي. لغات
+// إضافية (بعد الأربع الأساسية) تُدار من نفس الصفحة عبر translationLanguages
+// (PATCH /translations/languages) — عمود جديد فوراً، لكن تفعيلها الفعلي في
+// مُبدِّل اللغة (TopBar.tsx/Login.tsx) يبقى تعديلاً برمجياً منفصلاً وصغيراً.
+// ---------------------------------------------------------------------------
+const BUILT_IN_TRANSLATION_LANGUAGES: TranslationLanguage[] = [
+  { code: 'en', label: 'الإنجليزية' },
+  { code: 'ur', label: 'الأردية' },
+  { code: 'bn', label: 'البنغالية' },
+];
+
+function staticTranslationValue(ar: string, code: string): string {
+  if (code === 'en') return AR_TO_EN[ar] ?? '';
+  if (code === 'bn') return AR_TO_BN[ar] ?? '';
+  if (code === 'ur') return AR_TO_UR[ar] ?? '';
+  return '';
+}
+
+function TranslationsTab() {
+  const { t } = useI18n();
+  const [overrides, setOverrides] = useState<Record<string, Record<string, string>> | null>(null);
+  const [extraLanguages, setExtraLanguages] = useState<TranslationLanguage[]>([]);
+  const [search, setSearch] = useState('');
+  const [showAddLang, setShowAddLang] = useState(false);
+
+  function refresh() {
+    api
+      .get<{ overrides: { ar: string; values: Record<string, string> }[]; languages: TranslationLanguage[] }>('/translations')
+      .then((data) => {
+        const map: Record<string, Record<string, string>> = {};
+        for (const row of data.overrides) map[row.ar] = row.values;
+        setOverrides(map);
+        setExtraLanguages(data.languages);
+      });
+  }
+  useEffect(refresh, []);
+
+  const languages = [...BUILT_IN_TRANSLATION_LANGUAGES, ...extraLanguages];
+
+  // القائمة الكاملة بالكلمات العربية — مرتَّبة أبجدياً (عربي) لتسهيل
+  // التصفح، مع بحث نصي حي بدل أي تجميع حسب الصفحة (خارج نطاق هذه النسخة).
+  const allWords = useMemo(() => {
+    const set = new Set<string>([...Object.keys(AR_TO_EN), ...Object.keys(AR_TO_BN), ...Object.keys(AR_TO_UR), ...Object.keys(overrides ?? {})]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'));
+  }, [overrides]);
+
+  function cellValue(ar: string, code: string): string {
+    return overrides?.[ar]?.[code] ?? staticTranslationValue(ar, code);
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim();
+    if (!q) return allWords;
+    const qLower = q.toLowerCase();
+    return allWords.filter((ar) => {
+      if (ar.includes(q)) return true;
+      return languages.some((l) => cellValue(ar, l.code).toLowerCase().includes(qLower));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allWords, search, overrides, extraLanguages]);
+
+  async function saveCell(ar: string, code: string, value: string) {
+    setOverrides((prev) => ({ ...prev, [ar]: { ...prev?.[ar], [code]: value } }));
+    await api.patch('/translations', { ar, values: { [code]: value } });
+  }
+
+  async function addLanguage(code: string, label: string) {
+    const next = [...extraLanguages, { code, label }];
+    setExtraLanguages(next);
+    await api.patch('/translations/languages', { languages: next });
+    setShowAddLang(false);
+  }
+
+  async function removeLanguage(code: string) {
+    if (!confirm(t('حذف هذه اللغة؟ ستبقى الترجمات المحفوظة لها دون عرض، ويمكن استرجاعها بإضافتها مرة أخرى بنفس الرمز.'))) return;
+    const next = extraLanguages.filter((l) => l.code !== code);
+    setExtraLanguages(next);
+    await api.patch('/translations/languages', { languages: next });
+  }
+
+  if (!overrides) {
+    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">{t('جارِ التحميل…')}</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-brand-50 p-3 text-xs text-brand-700">
+        {t(
+          'كل كلمة عربية تظهر في الموقع، مقابلها ترجمتها الحالية بكل لغة — عدِّل أي خانة واضغط خارجها لحفظها فوراً. الكلمات الجديدة التي تُستحدَث مستقبلاً بتحديثات النظام تظهر هنا تلقائياً بخانات فارغة (بخلفية صفراء) بانتظار ترجمتها.',
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('ابحث عن كلمة أو ترجمة...')}
+            className="input pr-9"
+          />
+        </label>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-400">
+            {t('عدد الكلمات:')} {filtered.length}
+          </span>
+          <button
+            onClick={() => setShowAddLang(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" /> {t('إضافة لغة')}
+          </button>
+        </div>
+      </div>
+
+      <div className="max-h-[70vh] overflow-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead className="sticky top-0 z-10 bg-white">
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="sticky right-0 z-10 bg-white p-3 text-start font-medium">{t('العربي')}</th>
+              {languages.map((l) => (
+                <th key={l.code} className="p-3 text-start font-medium">
+                  <div className="flex items-center gap-1.5">
+                    {l.label}
+                    {!BUILT_IN_TRANSLATION_LANGUAGES.some((k) => k.code === l.code) && (
+                      <button onClick={() => removeLanguage(l.code)} className="text-slate-300 hover:text-red-500" title={t('حذف هذه اللغة')}>
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((ar) => (
+              <tr key={ar} className="border-b border-slate-50 last:border-0 align-top">
+                <td className="sticky right-0 z-10 max-w-[260px] bg-white p-3 font-medium text-slate-700">{ar}</td>
+                {languages.map((l) => {
+                  const value = cellValue(ar, l.code);
+                  const isMissing = !value;
+                  return (
+                    <td key={l.code} className="p-2">
+                      <input
+                        key={`${ar}-${l.code}-${value}`}
+                        defaultValue={value}
+                        onBlur={(e) => {
+                          const next = e.target.value;
+                          if (next !== value) saveCell(ar, l.code, next);
+                        }}
+                        placeholder={t('بلا ترجمة بعد')}
+                        dir={l.code === 'ur' ? 'rtl' : 'ltr'}
+                        className={`w-full min-w-[180px] rounded-lg border px-2.5 py-1.5 text-sm focus:border-brand-400 focus:outline-none ${
+                          isMissing ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'
+                        }`}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showAddLang && <AddLanguageModal onClose={() => setShowAddLang(false)} onAdd={addLanguage} />}
+    </div>
+  );
+}
+
+function AddLanguageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (code: string, label: string) => Promise<void> }) {
+  const { t } = useI18n();
+  const [code, setCode] = useState('');
+  const [label, setLabel] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!code.trim() || !label.trim()) return;
+    setSubmitting(true);
+    try {
+      await onAdd(code.trim().toLowerCase(), label.trim());
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <h2 className="text-lg font-bold text-slate-800">{t('إضافة لغة جديدة')}</h2>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('اسم اللغة (بالعربي)')}</span>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} required className="input" placeholder={t('مثال: الفرنسية')} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('رمز اللغة')}</span>
+            <input value={code} onChange={(e) => setCode(e.target.value)} required className="input" placeholder="fr" dir="ltr" />
+          </label>
+          <p className="text-xs text-slate-400">
+            {t('رمز قصير مميّز (حرفان عادة، مثل en أو fr) يُستخدم داخلياً فقط — تفعيل اللغة فعلياً في مُبدِّل اللغة يحتاج خطوة برمجية بسيطة منفصلة.')}
+          </p>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="mt-2 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? t('جارِ الإضافة…') : t('إضافة اللغة')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -3540,6 +3770,7 @@ export default function Settings() {
   const canDaysOff = can('edit_days_off');
   const canLandingPage = can('edit_landing_page');
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
+  const canTranslations = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
@@ -3554,6 +3785,7 @@ export default function Settings() {
     | 'landing_page'
     | 'mobile_app'
     | 'permissions'
+    | 'translations'
     | 'commissions'
     | 'riyadh_zones'
     | 'activity_log';
@@ -3568,6 +3800,7 @@ export default function Settings() {
     if (canDaysOff) return 'days_off';
     if (canLandingPage) return 'landing_page';
     if (canPermissions) return 'permissions';
+    if (canTranslations) return 'translations';
     if (canCommissions) return 'commissions';
     if (canRiyadhZones) return 'riyadh_zones';
     return 'activity_log';
@@ -3658,6 +3891,14 @@ export default function Settings() {
             <PermissionsIcon className="h-4 w-4" /> {t('الصلاحيات')}
           </button>
         )}
+        {canTranslations && (
+          <button
+            onClick={() => setTab('translations')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'translations' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <TranslationsIcon className="h-4 w-4" /> {t('الترجمة')}
+          </button>
+        )}
         {canCommissions && (
           <button
             onClick={() => setTab('commissions')}
@@ -3702,6 +3943,8 @@ export default function Settings() {
         <MobileAppTab />
       ) : tab === 'permissions' && canPermissions ? (
         <PermissionsTab />
+      ) : tab === 'translations' && canTranslations ? (
+        <TranslationsTab />
       ) : tab === 'commissions' && canCommissions ? (
         <CommissionsTab />
       ) : tab === 'riyadh_zones' && canRiyadhZones ? (

@@ -41,6 +41,8 @@ import type {
   DistrictGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
+  TranslationOverride,
+  TranslationLanguage,
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
@@ -153,6 +155,13 @@ interface DbShape {
   commissionConfig: CommissionConfig;
   commissionTiers: CommissionTier[];
   commissionEligibility: CommissionEligibility[];
+  // صفحة الإعدادات ← الترجمة — تعديلات/إضافات صاحب النظام على قواميس
+  // الترجمة الثابتة (translations.ts). انظر TranslationOverride في
+  // src/shared/types.ts.
+  translationOverrides: TranslationOverride[];
+  // لغات إضافية أُضيفت من نفس الصفحة، بعد الأربع الأساسية — انظر
+  // TranslationLanguage في src/shared/types.ts.
+  translationLanguages: TranslationLanguage[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -464,6 +473,8 @@ function seed(): DbShape {
       { id: 'ct-3', from: 30000, to: null, marketer_rate: 0.1, supervisor_rate: 0.04 },
     ],
     commissionEligibility: [],
+    translationOverrides: [],
+    translationLanguages: [],
   };
 }
 
@@ -603,6 +614,8 @@ async function load(): Promise<DbShape> {
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
     if (!parsed.commissionTiers) parsed.commissionTiers = seed().commissionTiers;
     if (!parsed.commissionEligibility) parsed.commissionEligibility = [];
+    if (!parsed.translationOverrides) parsed.translationOverrides = [];
+    if (!parsed.translationLanguages) parsed.translationLanguages = [];
     // عقود قديمة قبل إضافة سجل الدفعات (payments) — تبقى paid_amount/
     // remaining_amount المحفوظتان سابقاً كما هي (لا يمكن إعادة بناء سجل
     // دفعات تفصيلي من رقم إجمالي محفوظ فقط)، فقط تُضاف مصفوفة فارغة حتى
@@ -1315,6 +1328,40 @@ export const store = {
       db.commissionEligibility.splice(idx, 1);
       persist();
       return true;
+    },
+  },
+  translationOverrides: {
+    list: () => db.translationOverrides,
+    // دمج جزئي: تعديل خانة لغة واحدة (مثلاً "بنغالي" فقط) لا يمسح ما هو
+    // محفوظ فعلاً للغات الأخرى لنفس الكلمة.
+    upsert: (ar: string, values: Record<string, string>) => {
+      const existing = db.translationOverrides.find((t) => t.ar === ar);
+      const now = new Date().toISOString();
+      if (existing) {
+        existing.values = { ...existing.values, ...values };
+        existing.updated_at = now;
+        persist();
+        return existing;
+      }
+      const row: TranslationOverride = { id: store.id(), ar, values, updated_at: now };
+      db.translationOverrides.push(row);
+      persist();
+      return row;
+    },
+    remove: (ar: string) => {
+      const idx = db.translationOverrides.findIndex((t) => t.ar === ar);
+      if (idx === -1) return false;
+      db.translationOverrides.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  translationLanguages: {
+    list: () => db.translationLanguages,
+    update: (languages: TranslationLanguage[]) => {
+      db.translationLanguages = languages;
+      persist();
+      return db.translationLanguages;
     },
   },
 };

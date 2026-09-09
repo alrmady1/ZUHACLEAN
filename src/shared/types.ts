@@ -1485,3 +1485,30 @@ export const DEFAULT_COMPANY_BANK_ACCOUNT: CompanyBankAccount = {
   swift_code: '',
   updated_at: new Date(0).toISOString(),
 };
+
+// نظام إدارة الترجمة — صفحة الإعدادات ← الترجمة (TranslationsTab في
+// Settings.tsx). القائمة الكاملة بالكلمات العربية القابلة للترجمة تبقى
+// مُشتقّة آلياً من قواميس translations.ts الثابتة (AR_TO_EN بصفتها الأشمل)
+// — لا حاجة لتكرارها هنا. هذا الكيان يخزّن فقط التعديلات/الإضافات التي
+// يجريها صاحب النظام من الواجهة، وتطغى على القيم الثابتة عند القراءة
+// الحية في useI18n() (انظر src/client/lib/i18n.tsx وGET/PATCH
+// /translations في api.ts).
+export interface TranslationOverride {
+  id: string;
+  ar: string;
+  // كود اللغة (en/bn/ur، ولاحقاً أي كود جديد يُضاف من نفس الصفحة) → النص
+  // المترجَم. حقل حر (Record) بدل حقول en?/bn?/ur? صريحة خصيصاً حتى تُضاف
+  // لغة جديدة كاملة مستقبلاً من واجهة الإعدادات وحدها، دون أي تعديل على
+  // شكل البيانات المخزَّنة نفسه.
+  values: Record<string, string>;
+  updated_at: string;
+}
+
+// لغات إضافية أضافها صاحب النظام من نفس صفحة الترجمة، بعد الأربع الأساسية
+// (عربي/إنجليزي/بنغالي/أردو) المدمجة في الكود. إضافة لغة هنا تُظهر عموداً
+// جديداً في الجدول للبدء بترجمة الكلمات إليها فوراً — تفعيلها الفعلي في
+// مُبدِّل اللغة نفسه (TopBar.tsx/Login.tsx) يبقى خطوة برمجية صغيرة منفصلة.
+export interface TranslationLanguage {
+  code: string;
+  label: string;
+}

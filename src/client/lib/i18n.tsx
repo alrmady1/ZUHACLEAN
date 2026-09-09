@@ -14,6 +14,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from './translations.js';
 import { setDateLang, type Lang } from './date.js';
 import { ROLE_LABELS_AR, ROLE_LABELS_EN, ROLE_LABELS_BN, ROLE_LABELS_UR, type UserRole } from '../../shared/types.js';
+import { api } from './api.js';
 
 const STORAGE_KEY = 'zaha-ops:lang';
 
@@ -46,6 +47,23 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem(STORAGE_KEY);
     return isLang(saved) ? saved : 'ar';
   });
+  // تعديلات/إضافات صاحب النظام من الإعدادات ← الترجمة (نص عربي ← كود لغة
+  // ← الترجمة) — تُقرأ مرة واحدة عند بدء التطبيق وتطغى على قواميس
+  // translations.ts الثابتة أدناه عند وجودها، فتُتيح تعديل أي ترجمة (أو
+  // إضافة لغة جديدة كلياً) دون نشر نسخة جديدة من الكود. يبقى العمل
+  // بالقواميس الثابتة وحدها سليماً لو فشل الجلب (شبكة أمان).
+  const [overrides, setOverrides] = useState<Record<string, Record<string, string>>>({});
+
+  useEffect(() => {
+    api
+      .get<{ overrides: { ar: string; values: Record<string, string> }[] }>('/translations')
+      .then((data) => {
+        const map: Record<string, Record<string, string>> = {};
+        for (const row of data.overrides) map[row.ar] = row.values;
+        setOverrides(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -56,12 +74,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const toggleLang = () => setLangState((prev) => (prev === 'ar' ? 'en' : 'ar'));
   const setLang = (next: Lang) => setLangState(next);
   const t = (arabic: string) => {
+    const override = overrides[arabic]?.[lang];
+    if (override) return override;
     if (lang === 'en') return AR_TO_EN[arabic] ?? arabic;
     if (lang === 'bn') return AR_TO_BN[arabic] ?? arabic;
     if (lang === 'ur') return AR_TO_UR[arabic] ?? arabic;
     return arabic;
   };
   const tt = (arabic: string, english: string) => {
+    const override = overrides[arabic]?.[lang];
+    if (override) return override;
     if (lang === 'en') return english;
     if (lang === 'bn') return AR_TO_BN[arabic] ?? arabic;
     if (lang === 'ur') return AR_TO_UR[arabic] ?? arabic;

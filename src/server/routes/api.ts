@@ -173,6 +173,43 @@ api.patch('/permissions/:key', (req, res) => {
   res.json(updated);
 });
 
+// ---------------------------------------------------------------------------
+// إدارة الترجمة — صفحة الإعدادات ← الترجمة (TranslationsTab). القائمة
+// الكاملة بالكلمات العربية القابلة للترجمة تبقى محسوبة على العميل وحده
+// (قواميس translations.ts الثابتة — AR_TO_EN بصفتها الأشمل) — هذا الطرف
+// يخزّن فقط التعديلات/الإضافات الفعلية (values لكل كلمة)، بالإضافة لأي
+// لغات جديدة أُضيفت من نفس الصفحة. مقيَّدة في الواجهة فقط (PERMISSIONS_
+// ACCESS_ROLES)، كبقية نقاط التحكم في هذا الملف. لا حماية دخول هنا عمداً:
+// I18nProvider يقرأها عند بدء التطبيق قبل تسجيل الدخول (شاشة الدخول نفسها
+// تعرض مُحدِّد لغة للفنيين).
+// ---------------------------------------------------------------------------
+api.get('/translations', (_req, res) => {
+  res.json({
+    overrides: store.translationOverrides.list(),
+    languages: store.translationLanguages.list(),
+  });
+});
+
+api.patch('/translations', (req, res) => {
+  const { ar, values } = req.body ?? {};
+  if (typeof ar !== 'string' || !ar.trim() || typeof values !== 'object' || values === null) {
+    return res.status(400).json({ error: 'ar (نص) وvalues (كائن) مطلوبان' });
+  }
+  const cleaned: Record<string, string> = {};
+  for (const [k, v] of Object.entries(values as Record<string, unknown>)) {
+    if (typeof v === 'string') cleaned[k] = v;
+  }
+  const updated = store.translationOverrides.upsert(ar, cleaned);
+  res.json(updated);
+});
+
+api.patch('/translations/languages', (req, res) => {
+  const languages = Array.isArray(req.body?.languages) ? req.body.languages : [];
+  const updated = store.translationLanguages.update(languages);
+  logActivity(req, 'تم تعديل قائمة لغات الترجمة');
+  res.json(updated);
+});
+
 // Strip the password hash before a profile ever leaves the server.
 function toSafeProfile(p: StoredProfile) {
   const { password_hash, ...safe } = p;
