@@ -304,7 +304,7 @@ export default function BookingWizardPage() {
             <div className="space-y-4">
               <label className="block text-sm">
                 <span className="mb-1.5 flex items-center gap-1.5 font-medium text-slate-600">
-                  <User className="h-4 w-4" /> الاسم الكامل
+                  <User className="h-4 w-4" /> الاسم
                 </span>
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: أحمد محمد" className="input" />
               </label>
