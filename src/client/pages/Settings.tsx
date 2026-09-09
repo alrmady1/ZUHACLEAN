@@ -88,7 +88,7 @@ import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
 
-const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'marketer', 'accountant', 'technician'];
+const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'marketer', 'accountant', 'supervisor', 'technician'];
 
 const ROLE_PLURAL_LABELS_AR: Record<UserRole, string> = {
   general_manager: 'المدير العام',
