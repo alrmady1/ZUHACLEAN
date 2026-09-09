@@ -88,7 +88,7 @@ import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
 
-const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician'];
+const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'supervisor', 'technician', 'marketer', 'accountant'];
 
 const ROLE_PLURAL_LABELS_AR: Record<UserRole, string> = {
   general_manager: 'المدير العام',
@@ -96,6 +96,8 @@ const ROLE_PLURAL_LABELS_AR: Record<UserRole, string> = {
   admin_supervisor: 'مشرفين إداريين',
   supervisor: 'مشرفين ميدانيين',
   technician: 'فنيين ميدانيين',
+  marketer: 'مسوّقين',
+  accountant: 'محاسبين',
 };
 
 const ROLE_BADGE_STYLES: Record<UserRole, string> = {
@@ -104,6 +106,8 @@ const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   admin_supervisor: 'bg-amber-100 text-amber-700',
   supervisor: 'bg-blue-100 text-blue-700',
   technician: 'bg-emerald-100 text-emerald-700',
+  marketer: 'bg-fuchsia-100 text-fuchsia-700',
+  accountant: 'bg-cyan-100 text-cyan-700',
 };
 
 function Field({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {

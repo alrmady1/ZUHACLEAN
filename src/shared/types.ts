@@ -8,7 +8,9 @@ export type UserRole =
   | 'admin'
   | 'admin_supervisor'
   | 'supervisor'
-  | 'technician';
+  | 'technician'
+  | 'marketer'
+  | 'accountant';
 
 export const ROLE_LABELS_AR: Record<UserRole, string> = {
   general_manager: 'المدير العام',
@@ -16,6 +18,8 @@ export const ROLE_LABELS_AR: Record<UserRole, string> = {
   admin_supervisor: 'مشرف إداري',
   supervisor: 'مشرف ميداني',
   technician: 'فني ميداني',
+  marketer: 'مسوّق',
+  accountant: 'محاسب',
 };
 
 export const ROLE_LABELS_EN: Record<UserRole, string> = {
@@ -24,6 +28,8 @@ export const ROLE_LABELS_EN: Record<UserRole, string> = {
   admin_supervisor: 'Admin Supervisor',
   supervisor: 'Supervisor',
   technician: 'Technician',
+  marketer: 'Marketer',
+  accountant: 'Accountant',
 };
 
 // للغة البنغالية (خيار واجهة يظهر للفنيين الميدانيين تحديداً — انظر
@@ -34,6 +40,8 @@ export const ROLE_LABELS_BN: Record<UserRole, string> = {
   admin_supervisor: 'অ্যাডমিন সুপারভাইজার',
   supervisor: 'সুপারভাইজার',
   technician: 'টেকনিশিয়ান',
+  marketer: 'মার্কেটার',
+  accountant: 'অ্যাকাউন্টেন্ট',
 };
 
 // للغة الأردية (خيار واجهة يظهر للفنيين الميدانيين تحديداً، مثل البنغالية
@@ -44,6 +52,8 @@ export const ROLE_LABELS_UR: Record<UserRole, string> = {
   admin_supervisor: 'ایڈمن سپروائزر',
   supervisor: 'سپروائزر',
   technician: 'ٹیکنیشن',
+  marketer: 'مارکیٹر',
+  accountant: 'اکاؤنٹنٹ',
 };
 
 // Centralized role-permission groups. This app has no real session/token
