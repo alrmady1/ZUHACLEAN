@@ -16,6 +16,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Landmark,
+  Apple,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
@@ -451,6 +453,43 @@ export default function OrderPage() {
           >
             <MessageCircle className="h-4 w-4" /> واتساب
           </a>
+        </div>
+      </section>
+
+      {/* ========================= طرق دفع آمنة ========================= */}
+      <section className="bg-white px-5 py-12 text-center sm:px-10">
+        <h2 className="mb-8 text-lg font-bold text-slate-400 sm:text-xl">طرق دفع آمنة</h2>
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-8 sm:gap-14">
+          {/* تحويل بنكي */}
+          <Landmark className="h-9 w-9 shrink-0" style={{ color: '#8a6a4f' }} />
+          {/* Apple Pay */}
+          <div className="flex shrink-0 items-center gap-1 text-slate-900">
+            <Apple className="h-8 w-8" fill="currentColor" />
+            <span className="text-2xl font-semibold">Pay</span>
+          </div>
+          {/* مدى — شريطان أفقيان بلونَي الهوية الرسمية + الاسم عربي/إنجليزي. */}
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="h-9 w-14 overflow-hidden rounded-md shadow-sm">
+              <div className="h-1/2" style={{ backgroundColor: '#1D9BD8' }} />
+              <div className="h-1/2" style={{ backgroundColor: '#84B440' }} />
+            </div>
+            <div className="text-start leading-tight">
+              <div className="text-lg font-bold text-slate-800">مدى</div>
+              <div className="text-sm font-medium text-slate-500">mada</div>
+            </div>
+          </div>
+          {/* تابي — نفس الشعار الرسمي المستخدَم أعلى الصفحة. */}
+          <img src="/tabby-logo.png" alt="Tabby" className="h-10 w-auto shrink-0 rounded-2xl shadow-sm" />
+          {/* تمارا — نفس الشعار والكبسولة المتدرّجة المستخدَمة أعلى الصفحة. */}
+          <span
+            className="flex shrink-0 items-center justify-center rounded-full px-6 py-3 shadow-sm"
+            style={{
+              background:
+                'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
+            }}
+          >
+            <img src="/tamara-logo.svg" alt="Tamara" className="h-4 w-auto" />
+          </span>
         </div>
       </section>
 
