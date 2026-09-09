@@ -1,19 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send } from 'lucide-react';
+import { MessageCircle, MessageSquareText, Phone, Headphones, X, Send } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { LiveChatMessage } from '../../shared/types.js';
+import { COMPANY_NAME, COMPANY_PHONE } from '../../shared/types.js';
+import { waLink } from '../lib/whatsapp.js';
 
 const THREAD_ID_STORAGE_KEY = 'zaha-live-chat-thread-id';
 const POLL_MS = 4000;
+const WHATSAPP_INTRO = `مرحباً ${COMPANY_NAME}، أرغب في الاستفسار عن خدماتكم`;
+// أخضر واتساب الرسمي — لتمييزه بصرياً عن زر الاتصال (أخضر الهوية العامة
+// GREEN) رغم اشتراكهما في نفس فئة "تواصل سريع" ضمن قائمة الخيارات أدناه.
+const WHATSAPP_GREEN = '#25D366';
 
-// أيقونة دردشة مباشرة عائمة في صفحة "اطلب الخدمة" العامة (OrderPage.tsx) —
-// بديل/تكملة لواتساب، لكن بشرية بالكامل عمداً (بلا ذكاء اصطناعي): كل
-// رسالة تُنبِّه الإدارة فوراً (انظر POST /public/chat/messages في api.ts)،
-// والرد يكتبه موظف يدوياً من الإعدادات ← الطلبات الخارجية. معرّف المحادثة
-// يُحفظ في localStorage فتستمر نفس المحادثة عند عودة نفس الزائر لاحقاً من
-// نفس الجهاز/المتصفح.
+// زر تواصل عائم في صفحة "اطلب الخدمة" العامة (OrderPage.tsx) — بالنقر
+// يتوسَّع إلى ثلاثة خيارات (دردشة فورية، اتصال، واتساب)، بدل فتح الدردشة
+// مباشرة كما كان سابقاً. الدردشة نفسها بشرية بالكامل عمداً (بلا ذكاء
+// اصطناعي): كل رسالة تُنبِّه الإدارة فوراً (انظر POST /public/chat/messages
+// في api.ts)، والرد يكتبه موظف يدوياً من الإعدادات ← الطلبات الخارجية.
+// معرّف المحادثة يُحفظ في localStorage فتستمر نفس المحادثة عند عودة نفس
+// الزائر لاحقاً من نفس الجهاز/المتصفح.
 export default function LiveChatWidget() {
   const [open, setOpen] = useState(false);
+  // القائمة الموسَّعة (اتصال/واتساب/دردشة) — منفصلة عن open (فتح لوحة
+  // الدردشة نفسها)؛ فتح الدردشة يطوي القائمة تلقائياً (لا معنى لبقائها
+  // ظاهرة فوق لوحة الدردشة نفسها).
+  const [expanded, setExpanded] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveChatMessage[]>([]);
   const [name, setName] = useState('');
@@ -139,13 +150,54 @@ export default function LiveChatWidget() {
           </div>
         </div>
       )}
+      {!open && expanded && (
+        <div className="mb-3 flex flex-col items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setExpanded(false);
+              setOpen(true);
+            }}
+            title="دردشة فورية"
+            className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105 bg-brand-600"
+          >
+            <MessageSquareText className="h-5 w-5" />
+          </button>
+          <a
+            href={`tel:${COMPANY_PHONE}`}
+            dir="ltr"
+            title="اتصال"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition hover:scale-105"
+          >
+            <Phone className="h-5 w-5" />
+          </a>
+          <a
+            href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            target="_blank"
+            rel="noreferrer"
+            title="واتساب"
+            className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105"
+            style={{ backgroundColor: WHATSAPP_GREEN }}
+          >
+            <MessageCircle className="h-5 w-5" />
+          </a>
+        </div>
+      )}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-xl transition hover:bg-brand-700"
-        title="دردشة مباشرة"
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          setExpanded((e) => !e);
+        }}
+        className={`flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl transition hover:opacity-90 ${
+          open || expanded ? 'bg-violet-600' : 'bg-brand-600'
+        }`}
+        title={open || expanded ? 'إخفاء' : 'تواصل معنا'}
       >
-        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        {open || expanded ? <X className="h-6 w-6" /> : <Headphones className="h-6 w-6" />}
       </button>
     </div>
   );
