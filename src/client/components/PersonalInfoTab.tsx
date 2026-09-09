@@ -174,7 +174,7 @@ export default function PersonalInfoTab({ showSupervisorExtras }: { showSupervis
                   </div>
                   {scheduled ? (
                     <span className={`text-xs font-semibold ${remaining > 0.005 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {remaining > 0.005 ? tt(`متبقٍ ${formatMoney(remaining)}`, `${formatMoney(remaining)} remaining`) : t('مسدَّدة بالكامل')}
+                      {remaining > 0.005 ? `${t('متبقٍ')} ${formatMoney(remaining)}` : t('مسدَّدة بالكامل')}
                     </span>
                   ) : (
                     <span className="text-xs text-slate-400">{t('بلا استقطاع مجدوَل')}</span>
