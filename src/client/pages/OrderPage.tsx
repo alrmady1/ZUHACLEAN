@@ -193,7 +193,7 @@ export default function OrderPage() {
               <Link
                 to="/order/book"
                 className="rounded-xl px-6 py-3 text-sm font-bold transition hover:opacity-90"
-                style={{ backgroundColor: GREEN, color: NAVY }}
+                style={{ backgroundColor: CREAM, color: NAVY }}
               >
                 اطلب خدمتك الآن
               </Link>
