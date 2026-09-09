@@ -167,19 +167,21 @@ export default function LiveChatWidget() {
             href={`tel:${COMPANY_PHONE}`}
             dir="ltr"
             title="اتصال"
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition hover:scale-105"
+            className="relative flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition hover:scale-105"
           >
-            <Phone className="h-5 w-5" />
+            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <Phone className="relative z-10 h-5 w-5" />
           </a>
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
             target="_blank"
             rel="noreferrer"
             title="واتساب"
-            className="flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105"
+            className="relative flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105"
             style={{ backgroundColor: WHATSAPP_GREEN }}
           >
-            <MessageCircle className="h-5 w-5" />
+            <span className="absolute inset-0 animate-ping rounded-full opacity-75" style={{ backgroundColor: WHATSAPP_GREEN }} />
+            <MessageCircle className="relative z-10 h-5 w-5" />
           </a>
         </div>
       )}
