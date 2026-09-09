@@ -195,7 +195,7 @@ export default function LiveChatWidget() {
           setExpanded((e) => !e);
         }}
         className={`flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl transition hover:opacity-90 ${
-          open || expanded ? 'bg-violet-600' : 'bg-brand-600'
+          open || expanded ? 'bg-black' : 'bg-brand-600'
         }`}
         title={open || expanded ? 'إخفاء' : 'تواصل معنا'}
       >
