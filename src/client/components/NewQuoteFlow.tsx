@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { X, Plus, ChevronDown, Check, Sparkles, User, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Quote, QuotePathType, ServicePricingModel } from '../../shared/types.js';
+import type { Customer, Service, Quote, QuotePathType, ServicePricingModel, NeighborhoodZoneAssignment } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { DEFAULT_QUOTE_PAYMENT_NOTE } from '../../shared/documentDefaults.js';
 import { formatMoney } from '../lib/date.js';
@@ -66,6 +66,14 @@ export default function NewQuoteFlow({
 
   const [allCustomers, setAllCustomers] = useState(customers);
   useEffect(() => setAllCustomers(customers), [customers]);
+
+  // ترشيحات حقل "الحي" أدناه — من سجل أحياء الرياض (الإعدادات ← مناطق
+  // الرياض)، اقتراح فقط لا قيد صارم — نفس منطق NewAppointmentModal.tsx
+  // وCustomers.tsx بالضبط.
+  const [neighborhoodZones, setNeighborhoodZones] = useState<NeighborhoodZoneAssignment[]>([]);
+  useEffect(() => {
+    api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setNeighborhoodZones).catch(() => {});
+  }, []);
 
   const [customerId, setCustomerId] = useState(initialQuote?.customer_id ?? '');
   const [customerSearch, setCustomerSearch] = useState(initialQuote?.customer_name_snapshot ?? '');
@@ -290,8 +298,15 @@ export default function NewQuoteFlow({
                   <input name="new_customer_phone" placeholder="05xxxxxxxx" className="input" />
                 </div>
                 <input name="new_customer_address" placeholder={t('العنوان')} className="input" />
+                <datalist id="riyadh-districts-list">
+                  {Array.from(new Set(neighborhoodZones.map((n) => n.neighborhood)))
+                    .sort((a, b) => a.localeCompare(b, 'ar'))
+                    .map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                </datalist>
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="new_customer_district" placeholder={t('الحي (اختياري)')} className="input" />
+                  <input name="new_customer_district" list="riyadh-districts-list" placeholder={t('الحي (اختياري)')} className="input" />
                   <input name="new_customer_city" defaultValue="الرياض" placeholder={t('المدينة (اختياري)')} className="input" />
                 </div>
                 <div className="flex items-center gap-2">
