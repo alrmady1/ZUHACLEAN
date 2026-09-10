@@ -3,7 +3,7 @@ import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage, uploadExpenseInvoice, uploadEmployeeIdPhoto } from '../lib/storage.js';
-import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds } from '../lib/push.js';
+import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
   Appointment,
@@ -65,6 +65,7 @@ import {
   LEAVE_TYPE_LABELS_AR,
   LEAD_STATUS_LABELS_AR,
   VISIT_OUTCOME_LABELS_AR,
+  ANNUAL_LEAVE_BALANCE_DAYS,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 
@@ -492,6 +493,33 @@ api.post('/leaves', async (req, res) => {
   if (body.end_date < body.start_date) {
     return res.status(400).json({ error: 'تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء' });
   }
+  // إجازة مدفوعة لا تُتاح قبل إتمام ١٢ شهراً من تاريخ التعيين — بموجب نظام
+  // العمل السعودي. بلا تاريخ تعيين مسجَّل، لا نمنع (لا بيانات كافية للحكم)
+  // — نفس تساهل الواجهة (Settings.tsx isEligibleForPaidLeave).
+  if (body.leave_type === 'paid') {
+    const owner = store.profiles.get(body.profile_id);
+    if (owner?.hire_date) {
+      const oneYearAfterHire = new Date(owner.hire_date);
+      oneYearAfterHire.setFullYear(oneYearAfterHire.getFullYear() + 1);
+      if (new Date() < oneYearAfterHire) {
+        return res.status(400).json({ error: 'لا يحق لهذا الموظف إجازة مدفوعة قبل إتمام ١٢ شهراً من تاريخ التعيين' });
+      }
+    }
+  }
+  const daysCount = daysBetweenInclusive(body.start_date, body.end_date);
+  const deductFromBalance = Boolean(body.deduct_from_annual_balance);
+  // تجاوز رصيد الإجازة السنوي (٢١ يوماً) لا يمنع تسجيل الإجازة — يُعلَّم
+  // بانتظار اعتماد المدير العام، ويصله تنبيه فوري (انظر PATCH /leaves/:id
+  // أدناه لاعتمادها لاحقاً).
+  let exceedsBalance = false;
+  if (deductFromBalance) {
+    const year = body.start_date.slice(0, 4);
+    const usedSoFar = store.leaves
+      .list()
+      .filter((l) => l.profile_id === body.profile_id && l.deduct_from_annual_balance && l.start_date.slice(0, 4) === year)
+      .reduce((sum, l) => sum + l.days_count, 0);
+    exceedsBalance = usedSoFar + daysCount > ANNUAL_LEAVE_BALANCE_DAYS;
+  }
   const leave: LeaveRecord = {
     id: store.id(),
     profile_id: body.profile_id,
@@ -499,8 +527,10 @@ api.post('/leaves', async (req, res) => {
     other_type_label: body.leave_type === 'other' ? body.other_type_label : undefined,
     start_date: body.start_date,
     end_date: body.end_date,
-    days_count: daysBetweenInclusive(body.start_date, body.end_date),
+    days_count: daysCount,
     notes: body.notes || undefined,
+    deduct_from_annual_balance: deductFromBalance,
+    pending_gm_approval: exceedsBalance || undefined,
     created_at: new Date().toISOString(),
   };
   // صورة داعمة اختيارية (مثل تقرير طبي) — يرسلها العميل كـ base64 data URL،
@@ -516,7 +546,32 @@ api.post('/leaves', async (req, res) => {
   store.leaves.insert(leave);
   const leaveOwner = store.profiles.get(leave.profile_id)?.full_name ?? 'موظف';
   logActivity(req, `تم إضافة إجازة لـ "${leaveOwner}" من ${leave.start_date} إلى ${leave.end_date}`);
+  if (exceedsBalance) {
+    void sendPushToProfiles(generalManagerNotifyProfileIds(), {
+      title: 'إجازة تتجاوز الرصيد السنوي — بانتظار موافقتك',
+      body: `${leaveOwner}: ${leave.days_count} يوم (${leave.start_date} إلى ${leave.end_date})`,
+      url: '/settings',
+      tag: `leave-approval-${leave.id}`,
+    });
+  }
   res.status(201).json(leave);
+});
+
+// اعتماد المدير العام لإجازة تجاوزت الرصيد السنوي — يُسقِط علامة الانتظار
+// فقط، لا يُعدِّل بيانات الإجازة نفسها. مقيَّد في الواجهة فقط (زر
+// "اعتماد" لا يظهر إلا للمدير العام، انظر DaysOffTab في Settings.tsx).
+api.patch('/leaves/:id', (req, res) => {
+  const body = req.body ?? {};
+  if (body.pending_gm_approval !== undefined) {
+    const updated = store.leaves.update(req.params.id, { pending_gm_approval: body.pending_gm_approval || undefined });
+    if (!updated) return res.status(404).json({ error: 'not found' });
+    if (!body.pending_gm_approval) {
+      const owner = store.profiles.get(updated.profile_id)?.full_name ?? 'موظف';
+      logActivity(req, `تم اعتماد إجازة "${owner}" التي تجاوزت الرصيد السنوي`);
+    }
+    return res.json(updated);
+  }
+  res.status(400).json({ error: 'nothing to update' });
 });
 
 api.delete('/leaves/:id', (req, res) => {

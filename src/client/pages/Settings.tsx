@@ -91,6 +91,7 @@ import {
   PERMISSIONS_ACCESS_ROLES,
   ACTIVITY_LOG_DELETE_ROLES,
   LEAVE_TYPE_LABELS_AR,
+  ANNUAL_LEAVE_BALANCE_DAYS,
   SERVICE_PRICING_MODEL_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
@@ -1773,7 +1774,8 @@ function TeamLinksTab() {
 // ---------------------------------------------------------------------------
 function DaysOffTab() {
   const { t, tt, roleLabel } = useI18n();
-  const { refreshProfiles } = useAuth();
+  const { user, refreshProfiles } = useAuth();
+  const isGeneralManager = user?.role === 'general_manager';
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -1781,7 +1783,12 @@ function DaysOffTab() {
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
   const [deletingLeaveId, setDeletingLeaveId] = useState<string | null>(null);
+  const [approvingLeaveId, setApprovingLeaveId] = useState<string | null>(null);
   const [leaveTypeInput, setLeaveTypeInput] = useState<LeaveType>('sick');
+  // خيار صريح لكل إجازة — هل تُخصَم من رصيد الـ٢١ يوماً السنوي؟ لا افتراض
+  // تلقائي حسب النوع، يبدأ غير محدَّد (false) في كل نموذج جديد.
+  const [deductFromBalance, setDeductFromBalance] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
   const [leavePhotoPreview, setLeavePhotoPreview] = useState<string | null>(null);
   const [compressingPhoto, setCompressingPhoto] = useState(false);
   // موعد قائم يتعارض مع فترة إجازة مقترحة (لشخص كان مسنَداً له فعلاً قبل
@@ -1832,6 +1839,8 @@ function DaysOffTab() {
       await api.post('/leaves', payload);
       setShowLeaveForm(false);
       setLeaveTypeInput('sick');
+      setDeductFromBalance(false);
+      setSelectedProfileId('');
       setLeavePhotoPreview(null);
       refreshLeaves();
     } finally {
@@ -1853,6 +1862,10 @@ function DaysOffTab() {
       window.alert(t('يجب كتابة نوع الإجازة عند اختيار "أخرى"'));
       return;
     }
+    if (leaveTypeInput === 'paid' && !isEligibleForPaidLeave) {
+      window.alert(t('لا يحق لهذا الموظف إجازة مدفوعة قبل إتمام ١٢ شهراً من تاريخ التعيين'));
+      return;
+    }
     const payload = {
       profile_id: profileId,
       leave_type: form.get('leave_type'),
@@ -1860,6 +1873,7 @@ function DaysOffTab() {
       start_date: start,
       end_date: end,
       notes: form.get('notes') || undefined,
+      deduct_from_annual_balance: deductFromBalance,
       photo_data_url: leavePhotoPreview || undefined,
     };
 
@@ -1952,7 +1966,42 @@ function DaysOffTab() {
     }
   }
 
+  // المدير العام فقط يوافق على إجازة تجاوزت الرصيد السنوي (pending_gm_
+  // approval) — الموافقة لا تغيّر تاريخ/أيام الإجازة نفسها، فقط تُسقِط
+  // علامة الانتظار.
+  async function approveLeave(leave: LeaveRecord) {
+    setApprovingLeaveId(leave.id);
+    try {
+      await api.patch(`/leaves/${leave.id}`, { pending_gm_approval: false });
+      refreshLeaves();
+    } finally {
+      setApprovingLeaveId(null);
+    }
+  }
+
   const currentYear = new Date().getFullYear();
+
+  // أيام هذا العام المخصومة فعلاً من رصيد الموظف (deduct_from_annual_
+  // balance فقط) — الأساس المشترك لنموذج الإضافة وجدول الأرصدة أدناه.
+  function usedAnnualBalance(profileId: string): number {
+    return leaves
+      .filter((l) => l.profile_id === profileId && l.deduct_from_annual_balance && l.start_date.slice(0, 4) === String(currentYear))
+      .reduce((sum, l) => sum + l.days_count, 0);
+  }
+  function remainingAnnualBalance(profileId: string): number {
+    return ANNUAL_LEAVE_BALANCE_DAYS - usedAnnualBalance(profileId);
+  }
+
+  const selectedProfile = people.find((p) => p.id === selectedProfileId);
+  // إجازة مدفوعة تحتاج إتمام ١٢ شهراً من تاريخ التعيين — بموجب نظام العمل
+  // السعودي. بلا تاريخ تعيين مسجَّل، لا نمنع (لا بيانات كافية للحكم).
+  const isEligibleForPaidLeave = (() => {
+    if (!selectedProfile?.hire_date) return true;
+    const oneYearAfterHire = new Date(selectedProfile.hire_date);
+    oneYearAfterHire.setFullYear(oneYearAfterHire.getFullYear() + 1);
+    return new Date() >= oneYearAfterHire;
+  })();
+  const remainingBalanceForSelected = selectedProfileId ? remainingAnnualBalance(selectedProfileId) : ANNUAL_LEAVE_BALANCE_DAYS;
 
   return (
     <div className="space-y-6">
@@ -2028,7 +2077,16 @@ function DaysOffTab() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
-                <select name="profile_id" required className="input">
+                <select
+                  name="profile_id"
+                  required
+                  className="input"
+                  value={selectedProfileId}
+                  onChange={(e) => setSelectedProfileId(e.target.value)}
+                >
+                  <option value="" disabled>
+                    {t('اختر موظف')}
+                  </option>
                   {people.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.full_name} ({roleLabel(p.role)})
@@ -2058,6 +2116,27 @@ function DaysOffTab() {
                 <span className="mb-1 block font-medium text-slate-600">{t('حدِّد نوع الإجازة')}</span>
                 <input name="other_type_label" required className="input" />
               </label>
+            )}
+            {leaveTypeInput === 'paid' && !isEligibleForPaidLeave && (
+              <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                {t('لا يحق لهذا الموظف إجازة مدفوعة قبل إتمام ١٢ شهراً من تاريخ التعيين')}
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={deductFromBalance}
+                onChange={(e) => setDeductFromBalance(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600"
+              />
+              <span className="font-medium text-slate-600">{t('خصم من رصيد الإجازة السنوي (٢١ يوماً/سنة)')}</span>
+            </label>
+            {deductFromBalance && selectedProfileId && (
+              <div className={`rounded-lg px-3 py-2 text-xs ${remainingBalanceForSelected <= 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500'}`}>
+                {tt(`المتبقي من رصيده حالياً: ${remainingBalanceForSelected} يوماً`, `Their remaining balance: ${remainingBalanceForSelected} days`)}
+                {remainingBalanceForSelected <= 0 &&
+                  ' — ' + t('إن تجاوزت هذه الإجازة الرصيد، سيصل تنبيه للمدير العام للموافقة عليها')}
+              </div>
             )}
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
@@ -2103,6 +2182,8 @@ function DaysOffTab() {
                 onClick={() => {
                   setShowLeaveForm(false);
                   setLeaveTypeInput('sick');
+                  setDeductFromBalance(false);
+                  setSelectedProfileId('');
                   setLeavePhotoPreview(null);
                 }}
                 className="text-xs font-medium text-slate-400 hover:text-slate-600"
@@ -2114,6 +2195,11 @@ function DaysOffTab() {
         )}
 
         <div className="space-y-3">
+          {people.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+              {t('لا يوجد مشرفون أو فنيون بعد')}
+            </div>
+          )}
           {people.map((p) => {
             const personLeaves = leaves
               .filter((l) => l.profile_id === p.id)
@@ -2121,58 +2207,85 @@ function DaysOffTab() {
             const daysThisYear = personLeaves
               .filter((l) => l.start_date.slice(0, 4) === String(currentYear))
               .reduce((sum, l) => sum + l.days_count, 0);
-            if (personLeaves.length === 0) return null;
             return (
               <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-800">
                     {p.full_name} <span className="font-normal text-slate-400">({roleLabel(p.role)})</span>
                   </span>
-                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                    {tt(`${daysThisYear} يوم إجازة هذا العام`, `${daysThisYear} leave days this year`)}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {personLeaves.map((l) => (
-                    <div
-                      key={l.id}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs"
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                      {tt(`${daysThisYear} يوم إجازة هذا العام`, `${daysThisYear} leave days this year`)}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${remainingAnnualBalance(p.id) < 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}
                     >
-                      <span className="font-medium text-slate-600">{t(leaveTypeDisplay(l))}</span>
-                      <span dir="ltr" className="text-slate-500">
-                        {l.start_date} → {l.end_date} ({l.days_count} {t('يوم')})
-                      </span>
-                      {l.notes && <span className="truncate text-slate-400">{l.notes}</span>}
-                      {l.photo_url && (
-                        <a
-                          href={l.photo_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={t('عرض الصورة المرفقة')}
-                          className="shrink-0"
-                        >
-                          <img src={l.photo_url} alt="" className="h-8 w-8 rounded-md object-cover" />
-                        </a>
+                      {tt(
+                        `المتبقي من الرصيد السنوي: ${remainingAnnualBalance(p.id)} من ${ANNUAL_LEAVE_BALANCE_DAYS}`,
+                        `Annual balance remaining: ${remainingAnnualBalance(p.id)} of ${ANNUAL_LEAVE_BALANCE_DAYS}`,
                       )}
-                      <button
-                        onClick={() => deleteLeave(l)}
-                        disabled={deletingLeaveId === l.id}
-                        title={t('حذف الإجازة')}
-                        className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                    </span>
+                  </div>
                 </div>
+                {personLeaves.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {personLeaves.map((l) => (
+                      <div
+                        key={l.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium text-slate-600">{t(leaveTypeDisplay(l))}</span>
+                        <span dir="ltr" className="text-slate-500">
+                          {l.start_date} → {l.end_date} ({l.days_count} {t('يوم')})
+                        </span>
+                        {l.deduct_from_annual_balance && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                            {t('من الرصيد السنوي')}
+                          </span>
+                        )}
+                        {l.pending_gm_approval &&
+                          (isGeneralManager ? (
+                            <button
+                              onClick={() => approveLeave(l)}
+                              disabled={approvingLeaveId === l.id}
+                              className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700 hover:bg-amber-200 disabled:opacity-50"
+                            >
+                              {approvingLeaveId === l.id ? t('جارِ الموافقة…') : t('بانتظار موافقتك — اعتماد')}
+                            </button>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">
+                              {t('بانتظار موافقة المدير العام')}
+                            </span>
+                          ))}
+                        {l.notes && <span className="truncate text-slate-400">{l.notes}</span>}
+                        {l.photo_url && (
+                          <a
+                            href={l.photo_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={t('عرض الصورة المرفقة')}
+                            className="shrink-0"
+                          >
+                            <img src={l.photo_url} alt="" className="h-8 w-8 rounded-md object-cover" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => deleteLeave(l)}
+                          disabled={deletingLeaveId === l.id}
+                          title={t('حذف الإجازة')}
+                          className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">{t('لا توجد إجازات مسجَّلة له بعد')}</p>
+                )}
               </div>
             );
           })}
-          {leaves.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
-              {t('لا توجد إجازات سنوية مسجَّلة بعد')}
-            </div>
-          )}
         </div>
       </div>
 

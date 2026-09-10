@@ -910,6 +910,13 @@ export const store = {
   leaves: {
     list: () => db.leaves,
     insert: (l: LeaveRecord) => { db.leaves.push(l); persist(); return l; },
+    update: (id: string, patch: Partial<LeaveRecord>) => {
+      const idx = db.leaves.findIndex((l) => l.id === id);
+      if (idx === -1) return undefined;
+      db.leaves[idx] = { ...db.leaves[idx], ...patch };
+      persist();
+      return db.leaves[idx];
+    },
     remove: (id: string) => {
       const idx = db.leaves.findIndex((l) => l.id === id);
       if (idx === -1) return false;

@@ -73,3 +73,10 @@ export function leadNotifyProfileIds(): string[] {
     .filter((p) => p.role === 'general_manager' || p.role === 'admin' || p.role === 'admin_supervisor')
     .map((p) => p.id);
 }
+
+// المدير العام تحديداً — يُستخدَم عند تسجيل إجازة تتجاوز رصيد الموظف
+// السنوي (٢١ يوماً)، فيحتاج المدير العام وحده اعتمادها (انظر POST
+// /leaves في api.ts).
+export function generalManagerNotifyProfileIds(): string[] {
+  return store.profiles.list().filter((p) => p.role === 'general_manager').map((p) => p.id);
+}
