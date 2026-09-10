@@ -292,7 +292,7 @@ export default function NewQuoteFlow({
                 <input name="new_customer_address" placeholder={t('العنوان')} className="input" />
                 <div className="grid grid-cols-2 gap-2">
                   <input name="new_customer_district" placeholder={t('الحي (اختياري)')} className="input" />
-                  <input name="new_customer_city" placeholder={t('المدينة (اختياري)')} className="input" />
+                  <input name="new_customer_city" defaultValue="الرياض" placeholder={t('المدينة (اختياري)')} className="input" />
                 </div>
                 <div className="flex items-center gap-2">
                   <button

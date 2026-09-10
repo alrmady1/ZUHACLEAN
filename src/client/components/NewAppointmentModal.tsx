@@ -557,7 +557,7 @@ export default function NewAppointmentModal({
                     placeholder={t('الحي (اختياري)')}
                     className="input"
                   />
-                  <input name="new_customer_city" placeholder={t('المدينة (اختياري)')} className="input" />
+                  <input name="new_customer_city" defaultValue="الرياض" placeholder={t('المدينة (اختياري)')} className="input" />
                 </div>
                 <div className="flex gap-2">
                   <input

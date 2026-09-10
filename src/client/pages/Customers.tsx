@@ -560,7 +560,7 @@ export default function Customers() {
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المدينة')}</span>
-                  <input name="city" defaultValue={editing?.city} className="input" />
+                  <input name="city" defaultValue={editing?.city ?? 'الرياض'} className="input" />
                 </label>
               </div>
               <label className="block text-sm">
@@ -742,7 +742,7 @@ function CustomerDetailModal({
   const [phone, setPhone] = useState(customer.phone);
   const [address, setAddress] = useState(customer.address);
   const [district, setDistrict] = useState(customer.district ?? '');
-  const [city, setCity] = useState(customer.city ?? '');
+  const [city, setCity] = useState(customer.city ?? 'الرياض');
   const [locationUrl, setLocationUrl] = useState(customer.location_url ?? '');
   const [customerType, setCustomerType] = useState<CustomerType | ''>(customer.customer_type ?? '');
   const [source, setSource] = useState<CustomerSource | ''>(customer.source ?? '');
