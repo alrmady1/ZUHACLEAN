@@ -233,6 +233,10 @@ api.post('/vehicles', (req, res) => {
   const vehicle: Vehicle = {
     id: store.id(),
     type: body.type,
+    manufacturer: body.manufacturer || undefined,
+    model_trim: body.model_trim || undefined,
+    model_year: body.model_year || undefined,
+    vehicle_class: body.vehicle_class || undefined,
     registration_number: body.registration_number || undefined,
     owner: body.owner || undefined,
     plate_number: body.plate_number,
@@ -271,6 +275,10 @@ api.patch('/vehicles/:id', (req, res) => {
   const body = req.body ?? {};
   const patch: Partial<Vehicle> = {};
   if (body.type !== undefined) patch.type = body.type;
+  if (body.manufacturer !== undefined) patch.manufacturer = body.manufacturer || undefined;
+  if (body.model_trim !== undefined) patch.model_trim = body.model_trim || undefined;
+  if (body.model_year !== undefined) patch.model_year = body.model_year || undefined;
+  if (body.vehicle_class !== undefined) patch.vehicle_class = body.vehicle_class || undefined;
   if (body.registration_number !== undefined) patch.registration_number = body.registration_number || undefined;
   if (body.owner !== undefined) patch.owner = body.owner || undefined;
   if (body.plate_number !== undefined) patch.plate_number = body.plate_number;

@@ -1547,6 +1547,12 @@ export const VEHICLE_RENTAL_FREQUENCY_LABELS_AR: Record<VehicleRentalFrequency, 
 export interface Vehicle {
   id: string;
   type: string; // النوع (مثال: تويوتا هايلكس ٢٠٢٣)
+  // تفصيل اختياري لمكوّنات "النوع" في خانات منفصلة — لا يُشتَق منها type
+  // تلقائياً ولا يستبدلها، فقط بيانات إضافية أدق يملؤها من يريد.
+  manufacturer?: string; // شركة الصنع (مثال: تويوتا)
+  model_trim?: string; // طراز المركبة (مثال: هايلكس)
+  model_year?: string; // موديل (سنة الصنع، مثال: ٢٠٢٣)
+  vehicle_class?: string; // فئة المركبة (مثال: بيك أب، دفع رباعي، سيدان)
   registration_number?: string; // رقم الاستمارة
   owner?: string; // المالك (اسم صاحب الاستمارة — قد يكون الشركة نفسها أو فرداً)
   plate_number: string; // رقم اللوحة

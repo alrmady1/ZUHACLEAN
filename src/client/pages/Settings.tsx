@@ -3095,6 +3095,10 @@ function VehiclesTab() {
     const form = new FormData(e.currentTarget);
     const payload = {
       type: form.get('type'),
+      manufacturer: form.get('manufacturer') || undefined,
+      model_trim: form.get('model_trim') || undefined,
+      model_year: form.get('model_year') || undefined,
+      vehicle_class: form.get('vehicle_class') || undefined,
       registration_number: form.get('registration_number') || undefined,
       // حقل "المالك" مُعطَّل (disabled) عند "ملكية الشركة" فلا يُرسَل ضمن
       // FormData إطلاقاً — القيمة الثابتة تُضبَط هنا مباشرة بدل الاعتماد
@@ -3237,6 +3241,22 @@ function VehiclesTab() {
               </Field>
               <Field label={t('رقم اللوحة')}>
                 <input name="plate_number" defaultValue={editing?.plate_number} required className="input" dir="ltr" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('شركة الصنع')}>
+                <input name="manufacturer" defaultValue={editing?.manufacturer} className="input" placeholder={t('مثال: تويوتا')} />
+              </Field>
+              <Field label={t('طراز المركبة')}>
+                <input name="model_trim" defaultValue={editing?.model_trim} className="input" placeholder={t('مثال: هايلكس')} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('موديل')}>
+                <input name="model_year" defaultValue={editing?.model_year} className="input" dir="ltr" placeholder={t('مثال: ٢٠٢٣')} />
+              </Field>
+              <Field label={t('فئة المركبة')}>
+                <input name="vehicle_class" defaultValue={editing?.vehicle_class} className="input" placeholder={t('مثال: بيك أب')} />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -3430,6 +3450,34 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
 
   return (
     <Modal title={tt(`مصروفات مركبة "${vehicle.type}" (${vehicle.plate_number})`, `Expenses for "${vehicle.type}" (${vehicle.plate_number})`)} onClose={onClose}>
+      {(vehicle.manufacturer || vehicle.model_trim || vehicle.model_year || vehicle.vehicle_class) && (
+        <div className="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4">
+          {vehicle.manufacturer && (
+            <div>
+              <div className="text-[11px] text-slate-400">{t('شركة الصنع')}</div>
+              <div className="font-medium text-slate-700">{vehicle.manufacturer}</div>
+            </div>
+          )}
+          {vehicle.model_trim && (
+            <div>
+              <div className="text-[11px] text-slate-400">{t('طراز المركبة')}</div>
+              <div className="font-medium text-slate-700">{vehicle.model_trim}</div>
+            </div>
+          )}
+          {vehicle.model_year && (
+            <div>
+              <div className="text-[11px] text-slate-400">{t('موديل')}</div>
+              <div className="font-medium text-slate-700" dir="ltr">{vehicle.model_year}</div>
+            </div>
+          )}
+          {vehicle.vehicle_class && (
+            <div>
+              <div className="text-[11px] text-slate-400">{t('فئة المركبة')}</div>
+              <div className="font-medium text-slate-700">{vehicle.vehicle_class}</div>
+            </div>
+          )}
+        </div>
+      )}
       {vehicle.ownership_type === 'rented' && (
         <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
           <h3 className="mb-1 text-xs font-semibold text-slate-500">{t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR.rented)}</h3>

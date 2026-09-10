@@ -37,6 +37,10 @@ function vehicleExpiryClass(dateStr?: string): string {
 // وُجدت (Vehicle.assigned_profile_id، تُدار من الإعدادات ← المركبات).
 // السلفيات والعهدة والعمولة انتقلت إلى تبويب "المحاسبة" المستقل — انظر
 // AccountingTab.tsx.
+// حقول "البيانات الشخصية" نفسها مقيَّدة بالدور — المشرف الميداني لا يرى
+// رقم الهوية/تاريخ انتهائها/صورتها، والفني الميداني يرى فقط الاسم
+// والمسمى الوظيفي والعمر وتاريخ التعيين (بقية الحقول — الجنسية، الجوال،
+// لغة الواجهة، والهوية — مخفية عنه بالكامل)، بطلب صريح من صاحب النظام.
 export default function PersonalInfoTab() {
   const { user, allProfiles } = useAuth();
   const { t, tt } = useI18n();
@@ -51,9 +55,14 @@ export default function PersonalInfoTab() {
 
   const supervisor = allProfiles.find((p) => p.id === user.supervisor_id);
   const myVehicle = vehicles.find((v) => v.assigned_profile_id === user.id);
-  // رقم الهوية وتاريخ انتهائها وصورتها تبقى مخفية عن المشرف الميداني في
-  // صفحته الشخصية (عرضه الذاتي لبياناته)، بطلب صريح — لا يشمل هذا الفني.
-  const hideIdDetails = user.role === 'supervisor';
+  const isTechnician = user.role === 'technician';
+  // رقم الهوية وتاريخ انتهائها وصورتها تبقى مخفية عن المشرف الميداني
+  // والفني الميداني في صفحتهما الشخصية (عرضهما الذاتي لبياناتهما)، بطلب
+  // صريح.
+  const hideIdDetails = user.role === 'supervisor' || isTechnician;
+  // الفني الميداني تحديداً يرى فقط الاسم والمسمى الوظيفي والعمر وتاريخ
+  // التعيين من "البيانات الشخصية" — بقية الحقول (الجنسية، الجوال، لغة
+  // الواجهة) مخفية عنه أيضاً، بطلب صريح.
 
   return (
     <div className="space-y-5">
@@ -72,10 +81,12 @@ export default function PersonalInfoTab() {
             <div className="text-xs text-slate-400">{t('المسمى الوظيفي')}</div>
             <div className="font-medium text-slate-700">{user.job_title || '—'}</div>
           </div>
-          <div>
-            <div className="text-xs text-slate-400">{t('الجنسية')}</div>
-            <div className="font-medium text-slate-700">{user.nationality || '—'}</div>
-          </div>
+          {!isTechnician && (
+            <div>
+              <div className="text-xs text-slate-400">{t('الجنسية')}</div>
+              <div className="font-medium text-slate-700">{user.nationality || '—'}</div>
+            </div>
+          )}
           <div>
             <div className="text-xs text-slate-400">{t('العمر')}</div>
             <div className="font-medium text-slate-700">
@@ -98,14 +109,18 @@ export default function PersonalInfoTab() {
             <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
             <div dir="ltr" className="font-medium text-slate-700">{user.hire_date || '—'}</div>
           </div>
-          <div>
-            <div className="text-xs text-slate-400">{t('رقم الجوال')}</div>
-            <div dir="ltr" className="font-medium text-slate-700">{user.phone || '—'}</div>
-          </div>
-          <div>
-            <div className="text-xs text-slate-400">{t('لغة الواجهة الافتراضية')}</div>
-            <div className="font-medium text-slate-700">{user.default_lang ? t(USER_LANGUAGE_LABELS_AR[user.default_lang]) : t('عربي (افتراضي)')}</div>
-          </div>
+          {!isTechnician && (
+            <div>
+              <div className="text-xs text-slate-400">{t('رقم الجوال')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">{user.phone || '—'}</div>
+            </div>
+          )}
+          {!isTechnician && (
+            <div>
+              <div className="text-xs text-slate-400">{t('لغة الواجهة الافتراضية')}</div>
+              <div className="font-medium text-slate-700">{user.default_lang ? t(USER_LANGUAGE_LABELS_AR[user.default_lang]) : t('عربي (افتراضي)')}</div>
+            </div>
+          )}
         </div>
         {!hideIdDetails && user.id_photo_url && (
           <a
