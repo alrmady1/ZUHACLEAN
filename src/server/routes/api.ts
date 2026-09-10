@@ -246,6 +246,10 @@ api.post('/vehicles', (req, res) => {
     rental_company_name: body.rental_company_name || undefined,
     rental_contract_duration: body.rental_contract_duration || undefined,
     rental_contract_value: numOrUndef(body.rental_contract_value),
+    rental_contract_start_date: body.rental_contract_start_date || undefined,
+    rental_contract_end_date: body.rental_contract_end_date || undefined,
+    rental_amount: numOrUndef(body.rental_amount),
+    rental_amount_frequency: body.rental_amount_frequency || undefined,
     finance_provider: body.finance_provider || undefined,
     installment_duration: body.installment_duration || undefined,
     installment_count: numOrUndef(body.installment_count),
@@ -280,6 +284,10 @@ api.patch('/vehicles/:id', (req, res) => {
   if (body.rental_company_name !== undefined) patch.rental_company_name = body.rental_company_name || undefined;
   if (body.rental_contract_duration !== undefined) patch.rental_contract_duration = body.rental_contract_duration || undefined;
   if (body.rental_contract_value !== undefined) patch.rental_contract_value = numOrUndef(body.rental_contract_value);
+  if (body.rental_contract_start_date !== undefined) patch.rental_contract_start_date = body.rental_contract_start_date || undefined;
+  if (body.rental_contract_end_date !== undefined) patch.rental_contract_end_date = body.rental_contract_end_date || undefined;
+  if (body.rental_amount !== undefined) patch.rental_amount = numOrUndef(body.rental_amount);
+  if (body.rental_amount_frequency !== undefined) patch.rental_amount_frequency = body.rental_amount_frequency || undefined;
   if (body.finance_provider !== undefined) patch.finance_provider = body.finance_provider || undefined;
   if (body.installment_duration !== undefined) patch.installment_duration = body.installment_duration || undefined;
   if (body.installment_count !== undefined) patch.installment_count = numOrUndef(body.installment_count);

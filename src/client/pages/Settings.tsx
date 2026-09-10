@@ -75,6 +75,7 @@ import type {
   TranslationLanguage,
   Vehicle,
   VehicleOwnershipType,
+  VehicleRentalFrequency,
   Expense,
 } from '../../shared/types.js';
 import {
@@ -82,6 +83,7 @@ import {
   DEFAULT_MOBILE_APP_SETTINGS,
   DEFAULT_COMMISSION_CONFIG,
   VEHICLE_OWNERSHIP_TYPE_LABELS_AR,
+  VEHICLE_RENTAL_FREQUENCY_LABELS_AR,
   COMPANY_LEGAL_NAME,
 } from '../../shared/types.js';
 import {
@@ -3109,6 +3111,10 @@ function VehiclesTab() {
       rental_company_name: ownershipType === 'rented' ? form.get('rental_company_name') || undefined : undefined,
       rental_contract_duration: ownershipType === 'rented' ? form.get('rental_contract_duration') || undefined : undefined,
       rental_contract_value: ownershipType === 'rented' ? form.get('rental_contract_value') || undefined : undefined,
+      rental_contract_start_date: ownershipType === 'rented' ? form.get('rental_contract_start_date') || undefined : undefined,
+      rental_contract_end_date: ownershipType === 'rented' ? form.get('rental_contract_end_date') || undefined : undefined,
+      rental_amount: ownershipType === 'rented' ? form.get('rental_amount') || undefined : undefined,
+      rental_amount_frequency: ownershipType === 'rented' ? form.get('rental_amount_frequency') || undefined : undefined,
       finance_provider: ownershipType === 'installments' ? form.get('finance_provider') || undefined : undefined,
       installment_duration: ownershipType === 'installments' ? form.get('installment_duration') || undefined : undefined,
       installment_count: ownershipType === 'installments' ? form.get('installment_count') || undefined : undefined,
@@ -3295,6 +3301,29 @@ function VehiclesTab() {
                     <input type="number" name="rental_contract_value" defaultValue={editing?.rental_contract_value} min={0} step="0.01" className="input" />
                   </Field>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('تاريخ بداية العقد')}>
+                    <input type="date" name="rental_contract_start_date" defaultValue={editing?.rental_contract_start_date} className="input" />
+                  </Field>
+                  <Field label={t('تاريخ نهاية العقد')}>
+                    <input type="date" name="rental_contract_end_date" defaultValue={editing?.rental_contract_end_date} className="input" />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('مبلغ الإيجار (ر.س)')}>
+                    <input type="number" name="rental_amount" defaultValue={editing?.rental_amount} min={0} step="0.01" className="input" />
+                  </Field>
+                  <Field label={t('دورية الإيجار')}>
+                    <select name="rental_amount_frequency" defaultValue={editing?.rental_amount_frequency ?? ''} className="input">
+                      <option value="">{t('بدون تحديد')}</option>
+                      {(Object.keys(VEHICLE_RENTAL_FREQUENCY_LABELS_AR) as VehicleRentalFrequency[]).map((k) => (
+                        <option key={k} value={k}>
+                          {t(VEHICLE_RENTAL_FREQUENCY_LABELS_AR[k])}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
               </div>
             )}
 
@@ -3406,7 +3435,18 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
           <h3 className="mb-1 text-xs font-semibold text-slate-500">{t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR.rented)}</h3>
           {vehicle.rental_company_name && <div>{t('اسم الشركة المؤجرة')}: {vehicle.rental_company_name}</div>}
           {vehicle.rental_contract_duration && <div>{t('مدة العقد')}: {vehicle.rental_contract_duration}</div>}
+          {(vehicle.rental_contract_start_date || vehicle.rental_contract_end_date) && (
+            <div dir="ltr">
+              {t('العقد')}: {vehicle.rental_contract_start_date || '—'} → {vehicle.rental_contract_end_date || '—'}
+            </div>
+          )}
           {vehicle.rental_contract_value != null && <div>{t('قيمة العقد (ر.س)')}: {formatMoney(vehicle.rental_contract_value)}</div>}
+          {vehicle.rental_amount != null && (
+            <div>
+              {t('مبلغ الإيجار')}: {formatMoney(vehicle.rental_amount)}
+              {vehicle.rental_amount_frequency && ` (${t(VEHICLE_RENTAL_FREQUENCY_LABELS_AR[vehicle.rental_amount_frequency])})`}
+            </div>
+          )}
         </div>
       )}
       {vehicle.ownership_type === 'installments' && (

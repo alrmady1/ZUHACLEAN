@@ -1531,6 +1531,13 @@ export const VEHICLE_OWNERSHIP_TYPE_LABELS_AR: Record<VehicleOwnershipType, stri
   rented: 'مستأجرة',
 };
 
+// دورية مبلغ الإيجار للمركبة المستأجرة — Vehicle.rental_amount_frequency.
+export type VehicleRentalFrequency = 'daily' | 'monthly';
+export const VEHICLE_RENTAL_FREQUENCY_LABELS_AR: Record<VehicleRentalFrequency, string> = {
+  daily: 'يومياً',
+  monthly: 'شهرياً',
+};
+
 // مركبات الشركة — صفحة الإعدادات ← المركبات (VehiclesTab في Settings.tsx).
 // سجل بيانات لكل مركبة (لا علاقة له بجدولة المواعيد أو تتبّع الموقع) —
 // فقط معلومات ثابتة/شبه ثابتة يحتاجها صاحب العمل: الاستمارة، اللوحة،
@@ -1557,6 +1564,10 @@ export interface Vehicle {
   rental_company_name?: string; // اسم الشركة المؤجرة
   rental_contract_duration?: string; // مدة العقد (نص حر، مثال: "سنة واحدة")
   rental_contract_value?: number; // قيمة العقد
+  rental_contract_start_date?: string; // تاريخ بداية العقد
+  rental_contract_end_date?: string; // تاريخ نهاية العقد
+  rental_amount?: number; // مبلغ الإيجار (دوري — انظر rental_amount_frequency)
+  rental_amount_frequency?: VehicleRentalFrequency; // يومي أو شهري
   // 'installments' فقط:
   finance_provider?: string; // الجهة التمويلية (بنك/شركة تمويل)
   installment_duration?: string; // مدة الأقساط (نص حر)
