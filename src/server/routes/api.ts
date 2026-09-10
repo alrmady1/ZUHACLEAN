@@ -17,6 +17,7 @@ import type {
   CustodyInvoice,
   EmployeeDeduction,
   EmployeeViolation,
+  EmployeeWarning,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -2098,6 +2099,48 @@ api.delete('/employee-violations/:id', (req, res) => {
   const removed = store.employeeViolations.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
   logActivity(req, `تم حذف مخالفة "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// إنذارات الموظفين — قسم مستقل عن المخالفات (بلا أي بعد مالي، انظر
+// EmployeeWarning في shared/types.ts) داخل كشف حساب الموظف.
+// ---------------------------------------------------------------------------
+api.get('/employee-warnings', (req, res) => {
+  const { employee_id } = req.query;
+  let list = store.employeeWarnings.list();
+  if (employee_id && typeof employee_id === 'string') {
+    list = list.filter((w) => w.employee_id === employee_id);
+  }
+  res.json(list);
+});
+
+api.post('/employee-warnings', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.employee_id || !body.title) {
+    return res.status(400).json({ error: 'employee_id و title مطلوبة' });
+  }
+  const warning: EmployeeWarning = {
+    id: store.id(),
+    employee_id: body.employee_id,
+    employee_name: store.profiles.get(body.employee_id)?.full_name ?? body.employee_name,
+    title: body.title,
+    date: body.date ?? new Date().toISOString().slice(0, 10),
+    notes: body.notes || undefined,
+    recorded_by: body.recorded_by || undefined,
+    recorded_by_name: body.recorded_by_name || undefined,
+    created_at: new Date().toISOString(),
+  };
+  store.employeeWarnings.insert(warning);
+  logActivity(req, `تم إضافة إنذار "${warning.title}" لـ "${warning.employee_name ?? ''}"`);
+  res.status(201).json(warning);
+});
+
+api.delete('/employee-warnings/:id', (req, res) => {
+  const target = store.employeeWarnings.list().find((w) => w.id === req.params.id);
+  const removed = store.employeeWarnings.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'not found' });
+  logActivity(req, `تم حذف إنذار "${target?.title ?? ''}" عن "${target?.employee_name ?? ''}"`);
   res.status(204).end();
 });
 

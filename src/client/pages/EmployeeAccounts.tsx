@@ -9,6 +9,7 @@ import {
   Receipt,
   MinusCircle,
   ShieldAlert,
+  Siren,
   Banknote,
   Pencil,
   Check,
@@ -30,6 +31,7 @@ import type {
   EmployeeDeduction,
   EmployeeDeductionCategory,
   EmployeeViolation,
+  EmployeeWarning,
   Profile,
   CommissionEligibility,
   TerminationReason,
@@ -173,6 +175,7 @@ interface EmployeeSummary {
   thisMonthAdvanceTotal: number;
   violationsTotal: number;
   violations: EmployeeViolation[];
+  warnings: EmployeeWarning[];
   // عمولة هذا الشهر المستحقة له (مسوّق أو مشرف) — من تقرير العمولات، صفر
   // إن لم يكن مستحقاً لأي عمولة إطلاقاً.
   commissionDue: number;
@@ -200,6 +203,7 @@ export function EmployeeAccountsTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [deductions, setDeductions] = useState<EmployeeDeduction[]>([]);
   const [violations, setViolations] = useState<EmployeeViolation[]>([]);
+  const [warnings, setWarnings] = useState<EmployeeWarning[]>([]);
   const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
   const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -219,6 +223,7 @@ export function EmployeeAccountsTab() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
     api.get<EmployeeDeduction[]>('/employee-deductions').then(setDeductions);
     api.get<EmployeeViolation[]>('/employee-violations').then(setViolations);
+    api.get<EmployeeWarning[]>('/employee-warnings').then(setWarnings);
     api.get<CommissionReportLite>(`/commission-report?month=${currentMonth()}`).then(setCommissionReport);
     api.get<CommissionEligibility[]>('/commission-eligibility').then(setEligibility);
   }
@@ -244,6 +249,7 @@ export function EmployeeAccountsTab() {
         const invoicesList = invoices.filter((i) => i.recorded_by === p.id);
         const empDeductions = deductions.filter((d) => d.employee_id === p.id);
         const empViolations = violations.filter((v) => v.employee_id === p.id);
+        const empWarnings = warnings.filter((w) => w.employee_id === p.id);
         const activeDeductions = empDeductions.filter((d) => d.amount - (d.settled_amount ?? 0) > 0.005);
         const thisMonthDeductionTotal = activeDeductions.reduce((sum, d) => sum + monthlyInstallment(d), 0);
         const scheduledAdvances = advanceEntries.filter(
@@ -275,13 +281,14 @@ export function EmployeeAccountsTab() {
           thisMonthDeductionTotal,
           thisMonthAdvanceTotal,
           violations: empViolations,
+          warnings: empWarnings,
           violationsTotal: empViolations.reduce((sum, v) => sum + (v.amount ?? 0), 0),
           commissionDue,
           netSalary,
         };
       })
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name, 'ar'));
-  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations, commissionReport]);
+  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations, warnings, commissionReport]);
 
   const openSummary = summaries.find((s) => s.profile.id === openId) ?? null;
   const canEdit = can('edit_custody_expenses');
@@ -544,6 +551,7 @@ function EmployeeDetail({
   const restrictedPersonalInfo = user?.role === 'technician' || user?.role === 'admin_supervisor';
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [showViolationForm, setShowViolationForm] = useState(false);
+  const [showWarningForm, setShowWarningForm] = useState(false);
   const [editingSalary, setEditingSalary] = useState(false);
   const [salaryInput, setSalaryInput] = useState(String(summary.profile.monthly_salary ?? ''));
   const [dueDayInput, setDueDayInput] = useState(String(summary.profile.salary_due_day ?? ''));
@@ -583,6 +591,12 @@ function EmployeeDetail({
   async function handleDeleteViolation(id: string) {
     if (!window.confirm(t('حذف هذه المخالفة؟'))) return;
     await api.del(`/employee-violations/${id}`);
+    onChanged();
+  }
+
+  async function handleDeleteWarning(id: string) {
+    if (!window.confirm(t('حذف هذا الإنذار؟'))) return;
+    await api.del(`/employee-warnings/${id}`);
     onChanged();
   }
 
@@ -1295,6 +1309,40 @@ function EmployeeDetail({
           />
         </Section>
 
+        {/* الإنذارات — إشعار رسمي كتابي بتجاوز أو مخالفة لأنظمة/متطلبات
+            العمل، بلا أي بعد مالي (بخلاف المخالفات أعلاه التي قد تحمل
+            غرامة) — كيان مستقل (EmployeeWarning). */}
+        <Section
+          icon={<Siren className="h-4 w-4 text-red-500" />}
+          title={t('الإنذارات')}
+          action={
+            canEdit && (
+              <button
+                onClick={() => setShowWarningForm(true)}
+                className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700"
+              >
+                <Plus className="h-3.5 w-3.5" /> {t('إنذار جديد')}
+              </button>
+            )
+          }
+        >
+          <SimpleTable
+            emptyLabel={t('لا توجد إنذارات مسجَّلة')}
+            headers={[t('التاريخ'), t('البيان'), '']}
+            rows={summary.warnings.map((w) => [
+              formatDateAr(w.date),
+              w.title,
+              canDelete ? (
+                <button key={w.id} onClick={() => handleDeleteWarning(w.id)} className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                ''
+              ),
+            ])}
+          />
+        </Section>
+
         {/* إنهاء الخدمة — يحتسب مكافأة نهاية الخدمة تلقائياً وفق المادتين
             ٨٤ و٨٥ من نظام العمل السعودي (انظر computeEndOfServiceGratuity في
             server/routes/api.ts للتفاصيل والتحفظات)، ويسجّلها كمصروف منفصل
@@ -1449,6 +1497,29 @@ function EmployeeDetail({
         />
       )}
 
+      {showWarningForm && (
+        <EntryForm
+          zIndexTop
+          title={t('إنذار جديد')}
+          amountRequired={false}
+          amountLabel=""
+          showAmount={false}
+          onClose={() => setShowWarningForm(false)}
+          onSubmit={async (values) => {
+            await api.post('/employee-warnings', {
+              employee_id: summary.profile.id,
+              title: values.title,
+              date: values.date,
+              notes: values.notes || undefined,
+              recorded_by: recordedById,
+              recorded_by_name: recordedByName,
+            });
+            setShowWarningForm(false);
+            onChanged();
+          }}
+        />
+      )}
+
       {editingSalaryEntry && (
         <EntryForm
           zIndexTop
@@ -1542,6 +1613,10 @@ function EntryForm({
   title,
   amountLabel,
   amountRequired,
+  // إخفاء خانة المبلغ بالكامل (بدل مجرد جعلها اختيارية) — لسجلات لا بعد
+  // مالياً لها إطلاقاً، مثل إنذار الموظف. افتراضياً true (كل الاستخدامات
+  // الحالية الأخرى — مخالفة، خصم، راتب — تعرض الخانة).
+  showAmount = true,
   zIndexTop,
   initial,
   onClose,
@@ -1550,6 +1625,7 @@ function EntryForm({
   title: string;
   amountLabel: string;
   amountRequired: boolean;
+  showAmount?: boolean;
   zIndexTop?: boolean;
   // قيم مبدئية — عند تحريرها (تعديل سجل قائم) بدل إدخال جديد فارغ.
   initial?: { title?: string; amount?: number; date?: string; notes?: string };
@@ -1589,11 +1665,13 @@ function EntryForm({
             <span className="mb-1 block font-medium text-slate-600">{t('البيان')}</span>
             <input name="title" defaultValue={initial?.title} required className="input" />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">{amountLabel}</span>
-              <input type="number" name="amount" min={0} step="0.01" defaultValue={initial?.amount} required={amountRequired} className="input" />
-            </label>
+          <div className={showAmount ? 'grid grid-cols-2 gap-3' : undefined}>
+            {showAmount && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{amountLabel}</span>
+                <input type="number" name="amount" min={0} step="0.01" defaultValue={initial?.amount} required={amountRequired} className="input" />
+              </label>
+            )}
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
               <input type="date" name="date" defaultValue={initial?.date ?? new Date().toISOString().slice(0, 10)} required className="input" />

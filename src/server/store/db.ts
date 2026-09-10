@@ -23,6 +23,7 @@ import type {
   CustodyInvoice,
   EmployeeDeduction,
   EmployeeViolation,
+  EmployeeWarning,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -87,6 +88,9 @@ interface DbShape {
   // src/shared/types.ts.
   employeeDeductions: EmployeeDeduction[];
   employeeViolations: EmployeeViolation[];
+  // إنذارات رسمية — كشف حساب الموظف. انظر EmployeeWarning في
+  // src/shared/types.ts.
+  employeeWarnings: EmployeeWarning[];
   // صفحة الإعدادات ← الصلاحيات — من يملك كل صلاحية من PermissionKey.
   // مفتاح غائب من هذا الكائن (سجل قديم لم يُعدَّل بعد، أو صلاحية جديدة
   // أُضيفت للكود لاحقاً) يعني: استخدم DEFAULT_PERMISSIONS لتلك الصلاحية.
@@ -435,6 +439,7 @@ function seed(): DbShape {
     custodyInvoices: [],
     employeeDeductions: [],
     employeeViolations: [],
+    employeeWarnings: [],
     permissions: {},
     permissionsOrder: [],
     leaves: [],
@@ -585,6 +590,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.employeeDeductions) parsed.employeeDeductions = [];
     if (!parsed.employeeViolations) parsed.employeeViolations = [];
+    if (!parsed.employeeWarnings) parsed.employeeWarnings = [];
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
@@ -1249,6 +1255,17 @@ export const store = {
       const idx = db.employeeViolations.findIndex((v) => v.id === id);
       if (idx === -1) return false;
       db.employeeViolations.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  employeeWarnings: {
+    list: () => db.employeeWarnings,
+    insert: (w: EmployeeWarning) => { db.employeeWarnings.push(w); persist(); return w; },
+    remove: (id: string) => {
+      const idx = db.employeeWarnings.findIndex((w) => w.id === id);
+      if (idx === -1) return false;
+      db.employeeWarnings.splice(idx, 1);
       persist();
       return true;
     },

@@ -1367,6 +1367,22 @@ export interface EmployeeViolation {
   created_at: string;
 }
 
+// إنذار رسمي لموظف بسبب تجاوز أو مخالفة لأنظمة/متطلبات العمل — كيان مستقل
+// عن EmployeeViolation (تلك تحمل غرامة مالية اختيارية؛ هذا مجرَّد إشعار
+// كتابي رسمي بلا أي بعد مالي)، له قسم وزر إضافة خاصان في كشف حساب
+// الموظف (EmployeeAccounts.tsx).
+export interface EmployeeWarning {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  title: string;
+  date: string;
+  notes?: string;
+  recorded_by?: string;
+  recorded_by_name?: string;
+  created_at: string;
+}
+
 // ============================================================================
 // نظام العمولات (تبويب "العمولات" داخل المحاسبة + صفحة إعداداته في
 // الإعدادات) — عمولات المسوّق والمشرف الميداني تُحتسَب فقط على الإيراد
