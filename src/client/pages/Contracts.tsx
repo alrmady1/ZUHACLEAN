@@ -1,13 +1,14 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, X, Eye, Trash2, Pencil, Check, Printer, Wallet } from 'lucide-react';
+import { Plus, X, Eye, Trash2, Pencil, Check, Printer, Wallet, User } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Contract, Customer, Service, PaymentMethodOption } from '../../shared/types.js';
+import type { Appointment, Contract, Customer, Service, PaymentMethodOption, NeighborhoodZoneAssignment, ContractScheduleItem } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
+import { phoneMatchesQuery } from '../../shared/phone.js';
 import ContractDocument from '../components/ContractDocument.js';
 
 // allowCreate=false (تبويب "العقود" داخل المحاسبة) يُخفي زر/نموذج "عقد
@@ -31,8 +32,29 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
   const [formFrequency, setFormFrequency] = useState<'weekly' | 'bi_weekly' | 'monthly'>('weekly');
   const [formDays, setFormDays] = useState<string[]>([]);
   const [formDaySupervisors, setFormDaySupervisors] = useState<Record<string, string>>({});
+  // وقت مختلف لكل يوم زيارة (اختياري) — يوم بلا قيمة هنا يستخدم حقل "وقت
+  // الزيارة" العام كافتراضي. نفس فكرة formDaySupervisors بالضبط.
+  const [formDayTimes, setFormDayTimes] = useState<Record<string, string>>({});
+  // مُتحكَّم به (لا defaultValue) لأن جدول الدفعات أدناه يحتاج قيمته الحيّة
+  // لحساب مبلغ كل بند من نسبته المئوية فور إدخالها.
+  const [formTotalAmount, setFormTotalAmount] = useState('');
   const [viewingContract, setViewingContract] = useState<Contract | null>(null);
   const [printingContract, setPrintingContract] = useState<Contract | null>(null);
+
+  // العميل — بحث/اختيار من المسجَّلين، أو إنشاء عميل جديد مباشرة من هنا
+  // (نفس نمط NewQuoteFlow.tsx/NewAppointmentModal.tsx بالضبط).
+  const [customerId, setCustomerId] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const customerBoxRef = useRef<HTMLDivElement>(null);
+  const newCustomerBoxRef = useRef<HTMLDivElement>(null);
+  const [neighborhoodZones, setNeighborhoodZones] = useState<NeighborhoodZoneAssignment[]>([]);
+
+  // جدول دفعات العقد — بنود بنسبة/مبلغ وتاريخ استحقاق، تُبنى هنا كنص خام
+  // (تُحوَّل لأرقام عند الإرسال) لتبسيط التحكّم بالحقول أثناء الكتابة.
+  const [scheduleRows, setScheduleRows] = useState<{ percent: string; amount: string; due_date: string }[]>([]);
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const methodName = (id: string | undefined) => (id ? paymentMethods.find((m) => m.id === id)?.name ?? id : undefined);
@@ -47,7 +69,80 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
     api.get<Customer[]>('/customers').then(setCustomers);
     api.get<Service[]>('/services').then(setServices);
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
+    api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setNeighborhoodZones).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (customerBoxRef.current && !customerBoxRef.current.contains(e.target as Node)) setShowSuggestions(false);
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
+
+  const customerSearchQuery = customerSearch.trim().toLowerCase();
+  const filteredCustomers = !customerSearchQuery
+    ? customers
+    : customers.filter(
+        (c) =>
+          c.id === customerId ||
+          c.name.toLowerCase().includes(customerSearchQuery) ||
+          phoneMatchesQuery(c.phone, customerSearchQuery) ||
+          (c.district ?? '').toLowerCase().includes(customerSearchQuery) ||
+          (c.city ?? '').toLowerCase().includes(customerSearchQuery),
+      );
+
+  async function createNewCustomer() {
+    const container = newCustomerBoxRef.current;
+    if (!container) return;
+    const get = (n: string) => (container.querySelector(`[name="${n}"]`) as HTMLInputElement)?.value;
+    const name = get('new_customer_name');
+    const phone = get('new_customer_phone');
+    const address = get('new_customer_address');
+    if (!name || !phone || !address) return;
+    setAddingCustomer(true);
+    try {
+      const created = await api.post<Customer>('/customers', {
+        name,
+        phone,
+        address,
+        district: get('new_customer_district') || undefined,
+        city: get('new_customer_city') || undefined,
+      });
+      setCustomers((prev) => [...prev, created]);
+      setCustomerId(created.id);
+      setCustomerSearch(created.name);
+      setShowAddCustomer(false);
+    } finally {
+      setAddingCustomer(false);
+    }
+  }
+
+  // بناء صفوف جدول الدفعات
+  function addScheduleRow() {
+    setScheduleRows((prev) => [...prev, { percent: '', amount: '', due_date: '' }]);
+  }
+  function removeScheduleRow(idx: number) {
+    setScheduleRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+  // تغيير النسبة يُعيد حساب المبلغ تلقائياً من القيمة الإجمالية الحالية —
+  // يبقى المبلغ قابلاً للتعديل اليدوي مباشرةً بعدها (لا حساب عكسي من
+  // المبلغ إلى النسبة، تفادياً لحلقة تحديث متبادلة).
+  function updateScheduleRow(idx: number, field: 'percent' | 'amount' | 'due_date', value: string, totalAmount: number) {
+    setScheduleRows((prev) =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        if (field === 'percent') {
+          const percent = Number(value) || 0;
+          const amount = totalAmount > 0 ? Math.round(((totalAmount * percent) / 100) * 100) / 100 : row.amount;
+          return { ...row, percent: value, amount: totalAmount > 0 ? String(amount) : row.amount };
+        }
+        return { ...row, [field]: value };
+      }),
+    );
+  }
+  const scheduleTotalAmount = scheduleRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const scheduleTotalPercent = scheduleRows.reduce((s, r) => s + (Number(r.percent) || 0), 0);
 
   // مخفية عن المشرف الميداني — حتى لو دخل الرابط مباشرة (بعد كل الـ hooks
   // أعلاه، حسب قواعد React — لا يجوز إرجاع مبكر قبلها).
@@ -64,20 +159,31 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
       window.alert(t('اختر يوماً واحداً على الأقل لأيام الزيارة الأسبوعية'));
       return;
     }
+    if (!customerId) {
+      window.alert(t('اختر عميلاً أو أنشئ عميلاً جديداً أولاً'));
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post('/contracts', {
-        customer_id: form.get('customer_id'),
+        customer_id: customerId,
         service_id: form.get('service_id'),
         contract_type: form.get('contract_type'),
         visit_frequency: form.get('visit_frequency'),
         visit_days_of_week: formDays,
         visit_time: form.get('visit_time'),
+        visit_day_times:
+          form.get('visit_frequency') === 'weekly'
+            ? Object.fromEntries(Object.entries(formDayTimes).filter(([k, v]) => formDays.includes(k) && v))
+            : undefined,
         start_date: form.get('start_date'),
         end_date: form.get('end_date'),
         total_amount: Number(form.get('total_amount')),
         payment_method: form.get('payment_method') || undefined,
         due_date: form.get('due_date') || undefined,
+        payment_schedule: scheduleRows
+          .filter((r) => r.amount && r.due_date)
+          .map((r) => ({ percent: r.percent ? Number(r.percent) : undefined, amount: Number(r.amount), due_date: r.due_date })),
         supervisor_id: form.get('supervisor_id') || undefined,
         day_supervisors:
           form.get('visit_frequency') === 'weekly'
@@ -87,6 +193,11 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
       setShowForm(false);
       setFormDays([]);
       setFormDaySupervisors({});
+      setFormDayTimes({});
+      setScheduleRows([]);
+      setFormTotalAmount('');
+      setCustomerId('');
+      setCustomerSearch('');
       refresh();
     } finally {
       setSubmitting(false);
@@ -228,15 +339,101 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
             </div>
 
             <div className="space-y-3">
-              <Field label={t('العميل')}>
-                <select name="customer_id" required className="input">
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {/* العميل — بحث/اختيار، أو إنشاء عميل جديد مباشرة إن لم يظهر
+                  ضمن المسجَّلين (نفس نمط NewQuoteFlow.tsx/NewAppointmentModal.tsx). */}
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                    {t('العميل *')} <User className="h-3.5 w-3.5 text-brand-500" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomer((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> {t('إنشاء عميل جديد')}
+                  </button>
+                </div>
+
+                {!showAddCustomer && (
+                  <div ref={customerBoxRef} className="relative">
+                    <input
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      placeholder={t('ابحث بالاسم، الجوال، الحي، أو المدينة...')}
+                      className="input"
+                    />
+                    {showSuggestions && (
+                      <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                        {filteredCustomers.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setCustomerId(c.id);
+                              setCustomerSearch(c.name);
+                              setShowSuggestions(false);
+                            }}
+                            className={`flex w-full flex-col gap-0.5 px-3 py-2 text-start text-sm hover:bg-slate-50 ${c.id === customerId ? 'bg-brand-50' : ''}`}
+                          >
+                            <span className="font-medium text-slate-700">{c.name}</span>
+                            <span dir="ltr" className="text-end text-xs text-slate-400">{c.phone}</span>
+                          </button>
+                        ))}
+                        {filteredCustomers.length === 0 && (
+                          <div className="px-3 py-2 text-xs text-slate-400">{t('لا يوجد عميل مطابق لبحثك')}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {showAddCustomer && (
+                  <div ref={newCustomerBoxRef} className="space-y-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input name="new_customer_name" placeholder={t('الاسم')} className="input" />
+                      <input name="new_customer_phone" placeholder="05xxxxxxxx" className="input" />
+                    </div>
+                    <input name="new_customer_address" placeholder={t('العنوان')} className="input" />
+                    <datalist id="riyadh-districts-list">
+                      {Array.from(new Set(neighborhoodZones.map((n) => n.neighborhood)))
+                        .sort((a, b) => a.localeCompare(b, 'ar'))
+                        .map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                    </datalist>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input name="new_customer_district" list="riyadh-districts-list" placeholder={t('الحي (اختياري)')} className="input" />
+                      <input name="new_customer_city" defaultValue="الرياض" placeholder={t('المدينة (اختياري)')} className="input" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={addingCustomer}
+                        onClick={createNewCustomer}
+                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                      >
+                        {addingCustomer ? t('جارِ الحفظ…') : t('حفظ العميل')}
+                      </button>
+                      {customers.length > 0 && (
+                        <button type="button" onClick={() => setShowAddCustomer(false)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500">
+                          {t('إلغاء')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {customerId && !showAddCustomer && (
+                  <p className="text-xs text-emerald-600">
+                    {t('العميل المختار')}: {customers.find((c) => c.id === customerId)?.name}
+                  </p>
+                )}
+              </div>
 
               <Field label={t('الخدمة')}>
                 <select name="service_id" required className="input">
@@ -319,6 +516,26 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
                 </Field>
               )}
 
+              {formFrequency === 'weekly' && formDays.length > 0 && (
+                <Field label={t('وقت كل يوم زيارة (اختياري — إن تُرك بدون تحديد يُستخدم "وقت الزيارة" العام أدناه)')}>
+                  <div className="space-y-2">
+                    {formDays.map((dayKey) => (
+                      <div key={dayKey} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-xs text-slate-500">
+                          {t(WEEKDAYS.find((w) => w.key === dayKey)?.label ?? dayKey)}
+                        </span>
+                        <input
+                          type="time"
+                          value={formDayTimes[dayKey] ?? ''}
+                          onChange={(e) => setFormDayTimes((prev) => ({ ...prev, [dayKey]: e.target.value }))}
+                          className="input"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t('تاريخ البدء')}>
                   <input type="date" name="start_date" required className="input" />
@@ -333,7 +550,16 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
                   <input type="time" name="visit_time" defaultValue="09:00" className="input" />
                 </Field>
                 <Field label={t('القيمة الإجمالية (ر.س)')}>
-                  <input type="number" name="total_amount" min={0} step="0.01" required className="input" />
+                  <input
+                    type="number"
+                    name="total_amount"
+                    min={0}
+                    step="0.01"
+                    required
+                    value={formTotalAmount}
+                    onChange={(e) => setFormTotalAmount(e.target.value)}
+                    className="input"
+                  />
                 </Field>
               </div>
 
@@ -353,6 +579,77 @@ export default function Contracts({ allowCreate = true }: { allowCreate?: boolea
                 <Field label={t('تاريخ استحقاق الدفعة القادمة (اختياري)')}>
                   <input type="date" name="due_date" className="input" />
                 </Field>
+              </div>
+
+              {/* جدول دفعات اختياري — يقسّم القيمة الإجمالية على بنود بنسبة
+                  ومبلغ وتاريخ استحقاق مستقل لكل بند، بدل تاريخ استحقاق واحد
+                  فقط أعلاه. اختياري تماماً — عقد بلا أي بند هنا يبقى يعمل
+                  بنفس آلية due_date/تسجيل دفعة العامة كما كانت. */}
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-600">{t('جدول الدفعات (اختياري)')}</span>
+                  <button
+                    type="button"
+                    onClick={addScheduleRow}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> {t('إضافة دفعة')}
+                  </button>
+                </div>
+                {scheduleRows.length > 0 && (
+                  <div className="space-y-2">
+                    {scheduleRows.map((row, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2 rounded-lg bg-slate-50 p-2">
+                        <label className="text-xs">
+                          <span className="mb-1 block text-slate-500">{t('النسبة (%)')}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step="0.01"
+                            value={row.percent}
+                            onChange={(e) => updateScheduleRow(idx, 'percent', e.target.value, Number(formTotalAmount) || 0)}
+                            className="input"
+                          />
+                        </label>
+                        <label className="text-xs">
+                          <span className="mb-1 block text-slate-500">{t('المبلغ (ر.س)')}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={row.amount}
+                            onChange={(e) => updateScheduleRow(idx, 'amount', e.target.value, Number(formTotalAmount) || 0)}
+                            className="input"
+                          />
+                        </label>
+                        <label className="text-xs">
+                          <span className="mb-1 block text-slate-500">{t('تاريخ الاستحقاق')}</span>
+                          <input
+                            type="date"
+                            value={row.due_date}
+                            onChange={(e) => updateScheduleRow(idx, 'due_date', e.target.value, Number(formTotalAmount) || 0)}
+                            className="input"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeScheduleRow(idx)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="text-xs text-slate-400">
+                      {tt(
+                        `إجمالي بنود الجدول: ${formatMoney(scheduleTotalAmount)} (${scheduleTotalPercent.toFixed(1)}%)${formTotalAmount ? ` من ${formatMoney(Number(formTotalAmount))}` : ''}`,
+                        `Schedule total: ${formatMoney(scheduleTotalAmount)} (${scheduleTotalPercent.toFixed(1)}%)${formTotalAmount ? ` of ${formatMoney(Number(formTotalAmount))}` : ''}`,
+                      )}
+                    </div>
+                  </div>
+                )}
+                {scheduleRows.length === 0 && <p className="text-xs text-slate-400">{t('بلا جدول دفعات — العقد يستخدم تاريخ استحقاق واحد فقط')}</p>}
               </div>
 
               <Field label={formFrequency === 'weekly' ? t('المشرف الافتراضي') : t('المشرف المسؤول')}>
@@ -474,6 +771,9 @@ function ContractDetailModal({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethodForNew, setPaymentMethodForNew] = useState(paymentMethods[0]?.id ?? '');
   const [recordingPayment, setRecordingPayment] = useState(false);
+  // بند جدول الدفعات الذي تُسجَّل هذه الدفعة مقابله (إن كان للعقد جدول
+  // دفعات أصلاً) — اختياري، لا يمنع تسجيل دفعة عامة بلا ربط ببند بعينه.
+  const [scheduleItemForPayment, setScheduleItemForPayment] = useState('');
 
   const sortedAppts = [...appointments].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   const selectedDays = contract.visit_days_of_week ?? [];
@@ -492,10 +792,12 @@ function ContractDetailModal({
       const updated = await api.post<Contract>(`/contracts/${contract.id}/payments`, {
         amount: Number(paymentAmount),
         method: paymentMethodForNew,
+        schedule_item_id: scheduleItemForPayment || undefined,
       });
       onSaved(updated);
       setShowPaymentForm(false);
       setPaymentAmount('');
+      setScheduleItemForPayment('');
     } finally {
       setRecordingPayment(false);
     }
@@ -670,6 +972,35 @@ function ContractDetailModal({
                 <ContractStatusBadge status={contract.status} />
               </div>
 
+              {canSeeValue && contract.payment_schedule && contract.payment_schedule.length > 0 && (
+                <div className="col-span-2">
+                  <div className="mb-2 text-xs font-medium text-slate-500">{t('جدول الدفعات — المستحقة والمستلمة')}</div>
+                  <div className="space-y-1.5">
+                    {contract.payment_schedule.map((item) => {
+                      const itemRemaining = Math.max(item.amount - item.paid_amount, 0);
+                      return (
+                        <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                          <span className="text-slate-500" dir="ltr">{formatDateAr(item.due_date)}</span>
+                          <span className="font-medium text-slate-700">
+                            {formatMoney(item.amount)}
+                            {item.percent != null && ` (${item.percent}%)`}
+                          </span>
+                          {item.status === 'paid' ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">{t('مستلمة بالكامل')}</span>
+                          ) : item.status === 'partial' ? (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">
+                              {tt(`جزئية — متبقٍ ${formatMoney(itemRemaining)}`, `Partial — ${formatMoney(itemRemaining)} remaining`)}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-600">{t('مستحقة')}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {canSeeValue && (
                 <div className="col-span-2">
                   <div className="mb-2 flex items-center justify-between">
@@ -685,6 +1016,30 @@ function ContractDetailModal({
                   </div>
                   {showPaymentForm && (
                     <div className="mb-2 flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-2.5">
+                      {contract.payment_schedule && contract.payment_schedule.length > 0 && (
+                        <label className="text-xs">
+                          <span className="mb-1 block text-slate-500">{t('مقابل أي دفعة من الجدول؟')}</span>
+                          <select
+                            value={scheduleItemForPayment}
+                            onChange={(e) => {
+                              const itemId = e.target.value;
+                              setScheduleItemForPayment(itemId);
+                              const item = contract.payment_schedule?.find((s) => s.id === itemId);
+                              if (item) setPaymentAmount(String(Math.max(item.amount - item.paid_amount, 0)));
+                            }}
+                            className="input"
+                          >
+                            <option value="">{t('بدون ربط ببند محدَّد')}</option>
+                            {contract.payment_schedule
+                              .filter((s) => s.status !== 'paid')
+                              .map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {formatDateAr(s.due_date)} — {formatMoney(Math.max(s.amount - s.paid_amount, 0))}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      )}
                       <label className="text-xs">
                         <span className="mb-1 block text-slate-500">{t('المبلغ (ر.س)')}</span>
                         <input

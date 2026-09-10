@@ -965,6 +965,10 @@ export interface Contract {
   // على يوم أسبوع تاريخ البدء كما كانت (انظر generateAppointmentsForContract).
   visit_days_of_week?: string[];
   visit_time?: string;
+  // وقت مختلف لكل يوم من أيام الزيارة الأسبوعية — نفس فكرة day_supervisors
+  // بالضبط (مفتاح اليوم ← قيمة خاصة به)، يوم بلا مفتاح هنا يستخدم visit_time
+  // كافتراضي. مثال: السبت ٠٩:٠٠ والثلاثاء ١٦:٠٠ لعقد بزيارتين أسبوعياً.
+  visit_day_times?: Record<string, string>;
   start_date: string;
   end_date: string;
   total_visits: number;
@@ -986,6 +990,10 @@ export interface Contract {
   // Appointment بالضبط (انظر POST /contracts/:id/payments)، تُحدِّث
   // paid_amount/remaining_amount/payment_status تلقائياً عند كل دفعة.
   payments: Payment[];
+  // خطة تقسيط اختيارية للقيمة الإجمالية — بنود بنسب/مبالغ وتواريخ استحقاق
+  // محدَّدة (بدل تاريخ استحقاق واحد فقط في due_date أعلاه). كل بند يتراكم
+  // عليه paid_amount مستقلاً عن الآخر — انظر ContractScheduleItem.
+  payment_schedule?: ContractScheduleItem[];
   // مشرف افتراضي للعقد — يُستخدم للعقود غير الأسبوعية، وكقيمة احتياطية
   // لأي يوم أسبوعي لم يُحدَّد له مشرف خاص في day_supervisors أدناه.
   supervisor_id?: string;
@@ -1020,11 +1028,17 @@ export interface ContractClause {
 // راجع تعليق amount أدناه. نوعان فرعيان (income_type): "مرتجع" (استرداد
 // من مورد لبضاعة/مواد مرتجعة) أو "رأس مال إضافي" (ضخ مالي من المالك).
 export type ExpenseEntryType = 'expense' | 'income';
-export type ExpenseIncomeType = 'return' | 'additional_capital';
+// "دفعة من عقد" — تسجيل دفعة واردة فعلياً مقابل بند من جدول دفعات عقد
+// (Contract.payment_schedule)، من نفس نموذج "إضافة إيراد" العام. عند
+// اختياره يُطلَب اختيار العقد ثم البند المستحق، ويُنشئ Expense.contract_id/
+// schedule_item_id مصروفاً مرآتياً بنفس نمط paid_via_custody — انظر POST
+// /contracts/:id/payments.
+export type ExpenseIncomeType = 'return' | 'additional_capital' | 'contract_payment';
 
 export const EXPENSE_INCOME_TYPE_LABELS_AR: Record<ExpenseIncomeType, string> = {
   return: 'مرتجع',
   additional_capital: 'رأس مال إضافي',
+  contract_payment: 'دفعة من عقد',
 };
 
 // كيف تُستقطَع سلفية (Expense بفئة ADVANCE_CATEGORY_NAME) من راتب صاحبها —
@@ -1086,6 +1100,12 @@ export interface Expense {
   // استلم المبلغ"). يُستخدَم لعرض "مدفوعة من عهدة فلان" في قائمة
   // المصروفات العامة بدل نقداً/شبكة.
   paid_via_custody?: boolean;
+  // مصروف (إيراد) وُلِد تلقائياً من تسجيل "دفعة من عقد" — العقد والبند
+  // المحدَّد من جدول دفعاته الذي سُجِّلت هذه الدفعة مقابله. انظر
+  // ExpenseIncomeType.contract_payment وPOST /contracts/:id/payments.
+  contract_id?: string;
+  contract_number_snapshot?: string;
+  schedule_item_id?: string;
   // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما
   // category === ADVANCE_CATEGORY_NAME، تُضبَط عند تسجيل السلفية نفسها
   // (أو لاحقاً بالتعديل). 'none' (الافتراضي) يعني بلا استقطاع تلقائي
@@ -1175,6 +1195,27 @@ export interface Payment {
   method: PaymentMethod;
   recorded_at: string;
   recorded_by?: string;
+  // دفعة سُجِّلت مقابل بند محدَّد من جدول دفعات العقد (Contract.
+  // payment_schedule) — فقط لدفعات العقود (Contract.payments)، لا معنى
+  // لها لدفعات المواعيد. انظر ContractScheduleItem أدناه.
+  schedule_item_id?: string;
+}
+
+// بند واحد من جدول دفعات العقد (خطة أقساط مبنية على نسب من القيمة
+// الإجمالية، بتاريخ استحقاق لكل بند) — Contract.payment_schedule. يُبنى
+// عند إنشاء العقد (أو تعديله)، ويتراكم عليه paid_amount مع كل دفعة فعلية
+// تُسجَّل مرتبطة به (Payment.schedule_item_id)، سواء من داخل تفاصيل العقد
+// أو من صفحة المصروفات ← إضافة إيراد ← دفعة من عقد.
+export interface ContractScheduleItem {
+  id: string;
+  // نسبة هذا البند من القيمة الإجمالية للعقد (٪) — اختيارية، للعرض
+  // والحساب المبدئي فقط؛ amount هو المصدر الفعلي المعتمد دائماً.
+  percent?: number;
+  amount: number;
+  due_date: string;
+  label?: string;
+  paid_amount: number;
+  status: PaymentStatus;
 }
 
 export interface Appointment {

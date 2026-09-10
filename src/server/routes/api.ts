@@ -8,6 +8,7 @@ import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
   Appointment,
   Contract,
+  ContractScheduleItem,
   VisitFrequency,
   Invoice,
   Service,
@@ -1301,6 +1302,28 @@ const WEEKDAY_KEY_BY_INDEX: Record<number, string> = Object.fromEntries(
   Object.entries(WEEKDAY_INDEX).map(([key, idx]) => [idx, key]),
 );
 
+// يبني جدول دفعات العقد من بنود خام (نسبة/مبلغ/تاريخ استحقاق) أرسلها
+// العميل — يتجاهل صمتاً أي بند بلا مبلغ أو تاريخ استحقاق صالحين، ويضيف
+// معرّفاً ورصيد سداد صفري لكل بند سليم. مصفوفة فارغة/غائبة تعني عقداً بلا
+// جدول دفعات (يبقى يعمل بتاريخ الاستحقاق العام due_date فقط، كما كان).
+function buildPaymentSchedule(raw: unknown): ContractScheduleItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const items = raw
+    .filter((r) => r && typeof r === 'object' && Number(r.amount) > 0 && r.due_date)
+    .map(
+      (r): ContractScheduleItem => ({
+        id: store.id(),
+        percent: r.percent !== undefined && r.percent !== '' ? Number(r.percent) : undefined,
+        amount: Number(r.amount),
+        due_date: r.due_date,
+        label: r.label || undefined,
+        paid_amount: 0,
+        status: 'unpaid',
+      }),
+    );
+  return items.length > 0 ? items : undefined;
+}
+
 function generateAppointmentsForContract(contract: Contract): Appointment[] {
   const customer = store.customers.get(contract.customer_id);
   const service = store.services.get(contract.service_id);
@@ -1316,13 +1339,17 @@ function generateAppointmentsForContract(contract: Contract): Appointment[] {
   if (contract.visit_frequency === 'weekly' && selectedDayIndices.length > 0) {
     // أكثر من زيارة في الأسبوع الواحد (مثلاً الأحد والثلاثاء والخميس) —
     // نمشي يوماً بيوم من تاريخ البدء حتى الانتهاء، ونُبقي فقط الأيام التي
-    // تطابق أحد الأيام المختارة.
+    // تطابق أحد الأيام المختارة. لكل يوم وقته الخاص إن حُدِّد
+    // (visit_day_times)، وإلا وقت الزيارة العام.
     const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
     while (cursor <= endDay && dates.length < 400) {
       if (selectedDayIndices.includes(cursor.getDay())) {
+        const dayKey = WEEKDAY_KEY_BY_INDEX[cursor.getDay()];
+        const dayTime = contract.visit_day_times?.[dayKey];
+        const [dayHour, dayMinute] = (dayTime ?? contract.visit_time ?? '09:00').split(':').map(Number);
         const visit = new Date(cursor);
-        visit.setHours(visitHour || 9, visitMinute || 0, 0, 0);
+        visit.setHours(dayHour || 9, dayMinute || 0, 0, 0);
         dates.push(visit);
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -1390,6 +1417,10 @@ api.post('/contracts', (req, res) => {
     visit_frequency: body.visit_frequency,
     visit_days_of_week: Array.isArray(body.visit_days_of_week) ? body.visit_days_of_week : undefined,
     visit_time: body.visit_time ?? '09:00',
+    visit_day_times:
+      body.visit_day_times && typeof body.visit_day_times === 'object' && Object.keys(body.visit_day_times).length > 0
+        ? body.visit_day_times
+        : undefined,
     start_date: body.start_date,
     end_date: body.end_date,
     total_visits: Number(body.total_visits ?? 0),
@@ -1401,6 +1432,7 @@ api.post('/contracts', (req, res) => {
     payment_method: body.payment_method || undefined,
     due_date: body.due_date || undefined,
     payments: [],
+    payment_schedule: buildPaymentSchedule(body.payment_schedule),
     supervisor_id: body.supervisor_id,
     day_supervisors:
       body.day_supervisors && typeof body.day_supervisors === 'object' ? body.day_supervisors : undefined,
@@ -1452,12 +1484,34 @@ api.patch('/contracts/:id', (req, res) => {
 api.post('/contracts/:id/payments', (req, res) => {
   const contract = store.contracts.get(req.params.id);
   if (!contract) return res.status(404).json({ error: 'العقد غير موجود' });
-  const { amount, method } = req.body ?? {};
-  contract.payments.push({ id: store.id(), amount: Number(amount), method, recorded_at: new Date().toISOString() });
+  const { amount, method, schedule_item_id } = req.body ?? {};
+  contract.payments.push({
+    id: store.id(),
+    amount: Number(amount),
+    method,
+    recorded_at: new Date().toISOString(),
+    schedule_item_id: schedule_item_id || undefined,
+  });
+  // إن ارتبطت الدفعة ببند من جدول الدفعات، يتراكم عليه مبلغها وحده
+  // (لا كامل مبلغ الدفعة بالضرورة لو تجاوز المتبقي من ذلك البند تحديداً)،
+  // وتُحدَّث حالته (مستحقة/جزئية/مسدَّدة) بشكل مستقل عن حالة العقد ككل.
+  if (schedule_item_id && contract.payment_schedule) {
+    const item = contract.payment_schedule.find((s) => s.id === schedule_item_id);
+    if (item) {
+      item.paid_amount = Math.min(item.paid_amount + Number(amount), item.amount);
+      item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
+    }
+  }
   const paid_amount = contract.payments.reduce((s, p) => s + p.amount, 0);
   const remaining_amount = Math.max(contract.total_amount - paid_amount, 0);
   const payment_status = remaining_amount === 0 ? 'paid' : paid_amount > 0 ? 'partial' : 'unpaid';
-  const updated = store.contracts.update(contract.id, { payments: contract.payments, paid_amount, remaining_amount, payment_status });
+  const updated = store.contracts.update(contract.id, {
+    payments: contract.payments,
+    payment_schedule: contract.payment_schedule,
+    paid_amount,
+    remaining_amount,
+    payment_status,
+  });
   logActivity(req, `تم تسجيل دفعة ${amount} ر.س على العقد "${contract.contract_number}"`);
   res.status(201).json(updated);
 });
