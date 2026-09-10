@@ -1117,6 +1117,10 @@ export interface CustodyInvoice {
   // مطلوب حتى يُسجَّل هذا كمصروف عادي أيضاً (انظر linked_expense_id أدناه).
   category?: string;
   sub_category?: string;
+  // مصروف تصنيف "مركبات" تحديداً يربط بمركبة مسجَّلة (Settings ← المركبات)
+  // بدل بند فرعي حر — نفس Expense.vehicle_id/vehicle_label بالضبط.
+  vehicle_id?: string;
+  vehicle_label?: string;
   is_tax_invoice?: boolean;
   tax_amount?: number;
   invoice_file_url?: string;
@@ -1546,6 +1550,21 @@ export interface Vehicle {
   authorized_driver?: string; // الشخص المفوض بالقيادة
   assigned_profile_id?: string; // تابعة لـ — يربط بأي Profile
   ownership_type?: VehicleOwnershipType; // نوع التملك
+  // حقول إضافية حسب نوع التملك — 'company' لا يحتاج أياً منها (owner
+  // يُضبَط تلقائياً على COMPANY_LEGAL_NAME من الواجهة نفسها، انظر
+  // VehiclesTab في Settings.tsx).
+  // 'rented' فقط:
+  rental_company_name?: string; // اسم الشركة المؤجرة
+  rental_contract_duration?: string; // مدة العقد (نص حر، مثال: "سنة واحدة")
+  rental_contract_value?: number; // قيمة العقد
+  // 'installments' فقط:
+  finance_provider?: string; // الجهة التمويلية (بنك/شركة تمويل)
+  installment_duration?: string; // مدة الأقساط (نص حر)
+  installment_count?: number; // عدد الأقساط الكلي
+  installment_monthly_amount?: number; // قيمة القسط الشهري
+  installments_remaining_count?: number; // عدد الأقساط المتبقية
+  installments_remaining_amount?: number; // إجمالي المبلغ المتبقي
+  final_payment_amount?: number; // قيمة الدفعة الأخيرة (التجميعية)
   last_oil_change?: string; // تاريخ آخر تغيير زيت
   last_oil_change_odometer?: number; // قراءة العداد وقت آخر تغيير زيت
   created_at: string;

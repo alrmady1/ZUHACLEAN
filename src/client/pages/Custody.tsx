@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { X, Plus, Wallet, Receipt, FileText, TrendingUp, Trash2, Paperclip } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Expense, CustodyInvoice, Profile, PaymentMethodOption, ExpenseCategoryItem } from '../../shared/types.js';
-import { CUSTODY_CATEGORY_NAME, SALARY_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
+import type { Expense, CustodyInvoice, Profile, PaymentMethodOption, ExpenseCategoryItem, Vehicle } from '../../shared/types.js';
+import { CUSTODY_CATEGORY_NAME, SALARY_CATEGORY_NAME, VEHICLE_CATEGORY_NAME, CAN_DELETE_CUSTODY_ROLES, VAT_RATE } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -40,6 +40,7 @@ export function CustodyTab() {
   const [invoices, setInvoices] = useState<CustodyInvoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [openHolderId, setOpenHolderId] = useState<string | null>(null);
   const [showNewGrant, setShowNewGrant] = useState(false);
 
@@ -50,6 +51,7 @@ export function CustodyTab() {
 
   useEffect(() => {
     api.get<ExpenseCategoryItem[]>('/expense-categories').then(setCategories);
+    api.get<Vehicle[]>('/vehicles').then(setVehicles);
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
   }, []);
@@ -152,6 +154,7 @@ export function CustodyTab() {
           allProfiles={allProfiles}
           paymentMethods={paymentMethods}
           categories={categories}
+          vehicles={vehicles}
           recordedById={user?.id}
           recordedByName={user?.full_name}
           onClose={() => setOpenHolderId(null)}
@@ -181,6 +184,7 @@ function HolderDetail({
   allProfiles,
   paymentMethods,
   categories,
+  vehicles,
   recordedById,
   recordedByName,
   onClose,
@@ -190,6 +194,7 @@ function HolderDetail({
   allProfiles: Profile[];
   paymentMethods: PaymentMethodOption[];
   categories: ExpenseCategoryItem[];
+  vehicles: Vehicle[];
   recordedById?: string;
   recordedByName?: string;
   onClose: () => void;
@@ -210,16 +215,21 @@ function HolderDetail({
   );
   const [invoiceCategory, setInvoiceCategory] = useState('');
   const [invoiceSubCategory, setInvoiceSubCategory] = useState('');
+  const [invoiceVehicleId, setInvoiceVehicleId] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceIsTaxInvoice, setInvoiceIsTaxInvoice] = useState(false);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const invoiceSubCategories = categories.filter(
     (c) => c.parent_id === creatableCategories.find((m) => m.name === invoiceCategory)?.id,
   );
+  // تصنيف "مركبات" يحتاج ربط المركبة بدل بند فرعي حر — نفس منطق
+  // needsVehicleLink في Expenses.tsx بالضبط.
+  const needsVehicleLink = invoiceCategory === VEHICLE_CATEGORY_NAME;
 
   function resetInvoiceForm() {
     setInvoiceCategory('');
     setInvoiceSubCategory('');
+    setInvoiceVehicleId('');
     setInvoiceAmount('');
     setInvoiceIsTaxInvoice(false);
     setInvoiceFile(null);
@@ -237,6 +247,7 @@ function HolderDetail({
         vendor_name: form.get('vendor_name') || undefined,
         category: invoiceCategory,
         sub_category: invoiceSubCategory || undefined,
+        vehicle_id: needsVehicleLink ? invoiceVehicleId || undefined : undefined,
         amount: Number(invoiceAmount),
         is_tax_invoice: invoiceIsTaxInvoice,
         invoice_number: form.get('invoice_number') || undefined,
@@ -444,6 +455,7 @@ function HolderDetail({
                   onChange={(e) => {
                     setInvoiceCategory(e.target.value);
                     setInvoiceSubCategory('');
+                    setInvoiceVehicleId('');
                   }}
                 >
                   {creatableCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
@@ -465,6 +477,22 @@ function HolderDetail({
                       </option>
                     ))}
                   </select>
+                </label>
+              )}
+              {needsVehicleLink && (
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المركبة')}</span>
+                  <select required className="input" value={invoiceVehicleId} onChange={(e) => setInvoiceVehicleId(e.target.value)}>
+                    <option value="">{t('اختر مركبة')}</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.type} — {v.plate_number}
+                      </option>
+                    ))}
+                  </select>
+                  {vehicles.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">{t('لا توجد مركبات مسجَّلة — أضِفها من الإعدادات ← المركبات')}</p>
+                  )}
                 </label>
               )}
               <div className="grid grid-cols-2 gap-3">

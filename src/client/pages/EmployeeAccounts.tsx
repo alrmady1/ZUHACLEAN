@@ -534,6 +534,14 @@ function EmployeeDetail({
   onChanged: () => void;
 }) {
   const { t, tt } = useI18n();
+  const { user } = useAuth();
+  // بيانات شخصية حسّاسة (الهوية، تاريخ الميلاد/العمر، الجنسية، لغة
+  // الواجهة، صورة الهوية) تبقى مخفية عن الفني الميداني والمشرف الإداري
+  // حتى لو مُنحا صلاحية الاطلاع على كشف حساب الموظفين (view_employee_
+  // accounts) لاحقاً من الصلاحيات — يكتفيان بالاسم والمسمى الوظيفي وتاريخ
+  // التعيين فقط. لا يشمل هذا القيد المدير العام/مدير النظام، ولا المشرف
+  // الميداني (supervisor) الذي لم يُطلَب تقييده.
+  const restrictedPersonalInfo = user?.role === 'technician' || user?.role === 'admin_supervisor';
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [showViolationForm, setShowViolationForm] = useState(false);
   const [editingSalary, setEditingSalary] = useState(false);
@@ -722,7 +730,8 @@ function EmployeeDetail({
           title={t('البيانات الشخصية')}
           action={
             canEdit &&
-            !editingPersonal && (
+            !editingPersonal &&
+            !restrictedPersonalInfo && (
               <button
                 onClick={startEditingPersonal}
                 className="flex items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
@@ -733,7 +742,22 @@ function EmployeeDetail({
             )
           }
         >
-          {editingPersonal ? (
+          {restrictedPersonalInfo ? (
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="text-xs text-slate-400">{t('الاسم الكامل (حسب الهوية)')}</div>
+                <div className="font-medium text-slate-700">{summary.profile.legal_full_name || summary.profile.full_name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('المسمى الوظيفي')}</div>
+                <div className="font-medium text-slate-700">{summary.profile.job_title || '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
+                <div className="font-medium text-slate-700" dir="ltr">{summary.profile.hire_date || '—'}</div>
+              </div>
+            </div>
+          ) : editingPersonal ? (
             <div className="space-y-3 rounded-xl bg-slate-50 p-3">
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">

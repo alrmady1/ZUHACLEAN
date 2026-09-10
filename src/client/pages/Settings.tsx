@@ -77,7 +77,13 @@ import type {
   VehicleOwnershipType,
   Expense,
 } from '../../shared/types.js';
-import { DEFAULT_LANDING_SETTINGS, DEFAULT_MOBILE_APP_SETTINGS, DEFAULT_COMMISSION_CONFIG, VEHICLE_OWNERSHIP_TYPE_LABELS_AR } from '../../shared/types.js';
+import {
+  DEFAULT_LANDING_SETTINGS,
+  DEFAULT_MOBILE_APP_SETTINGS,
+  DEFAULT_COMMISSION_CONFIG,
+  VEHICLE_OWNERSHIP_TYPE_LABELS_AR,
+  COMPANY_LEGAL_NAME,
+} from '../../shared/types.js';
 import {
   SETTINGS_ACCESS_ROLES,
   PERMISSIONS_ACCESS_ROLES,
@@ -3063,6 +3069,10 @@ function VehiclesTab() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
+  // مُتحكَّم به (لا defaultValue) لأن الحقول التالية له تتغيّر حسب قيمته —
+  // "ملكية الشركة" لا تحتاج أي حقل إضافي (المالك يُضبَط تلقائياً)،
+  // "مستأجرة" تُظهر حقول عقد الإيجار، و"أقساط" تُظهر حقول التمويل.
+  const [ownershipType, setOwnershipType] = useState<VehicleOwnershipType | ''>('');
 
   function refresh() {
     api.get<Vehicle[]>('/vehicles').then(setVehicles);
@@ -3084,7 +3094,10 @@ function VehiclesTab() {
     const payload = {
       type: form.get('type'),
       registration_number: form.get('registration_number') || undefined,
-      owner: form.get('owner') || undefined,
+      // حقل "المالك" مُعطَّل (disabled) عند "ملكية الشركة" فلا يُرسَل ضمن
+      // FormData إطلاقاً — القيمة الثابتة تُضبَط هنا مباشرة بدل الاعتماد
+      // على حقل نموذج فعلي.
+      owner: ownershipType === 'company' ? COMPANY_LEGAL_NAME : form.get('owner') || undefined,
       plate_number: form.get('plate_number'),
       serial_number: form.get('serial_number') || undefined,
       registration_expiry: form.get('registration_expiry') || undefined,
@@ -3092,7 +3105,17 @@ function VehiclesTab() {
       insurance_expiry: form.get('insurance_expiry') || undefined,
       authorized_driver: form.get('authorized_driver') || undefined,
       assigned_profile_id: form.get('assigned_profile_id') || undefined,
-      ownership_type: form.get('ownership_type') || undefined,
+      ownership_type: ownershipType || undefined,
+      rental_company_name: ownershipType === 'rented' ? form.get('rental_company_name') || undefined : undefined,
+      rental_contract_duration: ownershipType === 'rented' ? form.get('rental_contract_duration') || undefined : undefined,
+      rental_contract_value: ownershipType === 'rented' ? form.get('rental_contract_value') || undefined : undefined,
+      finance_provider: ownershipType === 'installments' ? form.get('finance_provider') || undefined : undefined,
+      installment_duration: ownershipType === 'installments' ? form.get('installment_duration') || undefined : undefined,
+      installment_count: ownershipType === 'installments' ? form.get('installment_count') || undefined : undefined,
+      installment_monthly_amount: ownershipType === 'installments' ? form.get('installment_monthly_amount') || undefined : undefined,
+      installments_remaining_count: ownershipType === 'installments' ? form.get('installments_remaining_count') || undefined : undefined,
+      installments_remaining_amount: ownershipType === 'installments' ? form.get('installments_remaining_amount') || undefined : undefined,
+      final_payment_amount: ownershipType === 'installments' ? form.get('final_payment_amount') || undefined : undefined,
       last_oil_change: form.get('last_oil_change') || undefined,
       last_oil_change_odometer: form.get('last_oil_change_odometer') || undefined,
     };
@@ -3124,6 +3147,7 @@ function VehiclesTab() {
         <button
           onClick={() => {
             setEditing(null);
+            setOwnershipType('');
             setShowForm(true);
           }}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -3166,6 +3190,7 @@ function VehiclesTab() {
                     <button
                       onClick={() => {
                         setEditing(v);
+                        setOwnershipType(v.ownership_type ?? '');
                         setShowForm(true);
                       }}
                       className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
@@ -3196,6 +3221,7 @@ function VehiclesTab() {
           onClose={() => {
             setShowForm(false);
             setEditing(null);
+            setOwnershipType('');
           }}
         >
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -3212,7 +3238,11 @@ function VehiclesTab() {
                 <input name="registration_number" defaultValue={editing?.registration_number} className="input" dir="ltr" />
               </Field>
               <Field label={t('المالك')}>
-                <input name="owner" defaultValue={editing?.owner} className="input" />
+                {ownershipType === 'company' ? (
+                  <input value={COMPANY_LEGAL_NAME} disabled className="input bg-slate-50 text-slate-500" />
+                ) : (
+                  <input name="owner" defaultValue={editing?.owner} className="input" />
+                )}
               </Field>
             </div>
             <Field label={t('الرقم التسلسلي')}>
@@ -3231,7 +3261,11 @@ function VehiclesTab() {
                 <input type="date" name="insurance_expiry" defaultValue={editing?.insurance_expiry} className="input" />
               </Field>
               <Field label={t('نوع التملك')}>
-                <select name="ownership_type" defaultValue={editing?.ownership_type ?? ''} className="input">
+                <select
+                  value={ownershipType}
+                  onChange={(e) => setOwnershipType(e.target.value as VehicleOwnershipType | '')}
+                  className="input"
+                >
                   <option value="">{t('بدون تحديد')}</option>
                   {(Object.keys(VEHICLE_OWNERSHIP_TYPE_LABELS_AR) as VehicleOwnershipType[]).map((k) => (
                     <option key={k} value={k}>
@@ -3241,6 +3275,73 @@ function VehiclesTab() {
                 </select>
               </Field>
             </div>
+
+            {/* مستأجرة — عقد الإيجار */}
+            {ownershipType === 'rented' && (
+              <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+                <Field label={t('اسم الشركة المؤجرة')}>
+                  <input name="rental_company_name" defaultValue={editing?.rental_company_name} required className="input" />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('مدة العقد')}>
+                    <input
+                      name="rental_contract_duration"
+                      defaultValue={editing?.rental_contract_duration}
+                      className="input"
+                      placeholder={t('مثال: سنة واحدة')}
+                    />
+                  </Field>
+                  <Field label={t('قيمة العقد (ر.س)')}>
+                    <input type="number" name="rental_contract_value" defaultValue={editing?.rental_contract_value} min={0} step="0.01" className="input" />
+                  </Field>
+                </div>
+              </div>
+            )}
+
+            {/* أقساط — التمويل */}
+            {ownershipType === 'installments' && (
+              <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+                <Field label={t('الجهة التمويلية')}>
+                  <input name="finance_provider" defaultValue={editing?.finance_provider} required className="input" placeholder={t('اسم البنك / شركة التمويل')} />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('مدة الأقساط')}>
+                    <input name="installment_duration" defaultValue={editing?.installment_duration} className="input" placeholder={t('مثال: ٣ سنوات')} />
+                  </Field>
+                  <Field label={t('عدد الأقساط')}>
+                    <input type="number" name="installment_count" defaultValue={editing?.installment_count} min={0} step="1" className="input" />
+                  </Field>
+                </div>
+                <Field label={t('قيمة القسط الشهري (ر.س)')}>
+                  <input type="number" name="installment_monthly_amount" defaultValue={editing?.installment_monthly_amount} min={0} step="0.01" className="input" />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('الأقساط المتبقية (عدد)')}>
+                    <input
+                      type="number"
+                      name="installments_remaining_count"
+                      defaultValue={editing?.installments_remaining_count}
+                      min={0}
+                      step="1"
+                      className="input"
+                    />
+                  </Field>
+                  <Field label={t('إجمالي المبلغ المتبقي (ر.س)')}>
+                    <input
+                      type="number"
+                      name="installments_remaining_amount"
+                      defaultValue={editing?.installments_remaining_amount}
+                      min={0}
+                      step="0.01"
+                      className="input"
+                    />
+                  </Field>
+                </div>
+                <Field label={t('قيمة الدفعة الأخيرة (ر.س)')}>
+                  <input type="number" name="final_payment_amount" defaultValue={editing?.final_payment_amount} min={0} step="0.01" className="input" />
+                </Field>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('تاريخ آخر تغيير زيت')}>
                 <input type="date" name="last_oil_change" defaultValue={editing?.last_oil_change} className="input" />
@@ -3300,6 +3401,38 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
 
   return (
     <Modal title={tt(`مصروفات مركبة "${vehicle.type}" (${vehicle.plate_number})`, `Expenses for "${vehicle.type}" (${vehicle.plate_number})`)} onClose={onClose}>
+      {vehicle.ownership_type === 'rented' && (
+        <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
+          <h3 className="mb-1 text-xs font-semibold text-slate-500">{t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR.rented)}</h3>
+          {vehicle.rental_company_name && <div>{t('اسم الشركة المؤجرة')}: {vehicle.rental_company_name}</div>}
+          {vehicle.rental_contract_duration && <div>{t('مدة العقد')}: {vehicle.rental_contract_duration}</div>}
+          {vehicle.rental_contract_value != null && <div>{t('قيمة العقد (ر.س)')}: {formatMoney(vehicle.rental_contract_value)}</div>}
+        </div>
+      )}
+      {vehicle.ownership_type === 'installments' && (
+        <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
+          <h3 className="mb-1 text-xs font-semibold text-slate-500">{t(VEHICLE_OWNERSHIP_TYPE_LABELS_AR.installments)}</h3>
+          {vehicle.finance_provider && <div>{t('الجهة التمويلية')}: {vehicle.finance_provider}</div>}
+          {vehicle.installment_duration && <div>{t('مدة الأقساط')}: {vehicle.installment_duration}</div>}
+          {vehicle.installment_count != null && vehicle.installment_monthly_amount != null && (
+            <div>
+              {tt(
+                `${vehicle.installment_count} قسطاً — بواقع ${formatMoney(vehicle.installment_monthly_amount)} شهرياً`,
+                `${vehicle.installment_count} installments — ${formatMoney(vehicle.installment_monthly_amount)}/month`,
+              )}
+            </div>
+          )}
+          {vehicle.installments_remaining_count != null && vehicle.installments_remaining_amount != null && (
+            <div className="font-medium text-amber-700">
+              {tt(
+                `متبقٍ ${vehicle.installments_remaining_count} قسطاً — بإجمالي ${formatMoney(vehicle.installments_remaining_amount)}`,
+                `${vehicle.installments_remaining_count} installments remaining — totaling ${formatMoney(vehicle.installments_remaining_amount)}`,
+              )}
+            </div>
+          )}
+          {vehicle.final_payment_amount != null && <div>{t('قيمة الدفعة الأخيرة (ر.س)')}: {formatMoney(vehicle.final_payment_amount)}</div>}
+        </div>
+      )}
       <div className="mb-3 rounded-xl bg-slate-50 p-3 text-center">
         <div className="text-xs text-slate-400">{t('إجمالي المصروفات')}</div>
         <div className="text-lg font-bold text-slate-800">{formatMoney(total)}</div>

@@ -218,6 +218,12 @@ api.patch('/translations/languages', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/vehicles', (_req, res) => res.json(store.vehicles.list()));
 
+// رقم اختياري من جسم الطلب — '' أو undefined يُحوَّلان إلى undefined بدل
+// NaN، ليطابق سلوك كل حقل رقمي اختياري آخر في هذا الملف.
+function numOrUndef(v: unknown): number | undefined {
+  return v !== undefined && v !== '' ? Number(v) : undefined;
+}
+
 api.post('/vehicles', (req, res) => {
   const body = req.body ?? {};
   if (!body.type || !body.plate_number) {
@@ -237,10 +243,18 @@ api.post('/vehicles', (req, res) => {
     authorized_driver: body.authorized_driver || undefined,
     assigned_profile_id: body.assigned_profile_id || undefined,
     ownership_type: body.ownership_type || undefined,
+    rental_company_name: body.rental_company_name || undefined,
+    rental_contract_duration: body.rental_contract_duration || undefined,
+    rental_contract_value: numOrUndef(body.rental_contract_value),
+    finance_provider: body.finance_provider || undefined,
+    installment_duration: body.installment_duration || undefined,
+    installment_count: numOrUndef(body.installment_count),
+    installment_monthly_amount: numOrUndef(body.installment_monthly_amount),
+    installments_remaining_count: numOrUndef(body.installments_remaining_count),
+    installments_remaining_amount: numOrUndef(body.installments_remaining_amount),
+    final_payment_amount: numOrUndef(body.final_payment_amount),
     last_oil_change: body.last_oil_change || undefined,
-    last_oil_change_odometer: body.last_oil_change_odometer !== undefined && body.last_oil_change_odometer !== ''
-      ? Number(body.last_oil_change_odometer)
-      : undefined,
+    last_oil_change_odometer: numOrUndef(body.last_oil_change_odometer),
     created_at: now,
     updated_at: now,
   };
@@ -263,10 +277,18 @@ api.patch('/vehicles/:id', (req, res) => {
   if (body.authorized_driver !== undefined) patch.authorized_driver = body.authorized_driver || undefined;
   if (body.assigned_profile_id !== undefined) patch.assigned_profile_id = body.assigned_profile_id || undefined;
   if (body.ownership_type !== undefined) patch.ownership_type = body.ownership_type || undefined;
+  if (body.rental_company_name !== undefined) patch.rental_company_name = body.rental_company_name || undefined;
+  if (body.rental_contract_duration !== undefined) patch.rental_contract_duration = body.rental_contract_duration || undefined;
+  if (body.rental_contract_value !== undefined) patch.rental_contract_value = numOrUndef(body.rental_contract_value);
+  if (body.finance_provider !== undefined) patch.finance_provider = body.finance_provider || undefined;
+  if (body.installment_duration !== undefined) patch.installment_duration = body.installment_duration || undefined;
+  if (body.installment_count !== undefined) patch.installment_count = numOrUndef(body.installment_count);
+  if (body.installment_monthly_amount !== undefined) patch.installment_monthly_amount = numOrUndef(body.installment_monthly_amount);
+  if (body.installments_remaining_count !== undefined) patch.installments_remaining_count = numOrUndef(body.installments_remaining_count);
+  if (body.installments_remaining_amount !== undefined) patch.installments_remaining_amount = numOrUndef(body.installments_remaining_amount);
+  if (body.final_payment_amount !== undefined) patch.final_payment_amount = numOrUndef(body.final_payment_amount);
   if (body.last_oil_change !== undefined) patch.last_oil_change = body.last_oil_change || undefined;
-  if (body.last_oil_change_odometer !== undefined) {
-    patch.last_oil_change_odometer = body.last_oil_change_odometer !== '' ? Number(body.last_oil_change_odometer) : undefined;
-  }
+  if (body.last_oil_change_odometer !== undefined) patch.last_oil_change_odometer = numOrUndef(body.last_oil_change_odometer);
   const updated = store.vehicles.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'vehicle not found' });
   logActivity(req, `تم تعديل بيانات مركبة "${updated.type}" (${updated.plate_number})`);
@@ -1648,6 +1670,9 @@ api.post('/custody-invoices', async (req, res) => {
   const date = body.date ?? new Date().toISOString().slice(0, 10);
   const holderName = store.profiles.get(body.custody_holder_id)?.full_name ?? body.custody_holder_name;
   const now = new Date().toISOString();
+  const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
+  const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
+  const vehicleLabel = linkedVehicle ? `${linkedVehicle.type} — ${linkedVehicle.plate_number}` : undefined;
 
   // المصروف المرآتي أولاً — يُنشَأ معرّفه سلفاً حتى يُستخدَم كمجلد ملف
   // الفاتورة على Supabase Storage (نفس نمط POST /expenses بالضبط).
@@ -1679,6 +1704,8 @@ api.post('/custody-invoices', async (req, res) => {
     custody_holder_id: body.custody_holder_id,
     custody_holder_name: holderName,
     paid_via_custody: true,
+    vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
+    vehicle_label: vehicleLabel,
     payment_method: ensureCustodyPaymentMethodId(),
     notes: body.notes || undefined,
     invoice_file_url: invoiceFileUrl,
@@ -1696,6 +1723,8 @@ api.post('/custody-invoices', async (req, res) => {
     vendor_name: body.vendor_name || undefined,
     category: body.category,
     sub_category: body.sub_category || undefined,
+    vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
+    vehicle_label: vehicleLabel,
     is_tax_invoice: isTaxInvoice,
     tax_amount: taxAmount,
     invoice_file_url: invoiceFileUrl,
