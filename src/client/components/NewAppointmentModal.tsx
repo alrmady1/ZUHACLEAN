@@ -416,6 +416,16 @@ export default function NewAppointmentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        {/* ترشيحات حقل "الحي" أدناه — من سجل أحياء الرياض المُدار في
+            الإعدادات ← مناطق الرياض (neighborhoodZones)، وليس قيداً صارماً:
+            اقتراح فقط، يبقى بالإمكان كتابة اسم حيّ غير مسجَّل بعد. */}
+        <datalist id="riyadh-districts-list">
+          {Array.from(new Set(neighborhoodZones.map((n) => n.neighborhood)))
+            .sort((a, b) => a.localeCompare(b, 'ar'))
+            .map((name) => (
+              <option key={name} value={name} />
+            ))}
+        </datalist>
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-800">
@@ -541,7 +551,12 @@ export default function NewAppointmentModal({
                 </div>
                 <input name="new_customer_address" defaultValue={initialLead?.area} placeholder={t('العنوان')} required={showAddCustomer} className="input" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input name="new_customer_district" placeholder={t('الحي (اختياري)')} className="input" />
+                  <input
+                    name="new_customer_district"
+                    list="riyadh-districts-list"
+                    placeholder={t('الحي (اختياري)')}
+                    className="input"
+                  />
                   <input name="new_customer_city" placeholder={t('المدينة (اختياري)')} className="input" />
                 </div>
                 <div className="flex gap-2">

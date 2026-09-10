@@ -21,7 +21,7 @@ import {
   Star,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource, Service } from '../../shared/types.js';
+import type { Customer, Appointment, Rating, Profile, CustomerType, CustomerSource, Service, NeighborhoodZoneAssignment } from '../../shared/types.js';
 import { CUSTOMER_TYPE_LABELS_AR, CUSTOMER_SOURCE_LABELS_AR, CUSTOMER_IMPORT_ROLES } from '../../shared/types.js';
 import { AppointmentStatusBadge, RatingStars, RatingSummaryBadge } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
@@ -76,6 +76,9 @@ export default function Customers() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  // سجل أحياء الرياض (الإعدادات ← مناطق الرياض) — يُستخدَم فقط كترشيحات
+  // datalist لحقل "الحي" أدناه، وفي CustomerDetailModal، وليس قيداً صارماً.
+  const [neighborhoodZones, setNeighborhoodZones] = useState<NeighborhoodZoneAssignment[]>([]);
   // العميل الذي طُلب حجز موعد جديد له مباشرة من بطاقته في هذه الصفحة —
   // NewAppointmentModal تُفتَح مع initialLead مطابق لجواله فتختاره تلقائياً
   // (نفس آلية تحويل "الطلبات الواردة" الموجودة أصلاً، بدل خاصية جديدة).
@@ -110,6 +113,7 @@ export default function Customers() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
     api.get<Rating[]>('/ratings').then(setRatings);
     api.get<Service[]>('/services').then(setServices);
+    api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setNeighborhoodZones).catch(() => {});
   }, []);
 
   const supervisors = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
@@ -228,6 +232,15 @@ export default function Customers() {
 
   return (
     <div className="space-y-5">
+      {/* ترشيحات حقل "الحي" في نموذجَي الإضافة والتعديل أدناه — من سجل
+          أحياء الرياض (neighborhoodZones)، اقتراح فقط لا قيد صارم. */}
+      <datalist id="riyadh-districts-list">
+        {Array.from(new Set(neighborhoodZones.map((n) => n.neighborhood)))
+          .sort((a, b) => a.localeCompare(b, 'ar'))
+          .map((name) => (
+            <option key={name} value={name} />
+          ))}
+      </datalist>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">{t('سجل العملاء')}</h1>
@@ -543,7 +556,7 @@ export default function Customers() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('الحي')}</span>
-                  <input name="district" defaultValue={editing?.district} className="input" />
+                  <input name="district" defaultValue={editing?.district} list="riyadh-districts-list" className="input" />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المدينة')}</span>
@@ -889,7 +902,7 @@ function CustomerDetailModal({
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('الحي')}</span>
-                  <input value={district} onChange={(e) => setDistrict(e.target.value)} className="input" />
+                  <input value={district} onChange={(e) => setDistrict(e.target.value)} list="riyadh-districts-list" className="input" />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('المدينة')}</span>
