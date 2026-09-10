@@ -51,6 +51,9 @@ export default function PersonalInfoTab() {
 
   const supervisor = allProfiles.find((p) => p.id === user.supervisor_id);
   const myVehicle = vehicles.find((v) => v.assigned_profile_id === user.id);
+  // رقم الهوية وتاريخ انتهائها وصورتها تبقى مخفية عن المشرف الميداني في
+  // صفحته الشخصية (عرضه الذاتي لبياناته)، بطلب صريح — لا يشمل هذا الفني.
+  const hideIdDetails = user.role === 'supervisor';
 
   return (
     <div className="space-y-5">
@@ -79,14 +82,18 @@ export default function PersonalInfoTab() {
               {user.date_of_birth ? tt(`${ageFromBirthDate(user.date_of_birth)} سنة`, `${ageFromBirthDate(user.date_of_birth)} yrs`) : '—'}
             </div>
           </div>
-          <div>
-            <div className="text-xs text-slate-400">{t('رقم الهوية / الإقامة')}</div>
-            <div dir="ltr" className="font-medium text-slate-700">{user.national_id || '—'}</div>
-          </div>
-          <div>
-            <div className="text-xs text-slate-400">{t('تاريخ انتهاء الهوية')}</div>
-            <div dir="ltr" className="font-medium text-slate-700">{user.national_id_expiry || '—'}</div>
-          </div>
+          {!hideIdDetails && (
+            <div>
+              <div className="text-xs text-slate-400">{t('رقم الهوية / الإقامة')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">{user.national_id || '—'}</div>
+            </div>
+          )}
+          {!hideIdDetails && (
+            <div>
+              <div className="text-xs text-slate-400">{t('تاريخ انتهاء الهوية')}</div>
+              <div dir="ltr" className="font-medium text-slate-700">{user.national_id_expiry || '—'}</div>
+            </div>
+          )}
           <div>
             <div className="text-xs text-slate-400">{t('تاريخ التعيين')}</div>
             <div dir="ltr" className="font-medium text-slate-700">{user.hire_date || '—'}</div>
@@ -100,7 +107,7 @@ export default function PersonalInfoTab() {
             <div className="font-medium text-slate-700">{user.default_lang ? t(USER_LANGUAGE_LABELS_AR[user.default_lang]) : t('عربي (افتراضي)')}</div>
           </div>
         </div>
-        {user.id_photo_url && (
+        {!hideIdDetails && user.id_photo_url && (
           <a
             href={user.id_photo_url}
             target="_blank"
