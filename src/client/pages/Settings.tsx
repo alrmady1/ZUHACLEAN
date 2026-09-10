@@ -3207,7 +3207,8 @@ function VehiclesTab() {
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
     const payload = {
-      type: form.get('type'),
+      // "النوع" لم يعد حقلاً يُكتَب هنا — الخادم يشتقّه تلقائياً من شركة
+      // الصنع/الطراز/الموديل (composeVehicleType في api.ts).
       manufacturer: form.get('manufacturer') || undefined,
       model_trim: form.get('model_trim') || undefined,
       model_year: form.get('model_year') || undefined,
@@ -3349,33 +3350,30 @@ function VehiclesTab() {
         >
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t('النوع')}>
-                <input name="type" defaultValue={editing?.type} required className="input" placeholder={t('مثال: تويوتا هايلكس ٢٠٢٣')} />
+              <Field label={t('شركة الصنع')}>
+                <input name="manufacturer" defaultValue={editing?.manufacturer} required className="input" placeholder={t('مثال: تويوتا')} />
               </Field>
               <Field label={t('رقم اللوحة')}>
                 <input name="plate_number" defaultValue={editing?.plate_number} required className="input" dir="ltr" />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label={t('شركة الصنع')}>
-                <input name="manufacturer" defaultValue={editing?.manufacturer} className="input" placeholder={t('مثال: تويوتا')} />
-              </Field>
               <Field label={t('طراز المركبة')}>
                 <input name="model_trim" defaultValue={editing?.model_trim} className="input" placeholder={t('مثال: هايلكس')} />
               </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <Field label={t('موديل')}>
                 <input name="model_year" defaultValue={editing?.model_year} className="input" dir="ltr" placeholder={t('مثال: ٢٠٢٣')} />
               </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <Field label={t('فئة المركبة')}>
                 <input name="vehicle_class" defaultValue={editing?.vehicle_class} className="input" placeholder={t('مثال: بيك أب')} />
               </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <Field label={t('رقم الاستمارة')}>
                 <input name="registration_number" defaultValue={editing?.registration_number} className="input" dir="ltr" />
               </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <Field label={t('المالك')}>
                 {ownershipType === 'company' ? (
                   <input value={COMPANY_LEGAL_NAME} disabled className="input bg-slate-50 text-slate-500" />
@@ -3383,10 +3381,10 @@ function VehiclesTab() {
                   <input name="owner" defaultValue={editing?.owner} className="input" />
                 )}
               </Field>
+              <Field label={t('الرقم التسلسلي')}>
+                <input name="serial_number" defaultValue={editing?.serial_number} className="input" dir="ltr" placeholder={t('رقم الهيكل (VIN)')} />
+              </Field>
             </div>
-            <Field label={t('الرقم التسلسلي')}>
-              <input name="serial_number" defaultValue={editing?.serial_number} className="input" dir="ltr" placeholder={t('رقم الهيكل (VIN)')} />
-            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('تاريخ انتهاء الاستمارة')}>
                 <input type="date" name="registration_expiry" defaultValue={editing?.registration_expiry} className="input" />
