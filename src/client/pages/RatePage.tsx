@@ -113,7 +113,7 @@ export default function RatePage() {
             </div>
 
             <div className="flex justify-center gap-2" dir="ltr">
-              {[5, 4, 3, 2, 1].map((n) => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   type="button"
