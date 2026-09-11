@@ -83,6 +83,7 @@ import type {
   Expense,
   Facility,
   PaymentStatus,
+  NeighborhoodZoneAssignment,
 } from '../../shared/types.js';
 import {
   DEFAULT_LANDING_SETTINGS,
@@ -3878,10 +3879,15 @@ function FacilitiesTab() {
   // حسب هذا الاختيار).
   const [waterIncluded, setWaterIncluded] = useState(false);
   const [electricityIncluded, setElectricityIncluded] = useState(false);
+  // ترشيحات حقل "العنوان" — من سجل أحياء الرياض المسجَّلة في الإعدادات ←
+  // مناطق الرياض، نفس نمط Customers.tsx/Contracts.tsx بالضبط (اقتراح فقط
+  // لا قيد صارم).
+  const [neighborhoodZones, setNeighborhoodZones] = useState<NeighborhoodZoneAssignment[]>([]);
 
   function refresh() {
     api.get<Facility[]>('/facilities').then(setFacilities);
     api.get<Expense[]>('/expenses').then(setExpenses);
+    api.get<NeighborhoodZoneAssignment[]>('/neighborhood-zones').then(setNeighborhoodZones).catch(() => {});
   }
   useEffect(refresh, []);
 
@@ -3994,6 +4000,13 @@ function FacilitiesTab() {
 
   return (
     <div className="space-y-5">
+      <datalist id="riyadh-districts-list">
+        {Array.from(new Set(neighborhoodZones.map((n) => n.neighborhood)))
+          .sort((a, b) => a.localeCompare(b, 'ar'))
+          .map((name) => (
+            <option key={name} value={name} />
+          ))}
+      </datalist>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-400">{t('مباني السكن والمستودعات وخلافها — تفاصيل عقد الإيجار وجدول دفعاته')}</p>
         <button
@@ -4093,7 +4106,7 @@ function FacilitiesTab() {
               </select>
             </Field>
             <Field label={t('العنوان (اختياري)')}>
-              <input name="address" defaultValue={editing?.address} className="input" />
+              <input name="address" defaultValue={editing?.address} list="riyadh-districts-list" className="input" />
             </Field>
             <Field label={t('رابط الموقع (خرائط جوجل)')}>
               <div className="flex gap-2">
