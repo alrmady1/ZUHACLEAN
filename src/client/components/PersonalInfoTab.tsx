@@ -211,6 +211,18 @@ export default function PersonalInfoTab() {
               </div>
             </div>
           </div>
+          {/* صورة الاستمارة — يفتحها الموظف بالحجم الكامل عند الحاجة (نقطة
+              تفتيش مثلاً)، بدل الاضطرار لطلبها من الإدارة كل مرة. */}
+          {myVehicle.registration_photo_url && (
+            <a href={myVehicle.registration_photo_url} target="_blank" rel="noreferrer" className="mt-4 block">
+              <div className="mb-1 text-xs text-slate-400">{t('صورة الاستمارة')}</div>
+              <img
+                src={myVehicle.registration_photo_url}
+                alt={t('صورة الاستمارة')}
+                className="h-40 w-full max-w-sm rounded-xl border border-slate-200 object-cover"
+              />
+            </a>
+          )}
         </div>
       )}
     </div>
