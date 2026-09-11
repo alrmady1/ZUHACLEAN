@@ -3732,6 +3732,13 @@ function FacilitiesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [viewingFacility, setViewingFacility] = useState<Facility | null>(null);
   const [scheduleRows, setScheduleRows] = useState<{ percent: string; amount: string; due_date: string }[]>([]);
+  // هل عدَّل المستخدم جدول الدفعات فعلياً خلال هذه الجلسة من النموذج؟ عند
+  // التعديل (editing !== null)، scheduleRows تُملأ ابتداءً من الجدول
+  // الحالي للعرض فقط — إرسالها دوماً ضمن PATCH كان يُعيد توليد الجدول بمعرّفات
+  // جديدة ويُصفِّر paid_amount حتى عند تعديل حقل آخر لا علاقة له بالجدول
+  // إطلاقاً (مثال: إضافة كهرباء/ماء). الآن لا يُرسَل payment_schedule ضمن
+  // PATCH إلا إن غيَّر المستخدم صراحةً بنداً هنا (انظر handleSubmit أدناه).
+  const [scheduleTouched, setScheduleTouched] = useState(false);
   const [formRentalAmount, setFormRentalAmount] = useState('');
   // مشمول/غير مشمول تتحكّم بإظهار حقول مبلغ الفاتورة الدورية لكل من الماء
   // والكهرباء — نفس فكرة ownershipType في VehiclesTab (حقول لاحقة تتغيّر
@@ -3746,12 +3753,15 @@ function FacilitiesTab() {
   useEffect(refresh, []);
 
   function addScheduleRow() {
+    setScheduleTouched(true);
     setScheduleRows((prev) => [...prev, { percent: '', amount: '', due_date: '' }]);
   }
   function removeScheduleRow(idx: number) {
+    setScheduleTouched(true);
     setScheduleRows((prev) => prev.filter((_, i) => i !== idx));
   }
   function updateScheduleRow(idx: number, field: 'percent' | 'amount' | 'due_date', value: string, totalAmount: number) {
+    setScheduleTouched(true);
     setScheduleRows((prev) =>
       prev.map((row, i) => {
         if (i !== idx) return row;
@@ -3772,6 +3782,7 @@ function FacilitiesTab() {
   function openCreate() {
     setEditing(null);
     setScheduleRows([]);
+    setScheduleTouched(false);
     setFormRentalAmount('');
     setWaterIncluded(false);
     setElectricityIncluded(false);
@@ -3780,6 +3791,7 @@ function FacilitiesTab() {
   function openEdit(f: Facility) {
     setEditing(f);
     setScheduleRows((f.payment_schedule ?? []).map((s) => ({ percent: s.percent != null ? String(s.percent) : '', amount: String(s.amount), due_date: s.due_date })));
+    setScheduleTouched(false);
     setFormRentalAmount(f.rental_amount != null ? String(f.rental_amount) : '');
     setWaterIncluded(f.water_included ?? false);
     setElectricityIncluded(f.electricity_included ?? false);
@@ -3809,9 +3821,17 @@ function FacilitiesTab() {
       electricity_included: electricityIncluded,
       electricity_amount: !electricityIncluded ? form.get('electricity_amount') || undefined : undefined,
       electricity_amount_frequency: !electricityIncluded ? form.get('electricity_amount_frequency') || undefined : undefined,
-      payment_schedule: scheduleRows
-        .filter((r) => r.amount && r.due_date)
-        .map((r) => ({ percent: r.percent ? Number(r.percent) : undefined, amount: Number(r.amount), due_date: r.due_date })),
+      // عند الإنشاء يُرسَل الجدول دوماً (قد يكون فارغاً). عند التعديل لا
+      // يُرسَل إلا إن لمسه المستخدم فعلياً هنا — إرساله دوماً كان يُصفِّر
+      // كل ما سُدِّد سابقاً على بنوده حتى عند تعديل حقل آخر لا علاقة له
+      // بالجدول (انظر تعليق scheduleTouched أعلاه).
+      ...(!editing || scheduleTouched
+        ? {
+            payment_schedule: scheduleRows
+              .filter((r) => r.amount && r.due_date)
+              .map((r) => ({ percent: r.percent ? Number(r.percent) : undefined, amount: Number(r.amount), due_date: r.due_date })),
+          }
+        : {}),
     };
     try {
       if (editing) {
@@ -3822,6 +3842,7 @@ function FacilitiesTab() {
       setShowForm(false);
       setEditing(null);
       setScheduleRows([]);
+      setScheduleTouched(false);
       setFormRentalAmount('');
       setWaterIncluded(false);
       setElectricityIncluded(false);
@@ -3917,6 +3938,7 @@ function FacilitiesTab() {
             setShowForm(false);
             setEditing(null);
             setScheduleRows([]);
+            setScheduleTouched(false);
             setFormRentalAmount('');
             setWaterIncluded(false);
             setElectricityIncluded(false);
