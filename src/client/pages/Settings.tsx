@@ -3930,6 +3930,9 @@ function FacilitiesTab() {
               <select name="type" defaultValue={editing?.type ?? 'housing'} required className="input">
                 <option value="housing">{t(FACILITY_TYPE_LABELS_AR.housing)}</option>
                 <option value="warehouse">{t(FACILITY_TYPE_LABELS_AR.warehouse)}</option>
+                <option value="apartment">{t(FACILITY_TYPE_LABELS_AR.apartment)}</option>
+                <option value="office">{t(FACILITY_TYPE_LABELS_AR.office)}</option>
+                <option value="shop">{t(FACILITY_TYPE_LABELS_AR.shop)}</option>
                 <option value="other">{t(FACILITY_TYPE_LABELS_AR.other)}</option>
               </select>
             </Field>

@@ -1679,10 +1679,13 @@ export interface Vehicle {
 }
 
 // نوع المرفق — Facility.type أدناه.
-export type FacilityType = 'housing' | 'warehouse' | 'other';
+export type FacilityType = 'housing' | 'warehouse' | 'apartment' | 'office' | 'shop' | 'other';
 export const FACILITY_TYPE_LABELS_AR: Record<FacilityType, string> = {
   housing: 'مبنى سكن',
   warehouse: 'مستودع',
+  apartment: 'شقة',
+  office: 'مكتب',
+  shop: 'محل',
   other: 'أخرى',
 };
 
