@@ -374,6 +374,13 @@ api.post('/facilities', (req, res) => {
     rental_amount: numOrUndef(body.rental_amount),
     rental_amount_frequency: body.rental_amount_frequency || undefined,
     payment_schedule: buildPaymentSchedule(body.payment_schedule),
+    office_fee_amount: numOrUndef(body.office_fee_amount),
+    water_included: body.water_included !== undefined ? Boolean(body.water_included) : undefined,
+    water_amount: numOrUndef(body.water_amount),
+    water_amount_frequency: body.water_amount_frequency || undefined,
+    electricity_included: body.electricity_included !== undefined ? Boolean(body.electricity_included) : undefined,
+    electricity_amount: numOrUndef(body.electricity_amount),
+    electricity_amount_frequency: body.electricity_amount_frequency || undefined,
     created_at: now,
     updated_at: now,
   };
@@ -396,6 +403,13 @@ api.patch('/facilities/:id', (req, res) => {
   if (body.rental_contract_end_date !== undefined) patch.rental_contract_end_date = body.rental_contract_end_date || undefined;
   if (body.rental_amount !== undefined) patch.rental_amount = numOrUndef(body.rental_amount);
   if (body.rental_amount_frequency !== undefined) patch.rental_amount_frequency = body.rental_amount_frequency || undefined;
+  if (body.office_fee_amount !== undefined) patch.office_fee_amount = numOrUndef(body.office_fee_amount);
+  if (body.water_included !== undefined) patch.water_included = Boolean(body.water_included);
+  if (body.water_amount !== undefined) patch.water_amount = numOrUndef(body.water_amount);
+  if (body.water_amount_frequency !== undefined) patch.water_amount_frequency = body.water_amount_frequency || undefined;
+  if (body.electricity_included !== undefined) patch.electricity_included = Boolean(body.electricity_included);
+  if (body.electricity_amount !== undefined) patch.electricity_amount = numOrUndef(body.electricity_amount);
+  if (body.electricity_amount_frequency !== undefined) patch.electricity_amount_frequency = body.electricity_amount_frequency || undefined;
   // جدول الدفعات — يُستبدَل بالكامل فقط عند إرساله صراحةً (تعديل تفاصيل
   // المرفق العامة لا يمسّه إطلاقاً)، وبنفس buildPaymentSchedule المستخدمة
   // عند الإنشاء. بنود سبق سداد جزء منها (paid_amount > 0) تفقد ذلك عند

@@ -3733,6 +3733,11 @@ function FacilitiesTab() {
   const [viewingFacility, setViewingFacility] = useState<Facility | null>(null);
   const [scheduleRows, setScheduleRows] = useState<{ percent: string; amount: string; due_date: string }[]>([]);
   const [formRentalAmount, setFormRentalAmount] = useState('');
+  // مشمول/غير مشمول تتحكّم بإظهار حقول مبلغ الفاتورة الدورية لكل من الماء
+  // والكهرباء — نفس فكرة ownershipType في VehiclesTab (حقول لاحقة تتغيّر
+  // حسب هذا الاختيار).
+  const [waterIncluded, setWaterIncluded] = useState(false);
+  const [electricityIncluded, setElectricityIncluded] = useState(false);
 
   function refresh() {
     api.get<Facility[]>('/facilities').then(setFacilities);
@@ -3768,12 +3773,16 @@ function FacilitiesTab() {
     setEditing(null);
     setScheduleRows([]);
     setFormRentalAmount('');
+    setWaterIncluded(false);
+    setElectricityIncluded(false);
     setShowForm(true);
   }
   function openEdit(f: Facility) {
     setEditing(f);
     setScheduleRows((f.payment_schedule ?? []).map((s) => ({ percent: s.percent != null ? String(s.percent) : '', amount: String(s.amount), due_date: s.due_date })));
     setFormRentalAmount(f.rental_amount != null ? String(f.rental_amount) : '');
+    setWaterIncluded(f.water_included ?? false);
+    setElectricityIncluded(f.electricity_included ?? false);
     setShowForm(true);
   }
 
@@ -3793,6 +3802,13 @@ function FacilitiesTab() {
       rental_contract_end_date: form.get('rental_contract_end_date') || undefined,
       rental_amount: formRentalAmount || undefined,
       rental_amount_frequency: form.get('rental_amount_frequency') || undefined,
+      office_fee_amount: form.get('office_fee_amount') || undefined,
+      water_included: waterIncluded,
+      water_amount: !waterIncluded ? form.get('water_amount') || undefined : undefined,
+      water_amount_frequency: !waterIncluded ? form.get('water_amount_frequency') || undefined : undefined,
+      electricity_included: electricityIncluded,
+      electricity_amount: !electricityIncluded ? form.get('electricity_amount') || undefined : undefined,
+      electricity_amount_frequency: !electricityIncluded ? form.get('electricity_amount_frequency') || undefined : undefined,
       payment_schedule: scheduleRows
         .filter((r) => r.amount && r.due_date)
         .map((r) => ({ percent: r.percent ? Number(r.percent) : undefined, amount: Number(r.amount), due_date: r.due_date })),
@@ -3807,6 +3823,8 @@ function FacilitiesTab() {
       setEditing(null);
       setScheduleRows([]);
       setFormRentalAmount('');
+      setWaterIncluded(false);
+      setElectricityIncluded(false);
       refresh();
     } finally {
       setSubmitting(false);
@@ -3900,6 +3918,8 @@ function FacilitiesTab() {
             setEditing(null);
             setScheduleRows([]);
             setFormRentalAmount('');
+            setWaterIncluded(false);
+            setElectricityIncluded(false);
           }}
         >
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -3956,6 +3976,67 @@ function FacilitiesTab() {
                     <option value="annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.annual)}</option>
                   </select>
                 </Field>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+              <h3 className="text-xs font-semibold text-slate-500">{t('مبالغ إضافية على العقد (اختياري)')}</h3>
+              <Field label={t('رسوم المكتب/الوساطة (ر.س)')}>
+                <input type="number" min={0} step="0.01" name="office_fee_amount" defaultValue={editing?.office_fee_amount} className="input" />
+              </Field>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={waterIncluded}
+                    onChange={(e) => setWaterIncluded(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {t('الماء مشمول ضمن الإيجار')}
+                </label>
+                {!waterIncluded && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={t('مبلغ فاتورة الماء (ر.س)')}>
+                      <input type="number" min={0} step="0.01" name="water_amount" defaultValue={editing?.water_amount} className="input" />
+                    </Field>
+                    <Field label={t('دورية فاتورة الماء')}>
+                      <select name="water_amount_frequency" defaultValue={editing?.water_amount_frequency ?? 'monthly'} className="input">
+                        <option value="monthly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.monthly)}</option>
+                        <option value="quarterly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.quarterly)}</option>
+                        <option value="semi_annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.semi_annual)}</option>
+                        <option value="annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.annual)}</option>
+                      </select>
+                    </Field>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={electricityIncluded}
+                    onChange={(e) => setElectricityIncluded(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {t('الكهرباء مشمولة ضمن الإيجار')}
+                </label>
+                {!electricityIncluded && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={t('مبلغ فاتورة الكهرباء (ر.س)')}>
+                      <input type="number" min={0} step="0.01" name="electricity_amount" defaultValue={editing?.electricity_amount} className="input" />
+                    </Field>
+                    <Field label={t('دورية فاتورة الكهرباء')}>
+                      <select name="electricity_amount_frequency" defaultValue={editing?.electricity_amount_frequency ?? 'monthly'} className="input">
+                        <option value="monthly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.monthly)}</option>
+                        <option value="quarterly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.quarterly)}</option>
+                        <option value="semi_annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.semi_annual)}</option>
+                        <option value="annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.annual)}</option>
+                      </select>
+                    </Field>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4094,6 +4175,23 @@ function FacilityDetailModal({ facility, expenses, onClose }: { facility: Facili
             {facility.rental_amount_frequency && ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.rental_amount_frequency])})`}
           </div>
         )}
+        {facility.office_fee_amount != null && <div>{t('رسوم المكتب/الوساطة')}: {formatMoney(facility.office_fee_amount)}</div>}
+        <div>
+          {t('الماء')}:{' '}
+          {facility.water_included
+            ? t('مشمول ضمن الإيجار')
+            : facility.water_amount != null
+              ? `${formatMoney(facility.water_amount)}${facility.water_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.water_amount_frequency])})` : ''}`
+              : t('غير مشمول')}
+        </div>
+        <div>
+          {t('الكهرباء')}:{' '}
+          {facility.electricity_included
+            ? t('مشمولة ضمن الإيجار')
+            : facility.electricity_amount != null
+              ? `${formatMoney(facility.electricity_amount)}${facility.electricity_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.electricity_amount_frequency])})` : ''}`
+              : t('غير مشمولة')}
+        </div>
         {facility.notes && <div>{t('ملاحظات')}: {facility.notes}</div>}
       </div>
 

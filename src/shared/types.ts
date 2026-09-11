@@ -1723,6 +1723,16 @@ export interface Facility {
   rental_amount?: number; // قيمة الإيجار الدورية (وصفية — انظر التعليق أعلاه)
   rental_amount_frequency?: FacilityRentFrequency;
   payment_schedule?: ContractScheduleItem[]; // جدول دفعات الإيجار
+  // رسوم إضافية على عقد الإيجار — كلها اختيارية ووصفية (لا جدول دفعات
+  // مستقلاً لها، بخلاف الإيجار نفسه أعلاه؛ للتتبّع الدقيق يُضاف بند لها
+  // ضمن payment_schedule بنفسه، مستعيناً بحقل label).
+  office_fee_amount?: number; // رسوم المكتب/الوساطة — عادة تُدفع مرة واحدة عند التعاقد
+  water_included?: boolean; // الماء مشمول ضمن الإيجار؟
+  water_amount?: number; // إن لم يكن مشمولاً — مبلغ الفاتورة الدورية التقديري
+  water_amount_frequency?: FacilityRentFrequency;
+  electricity_included?: boolean; // الكهرباء مشمولة ضمن الإيجار؟
+  electricity_amount?: number; // إن لم تكن مشمولة — مبلغ الفاتورة الدورية التقديري
+  electricity_amount_frequency?: FacilityRentFrequency;
   created_at: string;
   updated_at: string;
 }
