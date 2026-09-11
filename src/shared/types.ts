@@ -786,6 +786,12 @@ export interface LandingPageSettings {
   // ظاهر (true) حتى لا تختفي من الحسابات القديمة التي أُنشئت قبل إضافة
   // هذا الخيار (سجلّها المحفوظ لا يحتوي هذا الحقل إطلاقاً).
   show_installments_banner?: boolean;
+  // صورة إعلانية منبثقة (Popup) تظهر في وسط صفحة "اطلب الخدمة" العامة عند
+  // فتحها — مُفعَّلة/مُعطَّلة والصورة نفسها يُتحكَّم بهما من الإعدادات ←
+  // الطلبات الخارجية. الزائر يغلقها بعلامة X ويكمل تصفّح الصفحة بلا أي
+  // منع — إعلان بحت، لا تسجيل دخول ولا نموذج داخله.
+  popup_ad_enabled?: boolean;
+  popup_ad_image_url?: string;
 }
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
@@ -795,6 +801,7 @@ export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
     'حلول تنظيف وصيانة شاملة للمنازل والمكاتب والمرافق التجارية، بفريق مدرّب وأدوات ومواد معتمدة — نصل إليك بموعد محدد ونلتزم به.',
   tagline: 'نظافة تستحق الثقة',
   show_installments_banner: true,
+  popup_ad_enabled: false,
 };
 
 // إعدادات نصوص وبانر تطبيق الجوال (زهى — React Native، مشروع zaha-mobile

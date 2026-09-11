@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Landmark,
   Apple,
+  X,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
@@ -62,6 +63,25 @@ export default function OrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [done, setDone] = useState(false);
+  // أُغلق الإعلان المنبثق مرة واحدة بالفعل خلال هذه الجلسة (تبويب/متصفح) —
+  // sessionStorage عمداً لا localStorage، حتى يظهر مجدداً في زيارة لاحقة
+  // منفصلة بدل الاختفاء نهائياً بعد أول إغلاق.
+  const [popupDismissed, setPopupDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('zaha-ops:popup-ad-dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function dismissPopup() {
+    setPopupDismissed(true);
+    try {
+      sessionStorage.setItem('zaha-ops:popup-ad-dismissed', '1');
+    } catch {
+      /* متصفح يمنع sessionStorage (وضع خاص مثلاً) — يبقى الإغلاق يعمل لهذا
+         العرض فقط، بلا تذكّر */
+    }
+  }
 
   useEffect(() => {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
@@ -114,6 +134,31 @@ export default function OrderPage() {
 
   return (
     <div dir="rtl" style={{ backgroundColor: OFFWHITE }} className="min-h-screen text-slate-800">
+      {/* الإعلان المنبثق — مُفعَّل وصورته من الإعدادات ← الطلبات الخارجية
+          (LandingPageTab في Settings.tsx). إعلان بحت بلا أي نموذج داخله؛
+          إغلاقه لا يمنع أي تصفّح أو حجز لاحق. */}
+      {settings.popup_ad_enabled && settings.popup_ad_image_url && !popupDismissed && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4"
+          onClick={dismissPopup}
+        >
+          <div className="relative max-h-[85vh] max-w-md" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={dismissPopup}
+              aria-label="إغلاق"
+              className="absolute -top-3 -end-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={settings.popup_ad_image_url}
+              alt=""
+              className="max-h-[85vh] w-full rounded-2xl object-contain shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
+
       {/* ============================== الرأس ============================== */}
       <header
         className="sticky top-0 z-30 flex items-center justify-between gap-4 px-5 py-3 shadow-md sm:px-10"

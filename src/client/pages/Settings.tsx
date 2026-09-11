@@ -2435,8 +2435,24 @@ function LandingPageTab() {
   const dragIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
+  const [uploadingPopupAd, setUploadingPopupAd] = useState(false);
+
   function refreshSettings() {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings);
+  }
+
+  async function handlePopupAdImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPopupAd(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const { url } = await api.post<{ url: string }>('/landing-images', { data_url: dataUrl });
+      setSettings((s) => ({ ...s, popup_ad_image_url: url }));
+    } finally {
+      setUploadingPopupAd(false);
+      e.target.value = '';
+    }
   }
   function refreshItems() {
     api.get<LandingService[]>('/landing-services').then((list) => {
@@ -2595,6 +2611,41 @@ function LandingPageTab() {
               <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
             </span>
           </label>
+
+          {/* الإعلان المنبثق — صورة تظهر وسط الصفحة عند فتحها، بعلامة X
+              لإغلاقها في زاويتها (انظر PopupAdModal في OrderPage.tsx). */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <label className="flex cursor-pointer items-center justify-between">
+              <span>
+                <span className="block text-sm font-medium text-slate-700">{t('الإعلان المنبثق')}</span>
+                <span className="block text-xs text-slate-400">{t('صورة إعلانية تظهر في وسط الصفحة عند فتحها، ويمكن للزائر إغلاقها بعلامة X')}</span>
+              </span>
+              <span className="relative inline-block h-6 w-11 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={settings.popup_ad_enabled ?? false}
+                  onChange={(e) => setSettings((s) => ({ ...s, popup_ad_enabled: e.target.checked }))}
+                  className="peer sr-only"
+                />
+                <span className="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500" />
+                <span className="absolute start-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:-translate-x-5" />
+              </span>
+            </label>
+            <div className="mt-3 flex items-center gap-3">
+              {settings.popup_ad_image_url && (
+                <img src={settings.popup_ad_image_url} alt={t('الإعلان المنبثق')} className="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              )}
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePopupAdImageChange}
+                  className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                />
+                {uploadingPopupAd && <span className="mt-1 block text-xs text-slate-400">{t('جارِ رفع الصورة…')}</span>}
+              </div>
+            </div>
+          </div>
         </div>
 
         <button
