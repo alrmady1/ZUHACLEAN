@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Star, CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
+
+// إيموجي تعبيري بدل النجوم — 1 (غير راضٍ إطلاقاً) إلى 5 (سعيد جداً)، بنفس
+// معنى Rating.stars في shared/types.ts تماماً (لم يتغيّر شيء في المعنى أو
+// التخزين، فقط طريقة العرض).
+const EMOJI_BY_STARS: Record<number, string> = { 1: '😡', 2: '🙁', 3: '😐', 4: '🙂', 5: '😄' };
 
 // صفحة تقييم عامة — بلا تسجيل دخول عمداً — يفتحها العميل من رابط واتساب
 // يُرسَل يدوياً من زر "طلب تقييم" في AppointmentDetailModal بعد اكتمال
@@ -34,6 +39,19 @@ export default function RatePage() {
       .catch(() => setLoadError('تعذّر العثور على هذا الموعد. تأكد من الرابط المرسل إليك.'));
   }, [appointmentId]);
 
+  // هذه الصفحة العامة تبقى بإضاءة نهارية دائماً، حتى لو كان تفضيل الوضع
+  // الداكن للحساب الرئيسي مفعّلاً على نفس المتصفح — نفس منطق OrderPage.tsx
+  // بالضبط (localStorage مشترك على مستوى النطاق لا الحساب)، مع استثناء
+  // /rate الموازي في index.html لمنع "وميض" الوضع الداكن قبل هذا الأثر.
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    root.classList.remove('dark');
+    return () => {
+      if (wasDark) root.classList.add('dark');
+    };
+  }, []);
+
   async function submit() {
     if (!appointmentId || stars === 0) return;
     setSubmitting(true);
@@ -61,9 +79,8 @@ export default function RatePage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-900 p-6">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/icon-192.png" alt="زهى" className="mb-4 h-14 w-14 rounded-2xl" />
-          <h1 className="text-xl font-bold text-slate-800">زهى</h1>
-          <p className="mt-1 text-sm text-slate-400">لأعمال الصيانة والتنظيف</p>
+          <img src="/invoice-logo.png" alt="زهى" className="mb-4 h-14 w-14 rounded-2xl" />
+          <p className="text-sm text-slate-400">لأعمال الصيانة والتنظيف</p>
         </div>
 
         {loadError && (
@@ -86,18 +103,16 @@ export default function RatePage() {
 
         {info && !showThankYou && (
           <div className="space-y-5">
-            <div className="text-center">
-              <p className="text-sm text-slate-600">
-                عزيزنا{' '}
-                <span className="font-semibold text-slate-800">
-                  {info.customer_name_snapshot || 'العميل الكريم'}
-                </span>
-                ، كيف كانت تجربتك مع خدمة{' '}
-                <span className="font-semibold text-slate-800">{info.service_name_snapshot}</span>؟
+            <div className="space-y-1.5 text-center text-sm text-slate-600">
+              <p>
+                أهلاً <span className="font-semibold text-slate-800">{info.customer_name_snapshot || 'العميل الكريم'}</span> 👋
               </p>
+              <p>نتمنى أن تكون خدماتنا اليوم حازت على رضاك!</p>
+              <p>يسعدنا تقييمك السريع للخدمة</p>
+              <p>شاكرين لك اختيارك لنا!</p>
             </div>
 
-            <div className="flex justify-center gap-1.5" dir="ltr">
+            <div className="flex justify-center gap-2" dir="ltr">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
@@ -105,14 +120,12 @@ export default function RatePage() {
                   onClick={() => setStars(n)}
                   onMouseEnter={() => setHoverStars(n)}
                   onMouseLeave={() => setHoverStars(0)}
-                  aria-label={`${n} نجوم`}
-                  className="p-1"
+                  aria-label={`${n} من ٥`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-full text-2xl transition ${
+                    n === (hoverStars || stars) ? 'scale-110 bg-brand-50 ring-2 ring-brand-200' : 'grayscale hover:grayscale-0'
+                  }`}
                 >
-                  <Star
-                    className={`h-9 w-9 transition ${
-                      n <= (hoverStars || stars) ? 'fill-amber-400 text-amber-400' : 'fill-transparent text-slate-300'
-                    }`}
-                  />
+                  {EMOJI_BY_STARS[n]}
                 </button>
               ))}
             </div>
@@ -125,7 +138,7 @@ export default function RatePage() {
                 maxLength={500}
                 rows={3}
                 placeholder="اكتب رأيك هنا..."
-                className="input resize-none"
+                className="input resize-none bg-slate-50"
               />
             </label>
 

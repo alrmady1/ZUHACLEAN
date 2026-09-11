@@ -10,14 +10,14 @@
     <meta name="theme-color" content="#2563eb" />
     <!-- يُطبَّق قبل أول رسم للصفحة — يمنع "وميض" الوضع الفاتح لحظياً قبل
          أن يقرأ React تفضيل الوضع الداكن المحفوظ (انظر src/client/lib/theme.ts).
-         صفحة "اطلب الخدمة" العامة (/order) مستثناة عمداً — تبقى بإضاءة نهارية
+         الصفحات العامة (/order، /rate) مستثناة عمداً — تبقى بإضاءة نهارية
          دائماً بصرف النظر عن تفضيل المستخدم المسجَّل دخوله على نفس المتصفح،
-         لأن localStorage مشترك على مستوى النطاق (الدومين) لا الحساب، وهذه
-         الصفحة يزورها عملاء لا علاقة لهم بإعدادات فريق العمل الداخلي. -->
+         لأن localStorage مشترك على مستوى النطاق (الدومين) لا الحساب، وهاتين
+         الصفحتين يزورهما عملاء لا علاقة لهم بإعدادات فريق العمل الداخلي. -->
     <script>
       try {
-        const isOrderPage = location.pathname.startsWith('/order');
-        if (!isOrderPage && localStorage.getItem('zaha-ops:theme') === 'dark') document.documentElement.classList.add('dark');
+        const isPublicPage = location.pathname.startsWith('/order') || location.pathname.startsWith('/rate');
+        if (!isPublicPage && localStorage.getItem('zaha-ops:theme') === 'dark') document.documentElement.classList.add('dark');
       } catch (e) {}
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
