@@ -84,6 +84,7 @@ import type {
   Facility,
   PaymentStatus,
   NeighborhoodZoneAssignment,
+  DistrictGeocode,
 } from '../../shared/types.js';
 import {
   DEFAULT_LANDING_SETTINGS,
@@ -3779,12 +3780,18 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
 }
 
 // يحاول استخراج إحداثيات (خط العرض، خط الطول) من رابط خرائط جوجل كامل —
-// الصيغ الشائعة: ".../@lat,lng,15z"، "?q=lat,lng"، "&ll=lat,lng". روابط
-// جوجل المختصرة (goo.gl/maps، maps.app.goo.gl) لا تحمل إحداثيات قابلة
-// للقراءة مباشرة من الرابط نفسه (نفس الملاحظة الموجودة في
-// CustomerHeatMapTab.tsx) — ترجع null فتُعرَض كرابط عادي بلا معاينة.
+// !3d/!4d أولاً (موقع العلامة الدقيق — يظهر حتى في روابط "مكان" التي لا
+// تحمل @lat,lng إطلاقاً)، ثم @lat,lng (مركز نافذة العرض، أقل دقة)، ثم
+// q=/ll=. روابط جوجل المختصرة (goo.gl/maps، maps.app.goo.gl) لا تحمل
+// إحداثيات قابلة للقراءة مباشرة من الرابط نفسه — ترجع null هنا، لكن
+// FacilityLocationMap أدناه ما زال يحاول معاينة تقريبية من العنوان.
 function parseLatLngFromUrl(url: string): [number, number] | null {
-  const patterns = [/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/];
+  const patterns = [
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+  ];
   for (const re of patterns) {
     const m = url.match(re);
     if (m) return [Number(m[1]), Number(m[2])];
@@ -3792,15 +3799,63 @@ function parseLatLngFromUrl(url: string): [number, number] | null {
   return null;
 }
 
-// معاينة موقع المرفق: خريطة مصغَّرة (Leaflet، غير تفاعلية) لو أمكن استخراج
-// إحداثيات من الرابط، والنقر عليها يفتح الرابط الأصلي كاملاً في خرائط
-// جوجل — "التوسعة" التي طلبها المستخدم. لو تعذَّر استخراج إحداثيات (رابط
-// مختصر مثلاً) يُعرَض رابط عادي فقط بلا معاينة.
-function FacilityLocationMap({ locationUrl }: { locationUrl: string }) {
+// معاينة موقع المرفق: خريطة مصغَّرة (Leaflet، غير تفاعلية)، والنقر عليها
+// يفتح رابط خرائط جوجل الأصلي كاملاً — "التوسعة" التي طلبها المستخدم.
+// الإحداثيات: من الرابط نفسه إن أمكن (الأدق)، وإلا تُقدَّر تقريبياً من
+// عنوان المرفق (عادة اسم حيّ) عبر بحث Nominatim مرة واحدة فقط لكل عنوان
+// جديد — محفوظة بعدها في district-geocodes (نفس الذاكرة المؤقتة المشتركة
+// التي تستخدمها "الخريطة الحرارية" في صفحة العملاء، انظر
+// CustomerHeatMapTab.tsx) فلا يُعاد البحث لاحقاً. لو تعذَّر كل ذلك يُعرَض
+// رابط عادي فقط بلا معاينة.
+function FacilityLocationMap({ locationUrl, address }: { locationUrl: string; address?: string }) {
   const { t } = useI18n();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
-  const coords = parseLatLngFromUrl(locationUrl);
+  const [coords, setCoords] = useState<[number, number] | null>(() => parseLatLngFromUrl(locationUrl));
+  const [resolving, setResolving] = useState(false);
+
+  useEffect(() => {
+    const direct = parseLatLngFromUrl(locationUrl);
+    if (direct) {
+      setCoords(direct);
+      return;
+    }
+    const district = address?.trim();
+    if (!district) {
+      setCoords(null);
+      return;
+    }
+    let cancelled = false;
+    async function resolveApprox() {
+      setResolving(true);
+      try {
+        const cached = await api.get<DistrictGeocode[]>('/district-geocodes');
+        const hit = cached.find((g) => g.district === district);
+        if (hit) {
+          if (!cancelled) setCoords([hit.lat, hit.lng]);
+          return;
+        }
+        const q = encodeURIComponent(`${district}, الرياض, السعودية`);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1`);
+        const data: { lat: string; lon: string }[] = await res.json();
+        if (data[0] && !cancelled) {
+          const lat = Number(data[0].lat);
+          const lng = Number(data[0].lon);
+          setCoords([lat, lng]);
+          api.post('/district-geocodes', { district, lat, lng }).catch(() => {});
+        }
+      } catch {
+        // تعذَّر تحديد موقع تقريبي — يبقى بلا معاينة، رابط عادي فقط أدناه.
+      } finally {
+        if (!cancelled) setResolving(false);
+      }
+    }
+    resolveApprox();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationUrl, address]);
 
   useEffect(() => {
     if (!coords || !mapRef.current || mapInstance.current) return;
@@ -3822,10 +3877,12 @@ function FacilityLocationMap({ locationUrl }: { locationUrl: string }) {
       mapInstance.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationUrl]);
+  }, [coords]);
 
   if (!coords) {
-    return (
+    return resolving ? (
+      <p className="text-xs text-slate-400">{t('جارِ تحديد الموقع تقريبياً…')}</p>
+    ) : (
       <a href={locationUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline">
         <MapIcon className="h-4 w-4" /> {t('فتح الموقع في خرائط جوجل')}
       </a>
@@ -4352,7 +4409,7 @@ function FacilityDetailModal({ facility, expenses, onClose }: { facility: Facili
         {facility.address && <div>{t('العنوان')}: {facility.address}</div>}
         {facility.location_url && (
           <div className="pt-1">
-            <FacilityLocationMap locationUrl={facility.location_url} />
+            <FacilityLocationMap locationUrl={facility.location_url} address={facility.address} />
           </div>
         )}
         {facility.landlord_name && <div>{t('اسم المؤجِّر/المالك')}: {facility.landlord_name}</div>}
