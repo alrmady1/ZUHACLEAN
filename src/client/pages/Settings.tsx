@@ -48,6 +48,7 @@ import {
   Map as RiyadhZonesIcon,
   Languages as TranslationsIcon,
   Car as VehiclesIcon,
+  Warehouse as FacilitiesIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -77,6 +78,8 @@ import type {
   VehicleOwnershipType,
   VehicleRentalFrequency,
   Expense,
+  Facility,
+  PaymentStatus,
 } from '../../shared/types.js';
 import {
   DEFAULT_LANDING_SETTINGS,
@@ -85,6 +88,8 @@ import {
   VEHICLE_OWNERSHIP_TYPE_LABELS_AR,
   VEHICLE_RENTAL_FREQUENCY_LABELS_AR,
   COMPANY_LEGAL_NAME,
+  FACILITY_TYPE_LABELS_AR,
+  FACILITY_RENT_FREQUENCY_LABELS_AR,
 } from '../../shared/types.js';
 import {
   SETTINGS_ACCESS_ROLES,
@@ -3712,6 +3717,430 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
 }
 
 // ---------------------------------------------------------------------------
+// مرافق الشركة — صفحة الإعدادات ← المرافق (FacilitiesTab). مباني سكن،
+// مستودعات، وخلافه، بتفاصيل عقد إيجارها وجدول دفعاته (نفس بنية جدول دفعات
+// العقود في Contracts.tsx بالضبط — انظر ContractScheduleItem). كل دفعة
+// فعلية تُسجَّل من صفحة المصروفات العامة (فئة "إيجار مبنى") — انظر
+// FACILITY_CATEGORY_NAME.
+// ---------------------------------------------------------------------------
+function FacilitiesTab() {
+  const { t, tt } = useI18n();
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [editing, setEditing] = useState<Facility | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [viewingFacility, setViewingFacility] = useState<Facility | null>(null);
+  const [scheduleRows, setScheduleRows] = useState<{ percent: string; amount: string; due_date: string }[]>([]);
+  const [formRentalAmount, setFormRentalAmount] = useState('');
+
+  function refresh() {
+    api.get<Facility[]>('/facilities').then(setFacilities);
+    api.get<Expense[]>('/expenses').then(setExpenses);
+  }
+  useEffect(refresh, []);
+
+  function addScheduleRow() {
+    setScheduleRows((prev) => [...prev, { percent: '', amount: '', due_date: '' }]);
+  }
+  function removeScheduleRow(idx: number) {
+    setScheduleRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function updateScheduleRow(idx: number, field: 'percent' | 'amount' | 'due_date', value: string, totalAmount: number) {
+    setScheduleRows((prev) =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        if (field === 'percent') {
+          const percent = Number(value) || 0;
+          const amount = totalAmount > 0 ? Math.round(((totalAmount * percent) / 100) * 100) / 100 : row.amount;
+          return { ...row, percent: value, amount: totalAmount > 0 ? String(amount) : row.amount };
+        }
+        return { ...row, [field]: value };
+      }),
+    );
+  }
+  const scheduleTotalAmount = scheduleRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  // بنود سبق سداد جزء منها — تحذير عند التعديل فقط (انظر التعليق على PATCH
+  // /facilities/:id في api.ts: استبدال الجدول كاملاً يُصفِّر paid_amount).
+  const hasPaidScheduleItems = (editing?.payment_schedule ?? []).some((s) => s.paid_amount > 0);
+
+  function openCreate() {
+    setEditing(null);
+    setScheduleRows([]);
+    setFormRentalAmount('');
+    setShowForm(true);
+  }
+  function openEdit(f: Facility) {
+    setEditing(f);
+    setScheduleRows((f.payment_schedule ?? []).map((s) => ({ percent: s.percent != null ? String(s.percent) : '', amount: String(s.amount), due_date: s.due_date })));
+    setFormRentalAmount(f.rental_amount != null ? String(f.rental_amount) : '');
+    setShowForm(true);
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    const payload = {
+      name: form.get('name'),
+      type: form.get('type'),
+      address: form.get('address') || undefined,
+      notes: form.get('notes') || undefined,
+      is_active: form.get('is_active') === 'on',
+      landlord_name: form.get('landlord_name') || undefined,
+      rental_contract_number: form.get('rental_contract_number') || undefined,
+      rental_contract_start_date: form.get('rental_contract_start_date') || undefined,
+      rental_contract_end_date: form.get('rental_contract_end_date') || undefined,
+      rental_amount: formRentalAmount || undefined,
+      rental_amount_frequency: form.get('rental_amount_frequency') || undefined,
+      payment_schedule: scheduleRows
+        .filter((r) => r.amount && r.due_date)
+        .map((r) => ({ percent: r.percent ? Number(r.percent) : undefined, amount: Number(r.amount), due_date: r.due_date })),
+    };
+    try {
+      if (editing) {
+        await api.patch(`/facilities/${editing.id}`, payload);
+      } else {
+        await api.post('/facilities', payload);
+      }
+      setShowForm(false);
+      setEditing(null);
+      setScheduleRows([]);
+      setFormRentalAmount('');
+      refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(f: Facility) {
+    if (!window.confirm(tt(`حذف مرفق "${f.name}"؟ لا يمكن التراجع عن هذا الإجراء.`, `Delete facility "${f.name}"? This action cannot be undone.`))) return;
+    await api.del(`/facilities/${f.id}`);
+    refresh();
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-400">{t('مباني السكن والمستودعات وخلافها — تفاصيل عقد الإيجار وجدول دفعاته')}</p>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" /> {t('مرفق جديد')}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-start text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-xs text-slate-400">
+              <th className="p-3 text-start font-medium">{t('الاسم')}</th>
+              <th className="p-3 text-start font-medium">{t('النوع')}</th>
+              <th className="p-3 text-start font-medium">{t('المؤجِّر')}</th>
+              <th className="p-3 text-start font-medium">{t('مبلغ الإيجار')}</th>
+              <th className="p-3 text-start font-medium">{t('نهاية العقد')}</th>
+              <th className="p-3 text-start font-medium">{t('الحالة')}</th>
+              <th className="p-3 text-start font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {facilities.map((f) => (
+              <tr key={f.id} className="border-b border-slate-50 last:border-0">
+                <td className="p-3 font-medium text-slate-700">{f.name}</td>
+                <td className="p-3 text-slate-600">{t(FACILITY_TYPE_LABELS_AR[f.type])}</td>
+                <td className="p-3 text-slate-600">{f.landlord_name || '—'}</td>
+                <td className="p-3 text-slate-600">
+                  {f.rental_amount != null ? (
+                    <>
+                      {formatMoney(f.rental_amount)}
+                      {f.rental_amount_frequency && ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[f.rental_amount_frequency])})`}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td className="p-3 text-slate-600" dir="ltr">{f.rental_contract_end_date || '—'}</td>
+                <td className="p-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${f.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {t(f.is_active ? 'فعّال' : 'غير فعّال')}
+                  </span>
+                </td>
+                <td className="p-3">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setViewingFacility(f)} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:underline">
+                      <Eye className="h-3.5 w-3.5" /> {t('التفاصيل')}
+                    </button>
+                    <button onClick={() => openEdit(f)} className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+                      <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
+                    </button>
+                    <button onClick={() => handleDelete(f)} className="flex items-center gap-1 text-xs font-medium text-red-500 hover:underline">
+                      <Trash2 className="h-3.5 w-3.5" /> {t('حذف')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {facilities.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-slate-400">
+                  {t('لا توجد مرافق مسجَّلة بعد')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <Modal
+          title={editing ? tt(`تعديل مرفق "${editing.name}"`, `Edit facility "${editing.name}"`) : t('مرفق جديد')}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+            setScheduleRows([]);
+            setFormRentalAmount('');
+          }}
+        >
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <Field label={t('اسم المرفق')}>
+              <input name="name" defaultValue={editing?.name} required className="input" placeholder={t('مثال: مبنى سكن العمال — حي الشفا')} />
+            </Field>
+            <Field label={t('النوع')}>
+              <select name="type" defaultValue={editing?.type ?? 'housing'} required className="input">
+                <option value="housing">{t(FACILITY_TYPE_LABELS_AR.housing)}</option>
+                <option value="warehouse">{t(FACILITY_TYPE_LABELS_AR.warehouse)}</option>
+                <option value="other">{t(FACILITY_TYPE_LABELS_AR.other)}</option>
+              </select>
+            </Field>
+            <Field label={t('العنوان (اختياري)')}>
+              <input name="address" defaultValue={editing?.address} className="input" />
+            </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="is_active" defaultChecked={editing?.is_active ?? true} className="h-4 w-4 rounded border-slate-300" />
+              {t('فعّال')}
+            </label>
+
+            <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+              <h3 className="text-xs font-semibold text-slate-500">{t('تفاصيل عقد الإيجار (اختياري)')}</h3>
+              <Field label={t('اسم المؤجِّر/المالك')}>
+                <input name="landlord_name" defaultValue={editing?.landlord_name} className="input" />
+              </Field>
+              <Field label={t('رقم عقد الإيجار')}>
+                <input name="rental_contract_number" defaultValue={editing?.rental_contract_number} className="input" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('تاريخ بداية العقد')}>
+                  <input type="date" name="rental_contract_start_date" defaultValue={editing?.rental_contract_start_date} className="input" />
+                </Field>
+                <Field label={t('تاريخ نهاية العقد')}>
+                  <input type="date" name="rental_contract_end_date" defaultValue={editing?.rental_contract_end_date} className="input" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('مبلغ الإيجار (ر.س)')}>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="input"
+                    value={formRentalAmount}
+                    onChange={(e) => setFormRentalAmount(e.target.value)}
+                  />
+                </Field>
+                <Field label={t('دورية الإيجار')}>
+                  <select name="rental_amount_frequency" defaultValue={editing?.rental_amount_frequency ?? 'monthly'} className="input">
+                    <option value="monthly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.monthly)}</option>
+                    <option value="quarterly">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.quarterly)}</option>
+                    <option value="semi_annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.semi_annual)}</option>
+                    <option value="annual">{t(FACILITY_RENT_FREQUENCY_LABELS_AR.annual)}</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
+
+            {/* جدول دفعات اختياري — نفس فكرة جدول دفعات العقد في Contracts.tsx
+                بالضبط: يقسّم قيمة الإيجار على بنود بنسبة ومبلغ وتاريخ استحقاق
+                مستقل لكل بند، لتتّضح المستحقة والمسدَّدة والمتبقية بمرور
+                الوقت من صفحة المصروفات ← إيجار مبنى. */}
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-600">{t('جدول دفعات الإيجار (اختياري)')}</span>
+                <button
+                  type="button"
+                  onClick={addScheduleRow}
+                  className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                >
+                  <Plus className="h-3.5 w-3.5" /> {t('إضافة دفعة')}
+                </button>
+              </div>
+              {editing && hasPaidScheduleItems && (
+                <p className="mb-2 text-xs font-medium text-amber-600">
+                  {t('تنبيه: تعديل هذا الجدول يُعيد تصفير المبالغ المسدَّدة المسجَّلة سابقاً على بنوده')}
+                </p>
+              )}
+              {scheduleRows.length > 0 && (
+                <div className="space-y-2">
+                  {scheduleRows.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2 rounded-lg bg-slate-50 p-2">
+                      <label className="text-xs">
+                        <span className="mb-1 block text-slate-500">{t('النسبة (%)')}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.01"
+                          value={row.percent}
+                          onChange={(e) => updateScheduleRow(idx, 'percent', e.target.value, Number(formRentalAmount) || 0)}
+                          className="input"
+                        />
+                      </label>
+                      <label className="text-xs">
+                        <span className="mb-1 block text-slate-500">{t('المبلغ (ر.س)')}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={row.amount}
+                          onChange={(e) => updateScheduleRow(idx, 'amount', e.target.value, Number(formRentalAmount) || 0)}
+                          className="input"
+                        />
+                      </label>
+                      <label className="text-xs">
+                        <span className="mb-1 block text-slate-500">{t('تاريخ الاستحقاق')}</span>
+                        <input
+                          type="date"
+                          value={row.due_date}
+                          onChange={(e) => updateScheduleRow(idx, 'due_date', e.target.value, Number(formRentalAmount) || 0)}
+                          className="input"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeScheduleRow(idx)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="text-xs text-slate-400">
+                    {tt(
+                      `إجمالي بنود الجدول: ${formatMoney(scheduleTotalAmount)}`,
+                      `Schedule total: ${formatMoney(scheduleTotalAmount)}`,
+                    )}
+                  </div>
+                </div>
+              )}
+              {scheduleRows.length === 0 && (
+                <p className="text-xs text-slate-400">{t('بلا جدول دفعات — لن تظهر دفعات مستحقة لهذا المرفق في صفحة المصروفات')}</p>
+              )}
+            </div>
+
+            <Field label={t('ملاحظات (اختياري)')}>
+              <textarea name="notes" defaultValue={editing?.notes} rows={2} className="input" />
+            </Field>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {submitting ? t('جارِ الحفظ…') : t('حفظ')}
+            </button>
+          </form>
+        </Modal>
+      )}
+
+      {viewingFacility && (
+        <FacilityDetailModal
+          facility={facilities.find((f) => f.id === viewingFacility.id) ?? viewingFacility}
+          expenses={expenses}
+          onClose={() => setViewingFacility(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// شارة حالة بند من جدول الدفعات — نفس ألوان/تسميات القسم المماثل في
+// ContractDetailModal (Contracts.tsx) بالضبط.
+function FacilityScheduleStatusBadge({ status }: { status: PaymentStatus }) {
+  const { t } = useI18n();
+  const style =
+    status === 'paid' ? 'bg-emerald-100 text-emerald-700' : status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+  const label = status === 'paid' ? 'مسدَّدة بالكامل' : status === 'partial' ? 'جزئية' : 'مستحقة';
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>{t(label)}</span>;
+}
+
+function FacilityDetailModal({ facility, expenses, onClose }: { facility: Facility; expenses: Expense[]; onClose: () => void }) {
+  const { t, tt } = useI18n();
+  const linked = expenses.filter((e) => e.facility_id === facility.id).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const total = linked.reduce((s, e) => s + e.amount, 0);
+
+  return (
+    <Modal title={tt(`مرفق "${facility.name}"`, `Facility "${facility.name}"`)} onClose={onClose}>
+      <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
+        <div>{t('النوع')}: {t(FACILITY_TYPE_LABELS_AR[facility.type])}</div>
+        {facility.address && <div>{t('العنوان')}: {facility.address}</div>}
+        {facility.landlord_name && <div>{t('اسم المؤجِّر/المالك')}: {facility.landlord_name}</div>}
+        {facility.rental_contract_number && <div>{t('رقم عقد الإيجار')}: {facility.rental_contract_number}</div>}
+        {(facility.rental_contract_start_date || facility.rental_contract_end_date) && (
+          <div dir="ltr">{t('العقد')}: {facility.rental_contract_start_date || '—'} → {facility.rental_contract_end_date || '—'}</div>
+        )}
+        {facility.rental_amount != null && (
+          <div>
+            {t('مبلغ الإيجار')}: {formatMoney(facility.rental_amount)}
+            {facility.rental_amount_frequency && ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.rental_amount_frequency])})`}
+          </div>
+        )}
+        {facility.notes && <div>{t('ملاحظات')}: {facility.notes}</div>}
+      </div>
+
+      {facility.payment_schedule && facility.payment_schedule.length > 0 && (
+        <div className="mb-4">
+          <h3 className="mb-2 text-xs font-semibold text-slate-500">{t('جدول دفعات الإيجار — المستحقة والمسدَّدة')}</h3>
+          <div className="space-y-1.5">
+            {facility.payment_schedule.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-2 text-sm">
+                <div>
+                  <div className="font-medium text-slate-700" dir="ltr">{s.due_date}</div>
+                  <div className="text-xs text-slate-400">
+                    {formatMoney(s.paid_amount)} / {formatMoney(s.amount)}
+                    {s.status !== 'paid' && ` — ${tt('متبقٍ', 'remaining')} ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`}
+                  </div>
+                </div>
+                <FacilityScheduleStatusBadge status={s.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-3 rounded-xl bg-slate-50 p-3 text-center">
+        <div className="text-xs text-slate-400">{t('إجمالي المصروفات المرتبطة')}</div>
+        <div className="text-lg font-bold text-slate-800">{formatMoney(total)}</div>
+      </div>
+      {linked.length > 0 ? (
+        <div className="max-h-[40vh] divide-y divide-slate-100 overflow-y-auto">
+          {linked.map((e) => (
+            <div key={e.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
+              <div>
+                <div className="font-medium text-slate-700">{e.title}</div>
+                <div className="text-xs text-slate-400">{e.date}</div>
+              </div>
+              <span className="text-sm font-semibold text-slate-700">{formatMoney(e.amount)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="py-6 text-center text-sm text-slate-400">{t('لا توجد مصروفات مرتبطة بهذا المرفق بعد')}</p>
+      )}
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Permissions tab — صفحة الصلاحيات: جدول (صلاحية × مسمى وظيفي)، كل خانة
 // مربع اختيار يُحفظ فوراً عند تبديله عبر PATCH /api/permissions/:key. تظهر
 // فقط للمدير العام ومدير النظام (PERMISSIONS_ACCESS_ROLES، مقيَّدة أيضاً في
@@ -4446,6 +4875,7 @@ export default function Settings() {
   const canPermissions = user ? PERMISSIONS_ACCESS_ROLES.includes(user.role) : false;
   const canTranslations = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canVehicles = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
+  const canFacilities = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
@@ -4462,6 +4892,7 @@ export default function Settings() {
     | 'permissions'
     | 'translations'
     | 'vehicles'
+    | 'facilities'
     | 'commissions'
     | 'riyadh_zones'
     | 'activity_log';
@@ -4478,6 +4909,7 @@ export default function Settings() {
     if (canPermissions) return 'permissions';
     if (canTranslations) return 'translations';
     if (canVehicles) return 'vehicles';
+    if (canFacilities) return 'facilities';
     if (canCommissions) return 'commissions';
     if (canRiyadhZones) return 'riyadh_zones';
     return 'activity_log';
@@ -4584,6 +5016,14 @@ export default function Settings() {
             <VehiclesIcon className="h-4 w-4" /> {t('المركبات')}
           </button>
         )}
+        {canFacilities && (
+          <button
+            onClick={() => setTab('facilities')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'facilities' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <FacilitiesIcon className="h-4 w-4" /> {t('المرافق')}
+          </button>
+        )}
         {canCommissions && (
           <button
             onClick={() => setTab('commissions')}
@@ -4632,6 +5072,8 @@ export default function Settings() {
         <TranslationsTab />
       ) : tab === 'vehicles' && canVehicles ? (
         <VehiclesTab />
+      ) : tab === 'facilities' && canFacilities ? (
+        <FacilitiesTab />
       ) : tab === 'commissions' && canCommissions ? (
         <CommissionsTab />
       ) : tab === 'riyadh_zones' && canRiyadhZones ? (

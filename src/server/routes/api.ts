@@ -52,6 +52,7 @@ import type {
   WorkersHousingLocation,
   CompanyBankAccount,
   Vehicle,
+  Facility,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -60,6 +61,7 @@ import {
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
+  FACILITY_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
@@ -339,6 +341,78 @@ api.delete('/vehicles/:id', (req, res) => {
   const removed = store.vehicles.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'vehicle not found' });
   if (vehicle) logActivity(req, `تم حذف مركبة "${vehicle.type}" (${vehicle.plate_number})`);
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// مرافق الشركة — صفحة الإعدادات ← المرافق (FacilitiesTab). مباني سكن،
+// مستودعات، وخلافه، بتفاصيل عقد إيجارها وجدول دفعاته (payment_schedule —
+// buildPaymentSchedule أدناه، نفس البنية المُستخدَمة في عقود العملاء
+// بالضبط). كل دفعة فعلية تُسجَّل من صفحة المصروفات العامة (فئة
+// FACILITY_CATEGORY_NAME) وتُحدَّث مقابل بند من هذا الجدول — انظر POST
+// /expenses.
+// ---------------------------------------------------------------------------
+api.get('/facilities', (_req, res) => res.json(store.facilities.list()));
+
+api.post('/facilities', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name || !body.type) {
+    return res.status(400).json({ error: 'name وtype مطلوبان' });
+  }
+  const now = new Date().toISOString();
+  const facility: Facility = {
+    id: store.id(),
+    name: body.name,
+    type: body.type,
+    address: body.address || undefined,
+    notes: body.notes || undefined,
+    is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
+    landlord_name: body.landlord_name || undefined,
+    rental_contract_number: body.rental_contract_number || undefined,
+    rental_contract_start_date: body.rental_contract_start_date || undefined,
+    rental_contract_end_date: body.rental_contract_end_date || undefined,
+    rental_amount: numOrUndef(body.rental_amount),
+    rental_amount_frequency: body.rental_amount_frequency || undefined,
+    payment_schedule: buildPaymentSchedule(body.payment_schedule),
+    created_at: now,
+    updated_at: now,
+  };
+  store.facilities.insert(facility);
+  logActivity(req, `تم إضافة مرفق "${facility.name}"`);
+  res.status(201).json(facility);
+});
+
+api.patch('/facilities/:id', (req, res) => {
+  const body = req.body ?? {};
+  const patch: Partial<Facility> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.type !== undefined) patch.type = body.type;
+  if (body.address !== undefined) patch.address = body.address || undefined;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
+  if (body.landlord_name !== undefined) patch.landlord_name = body.landlord_name || undefined;
+  if (body.rental_contract_number !== undefined) patch.rental_contract_number = body.rental_contract_number || undefined;
+  if (body.rental_contract_start_date !== undefined) patch.rental_contract_start_date = body.rental_contract_start_date || undefined;
+  if (body.rental_contract_end_date !== undefined) patch.rental_contract_end_date = body.rental_contract_end_date || undefined;
+  if (body.rental_amount !== undefined) patch.rental_amount = numOrUndef(body.rental_amount);
+  if (body.rental_amount_frequency !== undefined) patch.rental_amount_frequency = body.rental_amount_frequency || undefined;
+  // جدول الدفعات — يُستبدَل بالكامل فقط عند إرساله صراحةً (تعديل تفاصيل
+  // المرفق العامة لا يمسّه إطلاقاً)، وبنفس buildPaymentSchedule المستخدمة
+  // عند الإنشاء. بنود سبق سداد جزء منها (paid_amount > 0) تفقد ذلك عند
+  // استبدال الجدول كاملاً — هذا القيد مقبول في v1، مطابق تماماً لتعديل
+  // Contract.payment_schedule عبر PATCH /contracts/:id.
+  if (body.payment_schedule !== undefined) patch.payment_schedule = buildPaymentSchedule(body.payment_schedule);
+  const updated = store.facilities.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'facility not found' });
+  logActivity(req, `تم تعديل بيانات مرفق "${updated.name}"`);
+  res.json(updated);
+});
+
+api.delete('/facilities/:id', (req, res) => {
+  const facility = store.facilities.list().find((f) => f.id === req.params.id);
+  const removed = store.facilities.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'facility not found' });
+  if (facility) logActivity(req, `تم حذف مرفق "${facility.name}"`);
   res.status(204).end();
 });
 
@@ -1571,6 +1645,8 @@ api.post('/expenses', async (req, res) => {
   const isSalary = body.category === SALARY_CATEGORY_NAME;
   const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
   const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
+  const isFacility = body.category === FACILITY_CATEGORY_NAME;
+  const linkedFacility = isFacility && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
   // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
   // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
   const linksEmployee = isCustody || isAdvance || isSalary;
@@ -1614,6 +1690,9 @@ api.post('/expenses', async (req, res) => {
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
     vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
     vehicle_label: linkedVehicle ? `${linkedVehicle.type} — ${linkedVehicle.plate_number}` : undefined,
+    facility_id: isFacility ? body.facility_id || undefined : undefined,
+    facility_label: linkedFacility ? linkedFacility.name : undefined,
+    facility_schedule_item_id: isFacility ? body.facility_schedule_item_id || undefined : undefined,
     // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما isAdvance، تبقى
     // 'none' (بلا استقطاع تلقائي) افتراضياً حتى يُختار وضع صراحةً.
     advance_deduction_mode: isAdvance && body.advance_deduction_mode ? body.advance_deduction_mode : 'none',
@@ -1627,6 +1706,18 @@ api.post('/expenses', async (req, res) => {
     invoice_file_name: invoiceFileUrl ? body.invoice_file_name || undefined : undefined,
     created_at: new Date().toISOString(),
   });
+  // إن ارتبط مصروف "إيجار مبنى" ببند من جدول دفعات المرفق، يتراكم عليه
+  // مبلغه وحده (لا كامل المبلغ بالضرورة لو تجاوز المتبقي من ذلك البند)،
+  // وتُحدَّث حالته (مستحقة/جزئية/مسدَّدة) — نفس منطق POST
+  // /contracts/:id/payments بالضبط، لكن للمرافق لا العقود.
+  if (isFacility && body.facility_schedule_item_id && linkedFacility?.payment_schedule) {
+    const item = linkedFacility.payment_schedule.find((s) => s.id === body.facility_schedule_item_id);
+    if (item) {
+      item.paid_amount = Math.min(item.paid_amount + amount, item.amount);
+      item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
+      store.facilities.update(linkedFacility.id, { payment_schedule: linkedFacility.payment_schedule });
+    }
+  }
   logActivity(
     req,
     isCustody
@@ -1639,7 +1730,9 @@ api.post('/expenses', async (req, res) => {
             ? `تم تسجيل إيراد (${EXPENSE_INCOME_TYPE_LABELS_AR[incomeType ?? 'return']}) "${expense.title}" بقيمة ${expense.amount} ر.س`
             : isVehicle && expense.vehicle_label
               ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمركبة "${expense.vehicle_label}"`
-              : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
+              : isFacility && expense.facility_label
+                ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمرفق "${expense.facility_label}"`
+                : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
   res.status(201).json(expense);
 });
@@ -1654,6 +1747,7 @@ api.patch('/expenses/:id', async (req, res) => {
   const isAdvance = (body.category ?? target.category) === ADVANCE_CATEGORY_NAME;
   const isSalary = (body.category ?? target.category) === SALARY_CATEGORY_NAME;
   const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
+  const isFacility = (body.category ?? target.category) === FACILITY_CATEGORY_NAME;
   const linksEmployee = isCustody || isAdvance || isSalary;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
@@ -1676,6 +1770,18 @@ api.patch('/expenses/:id', async (req, res) => {
     const vehicle = vehicleId ? store.vehicles.get(vehicleId) : undefined;
     patch.vehicle_id = vehicleId || undefined;
     patch.vehicle_label = vehicle ? `${vehicle.type} — ${vehicle.plate_number}` : undefined;
+  }
+  // نفس نمط vehicle_id أعلاه — إعادة ضبط الربط بالمرفق/البند حسب الفئة
+  // الحالية. ملاحظة: تعديل amount هنا لا يُعيد احتساب paid_amount على بند
+  // الجدول المرتبط (نفس القيد الموجود أصلاً في PATCH
+  // /contracts/:id/payments/:paymentId لدفعات العقود) — يُطبَّق فقط عند
+  // الإنشاء (POST /expenses).
+  if (body.facility_id !== undefined || body.facility_schedule_item_id !== undefined || body.category !== undefined) {
+    const facilityId = isFacility ? body.facility_id ?? target.facility_id : undefined;
+    const facility = facilityId ? store.facilities.get(facilityId) : undefined;
+    patch.facility_id = facilityId || undefined;
+    patch.facility_label = facility ? facility.name : undefined;
+    patch.facility_schedule_item_id = isFacility ? body.facility_schedule_item_id ?? target.facility_schedule_item_id : undefined;
   }
   // جدولة استقطاع السلفية — قابلة للتعديل لاحقاً (مثلاً تحويلها من "بلا
   // استقطاع" إلى مُقسَّطة)، لا تُلمَس إن لم تُرسَل في الطلب.

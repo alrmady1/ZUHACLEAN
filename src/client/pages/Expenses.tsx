@@ -12,12 +12,14 @@ import type {
   ExpenseIncomeType,
   AdvanceDeductionMode,
   Vehicle,
+  Facility,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
+  FACILITY_CATEGORY_NAME,
   CAN_SEE_CUSTODY_ROLES,
   VAT_RATE,
   EXPENSE_INCOME_TYPE_LABELS_AR,
@@ -336,15 +338,18 @@ function OverviewStat({ label, value, tone }: { label: string; value: string; to
 
 function GeneralExpensesTab() {
   const { user, can, allProfiles } = useAuth();
-  const { t, roleLabel } = useI18n();
+  const { t, tt, roleLabel } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryItem[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
+  const [facilityId, setFacilityId] = useState('');
+  const [facilityScheduleItemId, setFacilityScheduleItemId] = useState('');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [amount, setAmount] = useState('');
   const [isTaxInvoice, setIsTaxInvoice] = useState(false);
@@ -365,6 +370,14 @@ function GeneralExpensesTab() {
   // تصنيف "مركبات" يحتاج ربط المركبة (vehicle_id) بدل الموظف — انظر
   // Expense.vehicle_id في shared/types.ts وصفحة الإعدادات ← المركبات.
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
+  // تصنيف "إيجار مبنى" يحتاج ربط المرفق (facility_id) وبند من جدول دفعاته
+  // (facility_schedule_item_id) — انظر Expense.facility_id في
+  // shared/types.ts وصفحة الإعدادات ← المرافق.
+  const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
+  const selectedFacility = facilities.find((f) => f.id === facilityId);
+  // بنود الجدول غير المسدَّدة بالكامل فقط — بند "مسدَّد" لا معنى لاختياره
+  // من جديد هنا (نفس منطق منتقي "دفعة من عقد" في ContractDetailModal).
+  const dueFacilityScheduleItems = (selectedFacility?.payment_schedule ?? []).filter((s) => s.status !== 'paid');
   const [advanceMode, setAdvanceMode] = useState<AdvanceDeductionMode>('none');
   const [advanceInstallmentMonths, setAdvanceInstallmentMonths] = useState('1');
   const [advancePeriodStart, setAdvancePeriodStart] = useState('');
@@ -391,6 +404,7 @@ function GeneralExpensesTab() {
     refresh();
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     api.get<Vehicle[]>('/vehicles').then(setVehicles);
+    api.get<Facility[]>('/facilities').then(setFacilities);
     api.get<ExpenseCategoryItem[]>('/expense-categories').then((list) => {
       setCategories(list);
       const firstMain = list.find((c) => !c.parent_id && c.is_active && c.name !== CUSTODY_CATEGORY_NAME && c.name !== SALARY_CATEGORY_NAME);
@@ -447,6 +461,8 @@ function GeneralExpensesTab() {
         notes: form.get('notes') || undefined,
         custody_holder_id: needsEmployeeLink ? advanceEmployeeId || undefined : undefined,
         vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
+        facility_id: needsFacilityLink ? facilityId || undefined : undefined,
+        facility_schedule_item_id: needsFacilityLink ? facilityScheduleItemId || undefined : undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -458,6 +474,8 @@ function GeneralExpensesTab() {
       setSubCategory('');
       setAdvanceEmployeeId('');
       setVehicleId('');
+      setFacilityId('');
+      setFacilityScheduleItemId('');
       setInvoiceFile(null);
       setAmount('');
       setIsTaxInvoice(false);
@@ -548,6 +566,7 @@ function GeneralExpensesTab() {
                         <div className="mt-1 text-xs text-slate-400">{e.custody_holder_name}</div>
                       ))}
                     {e.vehicle_label && <div className="mt-1 text-xs text-slate-400">{e.vehicle_label}</div>}
+                    {e.facility_label && <div className="mt-1 text-xs text-slate-400">{e.facility_label}</div>}
                   </td>
                   <td className={`p-3 font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-slate-600'}`}>
                     {formatMoney(signedAmount(e))}
@@ -710,6 +729,56 @@ function GeneralExpensesTab() {
                   )}
                 </label>
               )}
+              {needsFacilityLink && (
+                <div className="space-y-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('المرفق')}</span>
+                    <select
+                      required
+                      className="input"
+                      value={facilityId}
+                      onChange={(e) => {
+                        setFacilityId(e.target.value);
+                        setFacilityScheduleItemId('');
+                      }}
+                    >
+                      <option value="">{t('اختر مرفقاً')}</option>
+                      {facilities.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                    {facilities.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">{t('لا توجد مرافق مسجَّلة — أضِفها من الإعدادات ← المرافق')}</p>
+                    )}
+                  </label>
+                  {dueFacilityScheduleItems.length > 0 && (
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
+                      <select
+                        className="input"
+                        value={facilityScheduleItemId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setFacilityScheduleItemId(id);
+                          const item = dueFacilityScheduleItems.find((s) => s.id === id);
+                          if (item) setAmount(String(Math.max(item.amount - item.paid_amount, 0)));
+                        }}
+                      >
+                        <option value="">{t('بدون ربط ببند محدَّد')}</option>
+                        {dueFacilityScheduleItems.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {(s.label ? `${s.label} — ` : '') +
+                              tt(`متبقٍ ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`, `${formatMoney(Math.max(s.amount - s.paid_amount, 0))} remaining`)}{' '}
+                            ({s.due_date})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
               {isAdvanceCategory && (
                 <div className="space-y-2 rounded-xl bg-slate-50 p-3">
                   <label className="block text-sm">
@@ -834,6 +903,7 @@ function GeneralExpensesTab() {
           paymentMethods={paymentMethods}
           allProfiles={allProfiles}
           vehicles={vehicles}
+          facilities={facilities}
           onClose={() => setViewingExpense(null)}
           onSaved={(updated) => {
             setExpenses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
@@ -859,6 +929,7 @@ function ExpenseDetailModal({
   paymentMethods,
   allProfiles,
   vehicles,
+  facilities,
   onClose,
   onSaved,
   onDeleted,
@@ -869,6 +940,7 @@ function ExpenseDetailModal({
   paymentMethods: PaymentMethodOption[];
   allProfiles: Profile[];
   vehicles: Vehicle[];
+  facilities: Facility[];
   onClose: () => void;
   onSaved: (updated: Expense) => void;
   onDeleted: (id: string) => void;
@@ -886,6 +958,8 @@ function ExpenseDetailModal({
   const [notes, setNotes] = useState(expense.notes ?? '');
   const [holderId, setHolderId] = useState(expense.custody_holder_id ?? '');
   const [vehicleId, setVehicleId] = useState(expense.vehicle_id ?? '');
+  const [facilityId, setFacilityId] = useState(expense.facility_id ?? '');
+  const [facilityScheduleItemId, setFacilityScheduleItemId] = useState(expense.facility_schedule_item_id ?? '');
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
   const [isTaxInvoice, setIsTaxInvoice] = useState(expense.is_tax_invoice ?? false);
@@ -899,6 +973,11 @@ function ExpenseDetailModal({
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
+  const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
+  const selectedFacility = facilities.find((f) => f.id === facilityId);
+  const dueFacilityScheduleItems = (selectedFacility?.payment_schedule ?? []).filter(
+    (s) => s.status !== 'paid' || s.id === expense.facility_schedule_item_id,
+  );
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
 
@@ -920,6 +999,8 @@ function ExpenseDetailModal({
         notes: notes || undefined,
         custody_holder_id: needsEmployeeLink ? holderId || undefined : undefined,
         vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
+        facility_id: needsFacilityLink ? facilityId || undefined : undefined,
+        facility_schedule_item_id: needsFacilityLink ? facilityScheduleItemId || undefined : undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -994,6 +1075,7 @@ function ExpenseDetailModal({
                 )}
                 {expense.vendor_name && <div>{t('اسم التاجر')}: {expense.vendor_name}</div>}
                 {expense.vehicle_label && <div>{t('المركبة')}: {expense.vehicle_label}</div>}
+                {expense.facility_label && <div>{t('المرفق')}: {expense.facility_label}</div>}
                 {expense.recorded_by_name && <div>{t('سجّله')}: {expense.recorded_by_name}</div>}
                 {expense.notes && <div>{t('ملاحظات')}: {expense.notes}</div>}
               </div>
@@ -1108,6 +1190,41 @@ function ExpenseDetailModal({
                   ))}
                 </select>
               </label>
+            )}
+            {needsFacilityLink && (
+              <div className="space-y-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('المرفق')}</span>
+                  <select
+                    value={facilityId}
+                    onChange={(e) => {
+                      setFacilityId(e.target.value);
+                      setFacilityScheduleItemId('');
+                    }}
+                    className="input"
+                  >
+                    <option value="">{t('اختر مرفقاً')}</option>
+                    {facilities.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {dueFacilityScheduleItems.length > 0 && (
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
+                    <select value={facilityScheduleItemId} onChange={(e) => setFacilityScheduleItemId(e.target.value)} className="input">
+                      <option value="">{t('بدون ربط ببند محدَّد')}</option>
+                      {dueFacilityScheduleItems.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {(s.label ? `${s.label} — ` : '') + formatMoney(s.amount)} ({s.due_date})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             )}
             {isAdvanceCategory && (
               <div className="space-y-2 rounded-xl bg-slate-50 p-3">

@@ -45,6 +45,7 @@ import type {
   TranslationOverride,
   TranslationLanguage,
   Vehicle,
+  Facility,
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
@@ -169,6 +170,8 @@ interface DbShape {
   translationLanguages: TranslationLanguage[];
   // صفحة الإعدادات ← المركبات — انظر Vehicle في src/shared/types.ts.
   vehicles: Vehicle[];
+  // صفحة الإعدادات ← المرافق — انظر Facility في src/shared/types.ts.
+  facilities: Facility[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -412,6 +415,7 @@ function seed(): DbShape {
     { id: 'ec-materials', name: 'مواد التشغيل والنظافة', is_active: true },
     { id: 'ec-iqama', name: 'إقامات', is_active: true },
     { id: 'ec-rent', name: 'إيجار', is_active: true },
+    { id: 'ec-facility-rent', name: 'إيجار مبنى', is_active: true },
     { id: 'ec-electricity', name: 'كهرباء', is_active: true },
     { id: 'ec-gas', name: 'غاز', is_active: true },
     { id: 'ec-misc', name: 'مشتريات متفرقة', is_active: true },
@@ -484,6 +488,7 @@ function seed(): DbShape {
     translationOverrides: [],
     translationLanguages: [],
     vehicles: [],
+    facilities: [],
   };
 }
 
@@ -587,6 +592,12 @@ async function load(): Promise<DbShape> {
     if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'تأسيس')) {
       parsed.expenseCategories.push({ id: 'ec-setup', name: 'تأسيس', is_active: true });
     }
+    // فئة "إيجار مبنى" (FACILITY_CATEGORY_NAME) أُضيفت بعد أن كانت قواعد
+    // بيانات كثيرة قد زُرعت أصلاً — تُضاف هنا لمن لا يملكها بعد، بدل
+    // الاعتماد فقط على seed() أعلاه.
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'إيجار مبنى')) {
+      parsed.expenseCategories.push({ id: 'ec-facility-rent', name: 'إيجار مبنى', is_active: true });
+    }
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.employeeDeductions) parsed.employeeDeductions = [];
     if (!parsed.employeeViolations) parsed.employeeViolations = [];
@@ -627,6 +638,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.translationOverrides) parsed.translationOverrides = [];
     if (!parsed.translationLanguages) parsed.translationLanguages = [];
     if (!parsed.vehicles) parsed.vehicles = [];
+    if (!parsed.facilities) parsed.facilities = [];
     // عقود قديمة قبل إضافة سجل الدفعات (payments) — تبقى paid_amount/
     // remaining_amount المحفوظتان سابقاً كما هي (لا يمكن إعادة بناء سجل
     // دفعات تفصيلي من رقم إجمالي محفوظ فقط)، فقط تُضاف مصفوفة فارغة حتى
@@ -1408,6 +1420,25 @@ export const store = {
       const idx = db.vehicles.findIndex((v) => v.id === id);
       if (idx === -1) return false;
       db.vehicles.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  facilities: {
+    list: () => db.facilities,
+    get: (id: string) => db.facilities.find((f) => f.id === id),
+    insert: (f: Facility) => { db.facilities.push(f); persist(); return f; },
+    update: (id: string, patch: Partial<Facility>) => {
+      const idx = db.facilities.findIndex((f) => f.id === id);
+      if (idx === -1) return undefined;
+      db.facilities[idx] = { ...db.facilities[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.facilities[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.facilities.findIndex((f) => f.id === id);
+      if (idx === -1) return false;
+      db.facilities.splice(idx, 1);
       persist();
       return true;
     },

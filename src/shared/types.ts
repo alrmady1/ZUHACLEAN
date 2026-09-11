@@ -1100,6 +1100,14 @@ export interface Expense {
   // (النوع — رقم اللوحة) وقت التسجيل، بنفس نمط custody_holder_name.
   vehicle_id?: string;
   vehicle_label?: string;
+  // Set when category === FACILITY_CATEGORY_NAME (إيجار مبنى): أي مرفق
+  // مسجَّل (Settings ← المرافق) هذا المصروف مقابل إيجاره، وأي بند من جدول
+  // دفعاته (Facility.payment_schedule) — نفس نمط contract_id/schedule_item_id
+  // أدناه بالضبط، لكن للمرافق لا العقود. facility_label لقطة عرض جاهزة
+  // (الاسم) وقت التسجيل، بنفس نمط vehicle_label.
+  facility_id?: string;
+  facility_label?: string;
+  facility_schedule_item_id?: string;
   vendor_name?: string; // اسم التاجر — مصدره غالباً فاتورة عهدة، انظر paid_via_custody
   // صحيح فقط لمصروف وُلِد تلقائياً من فاتورة عهدة (POST /custody-invoices
   // ← linked_expense_id): custody_holder_id هنا يعني "مَن دفعها من عهدته
@@ -1663,6 +1671,58 @@ export interface Vehicle {
   final_payment_amount?: number; // قيمة الدفعة الأخيرة (التجميعية)
   last_oil_change?: string; // تاريخ آخر تغيير زيت
   last_oil_change_odometer?: number; // قراءة العداد وقت آخر تغيير زيت
+  created_at: string;
+  updated_at: string;
+}
+
+// نوع المرفق — Facility.type أدناه.
+export type FacilityType = 'housing' | 'warehouse' | 'other';
+export const FACILITY_TYPE_LABELS_AR: Record<FacilityType, string> = {
+  housing: 'مبنى سكن',
+  warehouse: 'مستودع',
+  other: 'أخرى',
+};
+
+// دورية مبلغ إيجار المرفق — Facility.rental_amount_frequency (وصفية فقط،
+// الاستحقاق الفعلي يُبنى صراحةً في payment_schedule أدناه).
+export type FacilityRentFrequency = 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+export const FACILITY_RENT_FREQUENCY_LABELS_AR: Record<FacilityRentFrequency, string> = {
+  monthly: 'شهرياً',
+  quarterly: 'ربع سنوي',
+  semi_annual: 'نصف سنوي',
+  annual: 'سنوياً',
+};
+
+// اسم فئة مصروفات "إيجار مبنى" — نفس مطابقة الاسم المُستخدَمة في
+// VEHICLE_CATEGORY_NAME أعلاه: تُظهر منتقي "المرفق" (بدل المركبة/الموظف)
+// في نموذج إضافة مصروف عام، ليُربَط كل مصروف إيجار ببند محدَّد من جدول
+// دفعات ذلك المرفق (Facility.payment_schedule بالضبط كما تفعل "دفعة من
+// عقد" مع Contract.payment_schedule) — انظر Expense.facility_id أدناه
+// وFacilitiesTab في Settings.tsx.
+export const FACILITY_CATEGORY_NAME = 'إيجار مبنى';
+
+// مرافق الشركة (مباني سكن، مستودعات، وخلافه) — صفحة الإعدادات ← المرافق
+// (FacilitiesTab في Settings.tsx). كل مرفق يحمل تفاصيل عقد إيجاره وجدول
+// دفعاته (payment_schedule — نفس بنية ContractScheduleItem المُستخدَمة في
+// عقود العملاء تماماً)، فتتّضح الدفعات المستحقة والمستلمة والمتبقية بمرور
+// الوقت؛ كل دفعة فعلية تُسجَّل من صفحة المصروفات العامة (فئة
+// FACILITY_CATEGORY_NAME) وتُحدَّث مقابل بند من هذا الجدول — انظر POST
+// /expenses وExpense.facility_schedule_item_id.
+export interface Facility {
+  id: string;
+  name: string; // اسم/عنوان المرفق (مثال: "مبنى سكن العمال — حي الشفا")
+  type: FacilityType;
+  address?: string;
+  notes?: string;
+  is_active: boolean;
+  // تفاصيل عقد الإيجار — كلها اختيارية (قد يكون المرفق مملوكاً للشركة بلا إيجار).
+  landlord_name?: string; // اسم المؤجر/المالك
+  rental_contract_number?: string;
+  rental_contract_start_date?: string;
+  rental_contract_end_date?: string;
+  rental_amount?: number; // قيمة الإيجار الدورية (وصفية — انظر التعليق أعلاه)
+  rental_amount_frequency?: FacilityRentFrequency;
+  payment_schedule?: ContractScheduleItem[]; // جدول دفعات الإيجار
   created_at: string;
   updated_at: string;
 }
