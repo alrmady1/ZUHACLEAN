@@ -2,7 +2,14 @@ import { Router, type Request } from 'express';
 import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
-import { uploadAppointmentPhoto, uploadLeavePhoto, uploadLandingImage, uploadExpenseInvoice, uploadEmployeeIdPhoto } from '../lib/storage.js';
+import {
+  uploadAppointmentPhoto,
+  uploadLeavePhoto,
+  uploadLandingImage,
+  uploadExpenseInvoice,
+  uploadEmployeeIdPhoto,
+  uploadVehicleRegistrationPhoto,
+} from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import type {
@@ -239,20 +246,33 @@ function composeVehicleType(manufacturer?: string, modelTrim?: string, modelYear
   return [manufacturer, modelTrim, modelYear].filter(Boolean).join(' ').trim() || fallback || 'مركبة';
 }
 
-api.post('/vehicles', (req, res) => {
+api.post('/vehicles', async (req, res) => {
   const body = req.body ?? {};
   if (!body.manufacturer || !body.plate_number) {
     return res.status(400).json({ error: 'manufacturer وplate_number مطلوبان' });
   }
+  const vehicleId = store.id();
+  // صورة استمارة اختيارية — نفس منطق صورة الإجازة/فاتورة المصروف بالضبط
+  // (نرفعها أولاً باستخدام المعرّف المولَّد سلفاً، ثم نحفظ رابطها فقط).
+  let registrationPhotoUrl: string | undefined;
+  if (body.registration_photo_data_url) {
+    try {
+      registrationPhotoUrl = await uploadVehicleRegistrationPhoto(vehicleId, body.registration_photo_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع صورة الاستمارة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع صورة الاستمارة' });
+    }
+  }
   const now = new Date().toISOString();
   const vehicle: Vehicle = {
-    id: store.id(),
+    id: vehicleId,
     type: composeVehicleType(body.manufacturer, body.model_trim, body.model_year, body.plate_number),
     manufacturer: body.manufacturer || undefined,
     model_trim: body.model_trim || undefined,
     model_year: body.model_year || undefined,
     vehicle_class: body.vehicle_class || undefined,
     registration_number: body.registration_number || undefined,
+    registration_photo_url: registrationPhotoUrl,
     owner: body.owner || undefined,
     plate_number: body.plate_number,
     serial_number: body.serial_number || undefined,
@@ -286,7 +306,7 @@ api.post('/vehicles', (req, res) => {
   res.status(201).json(vehicle);
 });
 
-api.patch('/vehicles/:id', (req, res) => {
+api.patch('/vehicles/:id', async (req, res) => {
   const body = req.body ?? {};
   const target = store.vehicles.list().find((v) => v.id === req.params.id);
   const patch: Partial<Vehicle> = {};
@@ -306,6 +326,19 @@ api.patch('/vehicles/:id', (req, res) => {
   }
   if (body.vehicle_class !== undefined) patch.vehicle_class = body.vehicle_class || undefined;
   if (body.registration_number !== undefined) patch.registration_number = body.registration_number || undefined;
+  // استبدال/إرفاق صورة استمارة جديدة — نفس منطق فاتورة المصروف بالضبط؛
+  // صورة قديمة على Supabase Storage تبقى يتيمة بلا مشكلة (نفس منطق حذف
+  // صور المواعيد).
+  if (body.registration_photo_data_url) {
+    try {
+      patch.registration_photo_url = await uploadVehicleRegistrationPhoto(req.params.id, body.registration_photo_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع صورة الاستمارة إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع صورة الاستمارة' });
+    }
+  } else if (body.remove_registration_photo) {
+    patch.registration_photo_url = undefined;
+  }
   if (body.owner !== undefined) patch.owner = body.owner || undefined;
   if (body.plate_number !== undefined) patch.plate_number = body.plate_number;
   if (body.serial_number !== undefined) patch.serial_number = body.serial_number || undefined;

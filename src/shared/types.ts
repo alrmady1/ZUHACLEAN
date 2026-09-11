@@ -1644,6 +1644,11 @@ export interface Vehicle {
   model_year?: string; // موديل (سنة الصنع، مثال: ٢٠٢٣)
   vehicle_class?: string; // فئة المركبة (مثال: بيك أب، دفع رباعي، سيدان)
   registration_number?: string; // رقم الاستمارة
+  // صورة استمارة المركبة — تُرفع كـ base64 data URL من العميل وتُخزَّن في
+  // Supabase Storage (انظر uploadVehicleRegistrationPhoto في
+  // server/lib/storage.ts)؛ هذا الحقل يحمل الرابط الموقَّع فقط، نفس نمط
+  // Expense.invoice_file_url بالضبط.
+  registration_photo_url?: string;
   owner?: string; // المالك (اسم صاحب الاستمارة — قد يكون الشركة نفسها أو فرداً)
   plate_number: string; // رقم اللوحة
   serial_number?: string; // الرقم التسلسلي (VIN)

@@ -156,3 +156,24 @@ export async function uploadEmployeeIdPhoto(profileId: string, dataUrl: string):
 
   return data.signedUrl;
 }
+
+// نفس منطق uploadEmployeeIdPhoto أعلاه بالضبط، لصورة استمارة المركبة
+// (صفحة الإعدادات ← المركبات) — تُخزَّن تحت مسار "vehicles/" منفصل.
+export async function uploadVehicleRegistrationPhoto(vehicleId: string, dataUrl: string): Promise<string> {
+  await ensureBucket();
+  const { buffer, contentType, ext } = parseDataUrl(dataUrl);
+  const path = `vehicles/${vehicleId}/registration-${Date.now()}-${randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, buffer, {
+    contentType,
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const { data, error: signError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, TEN_YEARS_IN_SECONDS);
+  if (signError) throw signError;
+
+  return data.signedUrl;
+}

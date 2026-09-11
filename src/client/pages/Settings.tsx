@@ -51,6 +51,7 @@ import {
   Warehouse as FacilitiesIcon,
   Maximize2,
   MapPin as MapIcon,
+  Paperclip,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -3252,6 +3253,8 @@ function VehiclesTab() {
   // "ملكية الشركة" لا تحتاج أي حقل إضافي (المالك يُضبَط تلقائياً)،
   // "مستأجرة" تُظهر حقول عقد الإيجار، و"أقساط" تُظهر حقول التمويل.
   const [ownershipType, setOwnershipType] = useState<VehicleOwnershipType | ''>('');
+  const [registrationPhotoFile, setRegistrationPhotoFile] = useState<File | null>(null);
+  const [removeRegistrationPhoto, setRemoveRegistrationPhoto] = useState(false);
 
   function refresh() {
     api.get<Vehicle[]>('/vehicles').then(setVehicles);
@@ -3270,6 +3273,7 @@ function VehiclesTab() {
     e.preventDefault();
     setSubmitting(true);
     const form = new FormData(e.currentTarget);
+    const registration_photo_data_url = registrationPhotoFile ? await compressImageToDataUrl(registrationPhotoFile) : undefined;
     const payload = {
       // "النوع" لم يعد حقلاً يُكتَب هنا — الخادم يشتقّه تلقائياً من شركة
       // الصنع/الطراز/الموديل (composeVehicleType في api.ts).
@@ -3278,6 +3282,8 @@ function VehiclesTab() {
       model_year: form.get('model_year') || undefined,
       vehicle_class: form.get('vehicle_class') || undefined,
       registration_number: form.get('registration_number') || undefined,
+      registration_photo_data_url,
+      remove_registration_photo: !registrationPhotoFile && removeRegistrationPhoto ? true : undefined,
       // حقل "المالك" مُعطَّل (disabled) عند "ملكية الشركة" فلا يُرسَل ضمن
       // FormData إطلاقاً — القيمة الثابتة تُضبَط هنا مباشرة بدل الاعتماد
       // على حقل نموذج فعلي.
@@ -3315,6 +3321,8 @@ function VehiclesTab() {
       }
       setShowForm(false);
       setEditing(null);
+      setRegistrationPhotoFile(null);
+      setRemoveRegistrationPhoto(false);
       refresh();
     } finally {
       setSubmitting(false);
@@ -3336,6 +3344,8 @@ function VehiclesTab() {
           onClick={() => {
             setEditing(null);
             setOwnershipType('');
+            setRegistrationPhotoFile(null);
+            setRemoveRegistrationPhoto(false);
             setShowForm(true);
           }}
           className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -3379,6 +3389,8 @@ function VehiclesTab() {
                       onClick={() => {
                         setEditing(v);
                         setOwnershipType(v.ownership_type ?? '');
+                        setRegistrationPhotoFile(null);
+                        setRemoveRegistrationPhoto(false);
                         setShowForm(true);
                       }}
                       className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
@@ -3410,6 +3422,8 @@ function VehiclesTab() {
             setShowForm(false);
             setEditing(null);
             setOwnershipType('');
+            setRegistrationPhotoFile(null);
+            setRemoveRegistrationPhoto(false);
           }}
         >
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -3437,6 +3451,36 @@ function VehiclesTab() {
                 <input name="registration_number" defaultValue={editing?.registration_number} className="input" dir="ltr" />
               </Field>
             </div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('صورة الاستمارة (اختياري)')}</span>
+              {editing?.registration_photo_url && !removeRegistrationPhoto && !registrationPhotoFile && (
+                <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
+                  <img src={editing.registration_photo_url} alt={t('صورة الاستمارة')} className="h-10 w-10 shrink-0 rounded object-cover" />
+                  <span className="flex-1 truncate text-slate-600">{t('صورة مرفقة حالياً')}</span>
+                  <button
+                    type="button"
+                    onClick={() => setRemoveRegistrationPhoto(true)}
+                    className="shrink-0 font-medium text-red-600 hover:underline"
+                  >
+                    {t('إزالة')}
+                  </button>
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  setRegistrationPhotoFile(e.target.files?.[0] ?? null);
+                  setRemoveRegistrationPhoto(false);
+                }}
+                className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+              />
+              {registrationPhotoFile && (
+                <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                  <Paperclip className="h-3 w-3" /> {registrationPhotoFile.name}
+                </span>
+              )}
+            </label>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('المالك')}>
                 {ownershipType === 'company' ? (
@@ -3652,6 +3696,15 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
             </div>
           )}
         </div>
+      )}
+      {vehicle.registration_photo_url && (
+        <a href={vehicle.registration_photo_url} target="_blank" rel="noreferrer" className="mb-3 block">
+          <img
+            src={vehicle.registration_photo_url}
+            alt={t('صورة الاستمارة')}
+            className="h-40 w-full rounded-xl border border-slate-200 object-cover"
+          />
+        </a>
       )}
       {vehicle.ownership_type === 'rented' && (
         <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
