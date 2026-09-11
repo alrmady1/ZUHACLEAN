@@ -363,6 +363,34 @@ function computeFeeStatus(amount: number | undefined, paidAmount: number): Payme
   return paidAmount >= amount - 0.005 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 }
 
+// يُطبِّق delta (موجب عند ربط/إنشاء مصروف، سالب عند فكّ ربطه — انظر
+// applyFacilityLinkChange أدناه) على paid_amount لبند مستحق واحد من مرفق:
+// إما أحد الرسوم الإضافية الثلاثة ('office_fee'/'water'/'electricity')، أو
+// بند حقيقي من payment_schedule (بمعرّفه). محصور بين 0 والمبلغ الكلي
+// للبند دائماً — لا يذهب سالباً ولا يتجاوز المبلغ. لا شيء يحدث إن لم يوجد
+// المرفق أو البند أو لم يكن لهما مبلغ مضبوط.
+function applyFacilityScheduleDelta(facilityId: string, itemId: string, delta: number): void {
+  if (!delta) return;
+  const facility = store.facilities.get(facilityId);
+  if (!facility) return;
+  const feeField = itemId === 'office_fee' ? 'office_fee' : itemId === 'water' ? 'water' : itemId === 'electricity' ? 'electricity' : undefined;
+  if (feeField) {
+    const feeAmount = facility[`${feeField}_amount`];
+    if (feeAmount === undefined) return;
+    const paidAmount = Math.min(Math.max((facility[`${feeField}_paid_amount`] ?? 0) + delta, 0), feeAmount);
+    store.facilities.update(facilityId, {
+      [`${feeField}_paid_amount`]: paidAmount,
+      [`${feeField}_status`]: computeFeeStatus(feeAmount, paidAmount),
+    });
+    return;
+  }
+  const item = facility.payment_schedule?.find((s) => s.id === itemId);
+  if (!item) return;
+  item.paid_amount = Math.min(Math.max(item.paid_amount + delta, 0), item.amount);
+  item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
+  store.facilities.update(facilityId, { payment_schedule: facility.payment_schedule });
+}
+
 api.post('/facilities', (req, res) => {
   const body = req.body ?? {};
   if (!body.name || !body.type) {
@@ -1754,35 +1782,10 @@ api.post('/expenses', async (req, res) => {
   // إن ارتبط مصروف "إيجار مبنى" ببند من جدول دفعات المرفق، أو بأحد الرسوم
   // الإضافية الثلاثة (رسوم المكتب/الماء/الكهرباء — قيم facility_schedule_
   // item_id الخاصة 'office_fee'/'water'/'electricity')، يتراكم عليه مبلغه
-  // وحده (لا كامل مبلغ المصروف بالضرورة لو تجاوز المتبقي)، وتُحدَّث حالته
-  // (مستحقة/جزئية/مسدَّدة) — نفس منطق POST /contracts/:id/payments بالضبط،
-  // لكن للمرافق لا العقود.
+  // وحده (لا كامل مبلغ المصروف بالضرورة لو تجاوز المتبقي) — نفس منطق POST
+  // /contracts/:id/payments بالضبط، لكن للمرافق لا العقود.
   if (isFacility && body.facility_schedule_item_id && linkedFacility) {
-    const feeField =
-      body.facility_schedule_item_id === 'office_fee'
-        ? 'office_fee'
-        : body.facility_schedule_item_id === 'water'
-          ? 'water'
-          : body.facility_schedule_item_id === 'electricity'
-            ? 'electricity'
-            : undefined;
-    if (feeField) {
-      const feeAmount = linkedFacility[`${feeField}_amount`];
-      if (feeAmount !== undefined) {
-        const paidAmount = Math.min((linkedFacility[`${feeField}_paid_amount`] ?? 0) + amount, feeAmount);
-        store.facilities.update(linkedFacility.id, {
-          [`${feeField}_paid_amount`]: paidAmount,
-          [`${feeField}_status`]: computeFeeStatus(feeAmount, paidAmount),
-        });
-      }
-    } else if (linkedFacility.payment_schedule) {
-      const item = linkedFacility.payment_schedule.find((s) => s.id === body.facility_schedule_item_id);
-      if (item) {
-        item.paid_amount = Math.min(item.paid_amount + amount, item.amount);
-        item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
-        store.facilities.update(linkedFacility.id, { payment_schedule: linkedFacility.payment_schedule });
-      }
-    }
+    applyFacilityScheduleDelta(linkedFacility.id, body.facility_schedule_item_id, amount);
   }
   logActivity(
     req,
@@ -1838,10 +1841,9 @@ api.patch('/expenses/:id', async (req, res) => {
     patch.vehicle_label = vehicle ? `${vehicle.type} — ${vehicle.plate_number}` : undefined;
   }
   // نفس نمط vehicle_id أعلاه — إعادة ضبط الربط بالمرفق/البند حسب الفئة
-  // الحالية. ملاحظة: تعديل amount هنا لا يُعيد احتساب paid_amount على بند
-  // الجدول المرتبط (نفس القيد الموجود أصلاً في PATCH
-  // /contracts/:id/payments/:paymentId لدفعات العقود) — يُطبَّق فقط عند
-  // الإنشاء (POST /expenses).
+  // الحالية. التسوية الفعلية لـ paid_amount عند تغيّر الربط أو المبلغ تجري
+  // أدناه بعد الحفظ (applyFacilityScheduleDelta) — عكس دفعات العقود التي
+  // ما زالت بلا تسوية عند التعديل.
   if (body.facility_id !== undefined || body.facility_schedule_item_id !== undefined || body.category !== undefined) {
     const facilityId = isFacility ? body.facility_id ?? target.facility_id : undefined;
     const facility = facilityId ? store.facilities.get(facilityId) : undefined;
@@ -1879,8 +1881,24 @@ api.patch('/expenses/:id', async (req, res) => {
     patch.invoice_file_url = undefined;
     patch.invoice_file_name = undefined;
   }
+  // تسوية بند/رسوم المرفق المرتبط قبل الحفظ: إن تغيّر الربط (مرفق و/أو
+  // بند مختلف) نطرح المبلغ القديم من البند القديم أولاً، ثم — بعد الحفظ —
+  // نضيف المبلغ الجديد على البند الجديد. تغيّر المبلغ وحده (بلا تغيّر
+  // الربط) لا يُسوَّى هنا عمداً، تفادياً لتعقيد إضافي؛ لإعادة تسوية دفعة
+  // قائمة بدقة أزل الربط ثم أعِد اختياره من جديد.
+  const oldFacilityId = target.facility_id;
+  const oldItemId = target.facility_schedule_item_id;
+  const newFacilityId = patch.facility_id !== undefined ? patch.facility_id : target.facility_id;
+  const newItemId = patch.facility_schedule_item_id !== undefined ? patch.facility_schedule_item_id : target.facility_schedule_item_id;
+  const linkChanged = newFacilityId !== oldFacilityId || newItemId !== oldItemId;
+  if (linkChanged && oldFacilityId && oldItemId) {
+    applyFacilityScheduleDelta(oldFacilityId, oldItemId, -target.amount);
+  }
   const updated = store.expenses.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  if (linkChanged && newFacilityId && newItemId) {
+    applyFacilityScheduleDelta(newFacilityId, newItemId, updated.amount);
+  }
   logActivity(req, `تم تعديل مصروف "${updated.title}"`);
   res.json(updated);
 });
@@ -1891,6 +1909,12 @@ api.delete('/expenses/:id', (req, res) => {
   const target = store.expenses.list().find((e) => e.id === req.params.id);
   const removed = store.expenses.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  // حذف مصروف مرتبط ببند/رسوم مرفق يطرح مبلغه من ذلك البند — عكس ما يحدث
+  // عند التسجيل (applyFacilityScheduleDelta)، حتى لا يبقى مسجَّلاً كمسدَّد
+  // بعد حذف الدفعة الوحيدة التي سدَّدته.
+  if (target?.facility_id && target.facility_schedule_item_id) {
+    applyFacilityScheduleDelta(target.facility_id, target.facility_schedule_item_id, -target.amount);
+  }
   const isCustody = target?.category === CUSTODY_CATEGORY_NAME;
   const isAdvance = target?.category === ADVANCE_CATEGORY_NAME;
   logActivity(
