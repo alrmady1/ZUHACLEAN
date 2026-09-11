@@ -20,6 +20,7 @@ import {
   SALARY_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
   FACILITY_CATEGORY_NAME,
+  ELECTRICITY_CATEGORY_NAME,
   CAN_SEE_CUSTODY_ROLES,
   VAT_RATE,
   EXPENSE_INCOME_TYPE_LABELS_AR,
@@ -417,8 +418,10 @@ function GeneralExpensesTab() {
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
   // تصنيف "إيجار مبنى" يحتاج ربط المرفق (facility_id) وبند من جدول دفعاته
   // (facility_schedule_item_id) — انظر Expense.facility_id في
-  // shared/types.ts وصفحة الإعدادات ← المرافق.
-  const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
+  // shared/types.ts وصفحة الإعدادات ← المرافق. تصنيف "كهرباء" العام يُظهر
+  // نفس المنتقي أيضاً، فقط لربط الفاتورة بمرفق مسجَّل (بدون افتراض تسديد
+  // بند "فاتورة الكهرباء" من جدوله بالضرورة).
+  const needsFacilityLink = category === FACILITY_CATEGORY_NAME || category === ELECTRICITY_CATEGORY_NAME;
   const selectedFacility = facilities.find((f) => f.id === facilityId);
   // البنود المستحقة القابلة للاختيار: بنود جدول الإيجار غير المسدَّدة
   // بالكامل + الرسوم الإضافية الثلاثة (مكتب/ماء/كهرباء) إن وُجدت ولم
@@ -1020,7 +1023,7 @@ function ExpenseDetailModal({
   const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
-  const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
+  const needsFacilityLink = category === FACILITY_CATEGORY_NAME || category === ELECTRICITY_CATEGORY_NAME;
   const selectedFacility = facilities.find((f) => f.id === facilityId);
   const dueFacilityScheduleItems = buildFacilityDueItems(t, selectedFacility, expense.facility_schedule_item_id);
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);

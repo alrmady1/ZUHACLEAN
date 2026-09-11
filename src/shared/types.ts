@@ -1711,6 +1711,12 @@ export const FACILITY_RENT_FREQUENCY_LABELS_AR: Record<FacilityRentFrequency, st
 // عقد" مع Contract.payment_schedule) — انظر Expense.facility_id أدناه
 // وFacilitiesTab في Settings.tsx.
 export const FACILITY_CATEGORY_NAME = 'إيجار مبنى';
+// فئة "كهرباء" العامة (مصروف/فاتورة كهرباء لا علاقة له بإيجار مبنى بالضرورة)
+// تُظهر نفس منتقي "المرفق" أعلاه أيضاً — فقط لربط الفاتورة بمرفق مسجَّل،
+// لا لتسوية بند جدول دفعات (Expense.facility_schedule_item_id يبقى
+// اختيارياً بحتاً هنا، بخلاف فئة FACILITY_CATEGORY_NAME حيث هو المسار
+// المعتاد). انظر ELECTRICITY_CATEGORY_NAME أدناه.
+export const ELECTRICITY_CATEGORY_NAME = 'كهرباء';
 
 // مرافق الشركة (مباني سكن، مستودعات، وخلافه) — صفحة الإعدادات ← المرافق
 // (FacilitiesTab في Settings.tsx). كل مرفق يحمل تفاصيل عقد إيجاره وجدول

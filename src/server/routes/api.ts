@@ -70,6 +70,7 @@ import {
   SALARY_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
   FACILITY_CATEGORY_NAME,
+  ELECTRICITY_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
@@ -1754,7 +1755,13 @@ api.post('/expenses', async (req, res) => {
   const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
   const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
   const isFacility = body.category === FACILITY_CATEGORY_NAME;
-  const linkedFacility = isFacility && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
+  // فئة "كهرباء" العامة تُظهر نفس منتقي المرفق أيضاً — فقط لربط الفاتورة
+  // بمرفق مسجَّل، دون افتراض أنها بالضرورة تسدّد بند "فاتورة الكهرباء" من
+  // جدول ذلك المرفق (قد تكون فاتورة كهرباء مستقلة تماماً). انظر
+  // ELECTRICITY_CATEGORY_NAME في shared/types.ts.
+  const isElectricity = body.category === ELECTRICITY_CATEGORY_NAME;
+  const needsFacilityLink = isFacility || isElectricity;
+  const linkedFacility = needsFacilityLink && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
   // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
   // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
   const linksEmployee = isCustody || isAdvance || isSalary;
@@ -1798,9 +1805,9 @@ api.post('/expenses', async (req, res) => {
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
     vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
     vehicle_label: linkedVehicle ? `${linkedVehicle.type} — ${linkedVehicle.plate_number}` : undefined,
-    facility_id: isFacility ? body.facility_id || undefined : undefined,
+    facility_id: needsFacilityLink ? body.facility_id || undefined : undefined,
     facility_label: linkedFacility ? linkedFacility.name : undefined,
-    facility_schedule_item_id: isFacility ? body.facility_schedule_item_id || undefined : undefined,
+    facility_schedule_item_id: needsFacilityLink ? body.facility_schedule_item_id || undefined : undefined,
     // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما isAdvance، تبقى
     // 'none' (بلا استقطاع تلقائي) افتراضياً حتى يُختار وضع صراحةً.
     advance_deduction_mode: isAdvance && body.advance_deduction_mode ? body.advance_deduction_mode : 'none',
@@ -1819,7 +1826,7 @@ api.post('/expenses', async (req, res) => {
   // item_id الخاصة 'office_fee'/'water'/'electricity')، يتراكم عليه مبلغه
   // وحده (لا كامل مبلغ المصروف بالضرورة لو تجاوز المتبقي) — نفس منطق POST
   // /contracts/:id/payments بالضبط، لكن للمرافق لا العقود.
-  if (isFacility && body.facility_schedule_item_id && linkedFacility) {
+  if (needsFacilityLink && body.facility_schedule_item_id && linkedFacility) {
     applyFacilityScheduleDelta(linkedFacility.id, body.facility_schedule_item_id, amount);
   }
   logActivity(
@@ -1834,7 +1841,7 @@ api.post('/expenses', async (req, res) => {
             ? `تم تسجيل إيراد (${EXPENSE_INCOME_TYPE_LABELS_AR[incomeType ?? 'return']}) "${expense.title}" بقيمة ${expense.amount} ر.س`
             : isVehicle && expense.vehicle_label
               ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمركبة "${expense.vehicle_label}"`
-              : isFacility && expense.facility_label
+              : needsFacilityLink && expense.facility_label
                 ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمرفق "${expense.facility_label}"`
                 : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
@@ -1852,6 +1859,8 @@ api.patch('/expenses/:id', async (req, res) => {
   const isSalary = (body.category ?? target.category) === SALARY_CATEGORY_NAME;
   const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
   const isFacility = (body.category ?? target.category) === FACILITY_CATEGORY_NAME;
+  const isElectricity = (body.category ?? target.category) === ELECTRICITY_CATEGORY_NAME;
+  const needsFacilityLink = isFacility || isElectricity;
   const linksEmployee = isCustody || isAdvance || isSalary;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
@@ -1880,11 +1889,11 @@ api.patch('/expenses/:id', async (req, res) => {
   // أدناه بعد الحفظ (applyFacilityScheduleDelta) — عكس دفعات العقود التي
   // ما زالت بلا تسوية عند التعديل.
   if (body.facility_id !== undefined || body.facility_schedule_item_id !== undefined || body.category !== undefined) {
-    const facilityId = isFacility ? body.facility_id ?? target.facility_id : undefined;
+    const facilityId = needsFacilityLink ? body.facility_id ?? target.facility_id : undefined;
     const facility = facilityId ? store.facilities.get(facilityId) : undefined;
     patch.facility_id = facilityId || undefined;
     patch.facility_label = facility ? facility.name : undefined;
-    patch.facility_schedule_item_id = isFacility ? body.facility_schedule_item_id ?? target.facility_schedule_item_id : undefined;
+    patch.facility_schedule_item_id = needsFacilityLink ? body.facility_schedule_item_id ?? target.facility_schedule_item_id : undefined;
   }
   // جدولة استقطاع السلفية — قابلة للتعديل لاحقاً (مثلاً تحويلها من "بلا
   // استقطاع" إلى مُقسَّطة)، لا تُلمَس إن لم تُرسَل في الطلب.
