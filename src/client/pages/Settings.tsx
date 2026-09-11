@@ -49,6 +49,8 @@ import {
   Languages as TranslationsIcon,
   Car as VehiclesIcon,
   Warehouse as FacilitiesIcon,
+  Maximize2,
+  MapPin as MapIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -108,6 +110,12 @@ import { compressImageToDataUrl } from '../lib/image.js';
 import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
+
+// Leaflet محمَّل عالمياً عبر <script> في index.html — نفس أسلوب
+// RiyadhZonesTab.tsx/CustomerHeatMapTab.tsx بالضبط (بلا حزمة npm ولا
+// مفتاح API)، يُستخدَم هنا لمعاينة موقع المرفق المصغَّرة (انظر
+// FacilityLocationMap أدناه).
+declare const L: any;
 
 const ROLES: UserRole[] = ['general_manager', 'admin', 'admin_supervisor', 'marketer', 'accountant', 'supervisor', 'technician'];
 
@@ -3716,6 +3724,78 @@ function VehicleDetailModal({ vehicle, expenses, onClose }: { vehicle: Vehicle; 
   );
 }
 
+// يحاول استخراج إحداثيات (خط العرض، خط الطول) من رابط خرائط جوجل كامل —
+// الصيغ الشائعة: ".../@lat,lng,15z"، "?q=lat,lng"، "&ll=lat,lng". روابط
+// جوجل المختصرة (goo.gl/maps، maps.app.goo.gl) لا تحمل إحداثيات قابلة
+// للقراءة مباشرة من الرابط نفسه (نفس الملاحظة الموجودة في
+// CustomerHeatMapTab.tsx) — ترجع null فتُعرَض كرابط عادي بلا معاينة.
+function parseLatLngFromUrl(url: string): [number, number] | null {
+  const patterns = [/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return [Number(m[1]), Number(m[2])];
+  }
+  return null;
+}
+
+// معاينة موقع المرفق: خريطة مصغَّرة (Leaflet، غير تفاعلية) لو أمكن استخراج
+// إحداثيات من الرابط، والنقر عليها يفتح الرابط الأصلي كاملاً في خرائط
+// جوجل — "التوسعة" التي طلبها المستخدم. لو تعذَّر استخراج إحداثيات (رابط
+// مختصر مثلاً) يُعرَض رابط عادي فقط بلا معاينة.
+function FacilityLocationMap({ locationUrl }: { locationUrl: string }) {
+  const { t } = useI18n();
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<any>(null);
+  const coords = parseLatLngFromUrl(locationUrl);
+
+  useEffect(() => {
+    if (!coords || !mapRef.current || mapInstance.current) return;
+    const map = L.map(mapRef.current, {
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      keyboard: false,
+      attributionControl: false,
+    }).setView(coords, 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.marker(coords).addTo(map);
+    mapInstance.current = map;
+    map.whenReady(() => map.invalidateSize());
+    return () => {
+      map.remove();
+      mapInstance.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationUrl]);
+
+  if (!coords) {
+    return (
+      <a href={locationUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline">
+        <MapIcon className="h-4 w-4" /> {t('فتح الموقع في خرائط جوجل')}
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={locationUrl}
+      target="_blank"
+      rel="noreferrer"
+      title={t('توسيع في خرائط جوجل')}
+      className="group relative block h-40 w-full overflow-hidden rounded-xl border border-slate-200"
+    >
+      <div ref={mapRef} className="pointer-events-none h-full w-full" />
+      <div className="absolute inset-0 flex items-end justify-end bg-slate-900/0 p-2 transition-colors group-hover:bg-slate-900/10">
+        <span className="flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-slate-700 shadow">
+          <Maximize2 className="h-3.5 w-3.5" /> {t('توسيع في خرائط جوجل')}
+        </span>
+      </div>
+    </a>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // مرافق الشركة — صفحة الإعدادات ← المرافق (FacilitiesTab). مباني سكن،
 // مستودعات، وخلافه، بتفاصيل عقد إيجارها وجدول دفعاته (نفس بنية جدول دفعات
@@ -3806,6 +3886,7 @@ function FacilitiesTab() {
       name: form.get('name'),
       type: form.get('type'),
       address: form.get('address') || undefined,
+      location_url: form.get('location_url') || undefined,
       notes: form.get('notes') || undefined,
       is_active: form.get('is_active') === 'on',
       landlord_name: form.get('landlord_name') || undefined,
@@ -3960,6 +4041,20 @@ function FacilitiesTab() {
             </Field>
             <Field label={t('العنوان (اختياري)')}>
               <input name="address" defaultValue={editing?.address} className="input" />
+            </Field>
+            <Field label={t('رابط الموقع (خرائط جوجل)')}>
+              <div className="flex gap-2">
+                <input name="location_url" defaultValue={editing?.location_url} className="input" placeholder="https://maps.google.com/..." />
+                <a
+                  href="https://www.google.com/maps"
+                  target="_blank"
+                  rel="noreferrer"
+                  title={t('فتح خرائط جوجل لتحديد الموقع يدويًا ولصق رابطه هنا')}
+                  className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50 hover:text-brand-600"
+                >
+                  <MapIcon className="h-4 w-4" />
+                </a>
+              </div>
             </Field>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="is_active" defaultChecked={editing?.is_active ?? true} className="h-4 w-4 rounded border-slate-300" />
@@ -4189,6 +4284,11 @@ function FacilityDetailModal({ facility, expenses, onClose }: { facility: Facili
       <div className="mb-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-sm">
         <div>{t('النوع')}: {t(FACILITY_TYPE_LABELS_AR[facility.type])}</div>
         {facility.address && <div>{t('العنوان')}: {facility.address}</div>}
+        {facility.location_url && (
+          <div className="pt-1">
+            <FacilityLocationMap locationUrl={facility.location_url} />
+          </div>
+        )}
         {facility.landlord_name && <div>{t('اسم المؤجِّر/المالك')}: {facility.landlord_name}</div>}
         {facility.rental_contract_number && <div>{t('رقم عقد الإيجار')}: {facility.rental_contract_number}</div>}
         {(facility.rental_contract_start_date || facility.rental_contract_end_date) && (

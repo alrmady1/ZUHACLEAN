@@ -405,6 +405,7 @@ api.post('/facilities', (req, res) => {
     name: body.name,
     type: body.type,
     address: body.address || undefined,
+    location_url: body.location_url || undefined,
     notes: body.notes || undefined,
     is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
     landlord_name: body.landlord_name || undefined,
@@ -442,6 +443,7 @@ api.patch('/facilities/:id', (req, res) => {
   if (body.name !== undefined) patch.name = body.name;
   if (body.type !== undefined) patch.type = body.type;
   if (body.address !== undefined) patch.address = body.address || undefined;
+  if (body.location_url !== undefined) patch.location_url = body.location_url || undefined;
   if (body.notes !== undefined) patch.notes = body.notes || undefined;
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
   if (body.landlord_name !== undefined) patch.landlord_name = body.landlord_name || undefined;

@@ -1719,6 +1719,12 @@ export interface Facility {
   name: string; // اسم/عنوان المرفق (مثال: "مبنى سكن العمال — حي الشفا")
   type: FacilityType;
   address?: string;
+  // رابط موقع (خرائط جوجل) — نفس نمط Customer.location_url/Appointment.
+  // location_url تماماً: نص حر يُلصَق من خرائط جوجل. رابط كامل (يحمل
+  // إحداثيات ظاهرة في الرابط نفسه، مثال ".../@24.77,46.73,15z") يُعرَض
+  // كخريطة مصغَّرة قابلة للتوسعة (انظر FacilityLocationMap في
+  // Settings.tsx)؛ رابط مختصر (goo.gl/maps) يُعرَض كرابط عادي فقط.
+  location_url?: string;
   notes?: string;
   is_active: boolean;
   // تفاصيل عقد الإيجار — كلها اختيارية (قد يكون المرفق مملوكاً للشركة بلا إيجار).
