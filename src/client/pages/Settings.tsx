@@ -4175,22 +4175,33 @@ function FacilityDetailModal({ facility, expenses, onClose }: { facility: Facili
             {facility.rental_amount_frequency && ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.rental_amount_frequency])})`}
           </div>
         )}
-        {facility.office_fee_amount != null && <div>{t('رسوم المكتب/الوساطة')}: {formatMoney(facility.office_fee_amount)}</div>}
-        <div>
-          {t('الماء')}:{' '}
-          {facility.water_included
-            ? t('مشمول ضمن الإيجار')
-            : facility.water_amount != null
-              ? `${formatMoney(facility.water_amount)}${facility.water_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.water_amount_frequency])})` : ''}`
-              : t('غير مشمول')}
+        {facility.office_fee_amount != null && (
+          <div className="flex items-center gap-2">
+            <span>{t('رسوم المكتب/الوساطة')}: {formatMoney(facility.office_fee_amount)}</span>
+            {facility.office_fee_status && <FacilityScheduleStatusBadge status={facility.office_fee_status} />}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <span>
+            {t('الماء')}:{' '}
+            {facility.water_included
+              ? t('مشمول ضمن الإيجار')
+              : facility.water_amount != null
+                ? `${formatMoney(facility.water_amount)}${facility.water_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.water_amount_frequency])})` : ''}`
+                : t('غير مشمول')}
+          </span>
+          {!facility.water_included && facility.water_status && <FacilityScheduleStatusBadge status={facility.water_status} />}
         </div>
-        <div>
-          {t('الكهرباء')}:{' '}
-          {facility.electricity_included
-            ? t('مشمولة ضمن الإيجار')
-            : facility.electricity_amount != null
-              ? `${formatMoney(facility.electricity_amount)}${facility.electricity_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.electricity_amount_frequency])})` : ''}`
-              : t('غير مشمولة')}
+        <div className="flex items-center gap-2">
+          <span>
+            {t('الكهرباء')}:{' '}
+            {facility.electricity_included
+              ? t('مشمولة ضمن الإيجار')
+              : facility.electricity_amount != null
+                ? `${formatMoney(facility.electricity_amount)}${facility.electricity_amount_frequency ? ` (${t(FACILITY_RENT_FREQUENCY_LABELS_AR[facility.electricity_amount_frequency])})` : ''}`
+                : t('غير مشمولة')}
+          </span>
+          {!facility.electricity_included && facility.electricity_status && <FacilityScheduleStatusBadge status={facility.electricity_status} />}
         </div>
         {facility.notes && <div>{t('ملاحظات')}: {facility.notes}</div>}
       </div>

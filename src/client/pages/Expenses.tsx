@@ -40,6 +40,51 @@ const isPdfInvoiceFile = (url: string) => /\.pdf(\?|$)/i.test(url);
 // المحفوظة تُحتسَب من جديد على السيرفر دائماً.
 const previewExpenseTax = (amount: number) => Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 
+// بند مستحق واحد قابل للاختيار من منتقي "مقابل أي دفعة من جدول إيجار
+// المرفق؟" — إما بند حقيقي من Facility.payment_schedule (له due_date)، أو
+// أحد الرسوم الإضافية الثلاثة (لا due_date له، id ثابت 'office_fee'/
+// 'water'/'electricity' — انظر Expense.facility_schedule_item_id وPOST
+// /expenses في api.ts). البنود المسدَّدة بالكامل مستبعدة دائماً، إلا إذا
+// كانت هي نفسها الحالياً المختارة (keepId) — حتى لا تختفي من القائمة أثناء
+// تعديل مصروف مرتبط ببند اكتمل سداده بالفعل.
+function buildFacilityDueItems(
+  t: (ar: string) => string,
+  facility: Facility | undefined,
+  keepId?: string,
+): { id: string; label: string; amount: number; paid_amount: number; due_date?: string }[] {
+  if (!facility) return [];
+  const items: { id: string; label: string; amount: number; paid_amount: number; due_date?: string }[] = [];
+  if (facility.office_fee_amount !== undefined && (facility.office_fee_status !== 'paid' || keepId === 'office_fee')) {
+    items.push({
+      id: 'office_fee',
+      label: t('رسوم المكتب/الوساطة'),
+      amount: facility.office_fee_amount,
+      paid_amount: facility.office_fee_paid_amount ?? 0,
+    });
+  }
+  if (!facility.water_included && facility.water_amount !== undefined && (facility.water_status !== 'paid' || keepId === 'water')) {
+    items.push({ id: 'water', label: t('فاتورة الماء'), amount: facility.water_amount, paid_amount: facility.water_paid_amount ?? 0 });
+  }
+  if (
+    !facility.electricity_included &&
+    facility.electricity_amount !== undefined &&
+    (facility.electricity_status !== 'paid' || keepId === 'electricity')
+  ) {
+    items.push({
+      id: 'electricity',
+      label: t('فاتورة الكهرباء'),
+      amount: facility.electricity_amount,
+      paid_amount: facility.electricity_paid_amount ?? 0,
+    });
+  }
+  for (const s of facility.payment_schedule ?? []) {
+    if (s.status !== 'paid' || keepId === s.id) {
+      items.push({ id: s.id, label: s.label ?? '', amount: s.amount, paid_amount: s.paid_amount, due_date: s.due_date });
+    }
+  }
+  return items;
+}
+
 // الإيرادات (مرتجعات مشتريات أو رأس مال إضافي) تُخزَّن بمبلغ موجب دائماً
 // (نفس أي مصروف)، لكنها تُطرَح لا تُجمَع في كل الإجماليات — هاتان الدالتان
 // تحوّلان amount/tax_amount إلى قيمة "موقّعة" (سالبة للإيراد) تُستخدَم في
@@ -375,9 +420,11 @@ function GeneralExpensesTab() {
   // shared/types.ts وصفحة الإعدادات ← المرافق.
   const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
   const selectedFacility = facilities.find((f) => f.id === facilityId);
-  // بنود الجدول غير المسدَّدة بالكامل فقط — بند "مسدَّد" لا معنى لاختياره
-  // من جديد هنا (نفس منطق منتقي "دفعة من عقد" في ContractDetailModal).
-  const dueFacilityScheduleItems = (selectedFacility?.payment_schedule ?? []).filter((s) => s.status !== 'paid');
+  // البنود المستحقة القابلة للاختيار: بنود جدول الإيجار غير المسدَّدة
+  // بالكامل + الرسوم الإضافية الثلاثة (مكتب/ماء/كهرباء) إن وُجدت ولم
+  // تُسدَّد بالكامل — نفس منطق منتقي "دفعة من عقد" في ContractDetailModal،
+  // مع دمج الرسوم الإضافية (انظر computeFeeStatus في api.ts).
+  const dueFacilityScheduleItems = buildFacilityDueItems(t, selectedFacility);
   const [advanceMode, setAdvanceMode] = useState<AdvanceDeductionMode>('none');
   const [advanceInstallmentMonths, setAdvanceInstallmentMonths] = useState('1');
   const [advancePeriodStart, setAdvancePeriodStart] = useState('');
@@ -770,8 +817,8 @@ function GeneralExpensesTab() {
                         {dueFacilityScheduleItems.map((s) => (
                           <option key={s.id} value={s.id}>
                             {(s.label ? `${s.label} — ` : '') +
-                              tt(`متبقٍ ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`, `${formatMoney(Math.max(s.amount - s.paid_amount, 0))} remaining`)}{' '}
-                            ({s.due_date})
+                              tt(`متبقٍ ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`, `${formatMoney(Math.max(s.amount - s.paid_amount, 0))} remaining`)}
+                            {s.due_date ? ` (${s.due_date})` : ''}
                           </option>
                         ))}
                       </select>
@@ -975,9 +1022,7 @@ function ExpenseDetailModal({
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
   const needsFacilityLink = category === FACILITY_CATEGORY_NAME;
   const selectedFacility = facilities.find((f) => f.id === facilityId);
-  const dueFacilityScheduleItems = (selectedFacility?.payment_schedule ?? []).filter(
-    (s) => s.status !== 'paid' || s.id === expense.facility_schedule_item_id,
-  );
+  const dueFacilityScheduleItems = buildFacilityDueItems(t, selectedFacility, expense.facility_schedule_item_id);
   const subCategories = allCategories.filter((c) => c.parent_id === categories.find((m) => m.name === category)?.id);
   const methodName = (id: string) => paymentMethods.find((m) => m.id === id)?.name ?? id;
 
@@ -1218,7 +1263,8 @@ function ExpenseDetailModal({
                       <option value="">{t('بدون ربط ببند محدَّد')}</option>
                       {dueFacilityScheduleItems.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {(s.label ? `${s.label} — ` : '') + formatMoney(s.amount)} ({s.due_date})
+                          {(s.label ? `${s.label} — ` : '') + formatMoney(s.amount)}
+                          {s.due_date ? ` (${s.due_date})` : ''}
                         </option>
                       ))}
                     </select>

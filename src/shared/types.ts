@@ -1104,7 +1104,10 @@ export interface Expense {
   // مسجَّل (Settings ← المرافق) هذا المصروف مقابل إيجاره، وأي بند من جدول
   // دفعاته (Facility.payment_schedule) — نفس نمط contract_id/schedule_item_id
   // أدناه بالضبط، لكن للمرافق لا العقود. facility_label لقطة عرض جاهزة
-  // (الاسم) وقت التسجيل، بنفس نمط vehicle_label.
+  // (الاسم) وقت التسجيل، بنفس نمط vehicle_label. facility_schedule_item_id
+  // إما معرّف بند حقيقي من payment_schedule، أو إحدى القيم الخاصة
+  // 'office_fee'/'water'/'electricity' للمبالغ الإضافية الثلاثة على
+  // Facility (كل منها بند مستحق/مسدَّد واحد مستقل — انظر التعليق عليها).
   facility_id?: string;
   facility_label?: string;
   facility_schedule_item_id?: string;
@@ -1723,16 +1726,28 @@ export interface Facility {
   rental_amount?: number; // قيمة الإيجار الدورية (وصفية — انظر التعليق أعلاه)
   rental_amount_frequency?: FacilityRentFrequency;
   payment_schedule?: ContractScheduleItem[]; // جدول دفعات الإيجار
-  // رسوم إضافية على عقد الإيجار — كلها اختيارية ووصفية (لا جدول دفعات
-  // مستقلاً لها، بخلاف الإيجار نفسه أعلاه؛ للتتبّع الدقيق يُضاف بند لها
-  // ضمن payment_schedule بنفسه، مستعيناً بحقل label).
+  // رسوم إضافية على عقد الإيجار — كلٌّ منها مبلغ مستقل بتتبّع مستحق/مسدَّد
+  // خاص به (paid_amount/status، بنفس منطق ContractScheduleItem تماماً لكن
+  // بلا due_date ولا جدول متعدد البنود؛ بند واحد لكل نوع). تعديل amount من
+  // نموذج الإعدادات لا يمسّ paid_amount المتراكم أصلاً — فقط status يُعاد
+  // احتسابه من جديد؛ لتسجيل فاتورة دورية جديدة (ماء/كهرباء) يرفع صاحب
+  // النظام amount إلى القيمة الإجمالية المستحقة الجديدة يدوياً. تُسدَّد هذه
+  // البنود من صفحة المصروفات ← إيجار مبنى تماماً كبنود payment_schedule —
+  // انظر Expense.facility_schedule_item_id (القيم الخاصة 'office_fee'/
+  // 'water'/'electricity') وPOST /expenses.
   office_fee_amount?: number; // رسوم المكتب/الوساطة — عادة تُدفع مرة واحدة عند التعاقد
+  office_fee_paid_amount?: number;
+  office_fee_status?: PaymentStatus;
   water_included?: boolean; // الماء مشمول ضمن الإيجار؟
-  water_amount?: number; // إن لم يكن مشمولاً — مبلغ الفاتورة الدورية التقديري
+  water_amount?: number; // إن لم يكن مشمولاً — المبلغ المستحق حالياً لفاتورة الماء
   water_amount_frequency?: FacilityRentFrequency;
+  water_paid_amount?: number;
+  water_status?: PaymentStatus;
   electricity_included?: boolean; // الكهرباء مشمولة ضمن الإيجار؟
-  electricity_amount?: number; // إن لم تكن مشمولة — مبلغ الفاتورة الدورية التقديري
+  electricity_amount?: number; // إن لم تكن مشمولة — المبلغ المستحق حالياً لفاتورة الكهرباء
   electricity_amount_frequency?: FacilityRentFrequency;
+  electricity_paid_amount?: number;
+  electricity_status?: PaymentStatus;
   created_at: string;
   updated_at: string;
 }

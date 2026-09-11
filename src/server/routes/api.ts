@@ -53,6 +53,7 @@ import type {
   CompanyBankAccount,
   Vehicle,
   Facility,
+  PaymentStatus,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -354,12 +355,23 @@ api.delete('/vehicles/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/facilities', (_req, res) => res.json(store.facilities.list()));
 
+// حالة بند مستحق/مسدَّد واحد (رسوم المكتب، أو فاتورة ماء/كهرباء) — نفس
+// منطق حساب status لبند من payment_schedule بالضبط، لكن بلا مبلغ (المرفق
+// لا يحمل هذا الرسم إطلاقاً) بدل 'unpaid' دائماً.
+function computeFeeStatus(amount: number | undefined, paidAmount: number): PaymentStatus | undefined {
+  if (amount === undefined) return undefined;
+  return paidAmount >= amount - 0.005 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+}
+
 api.post('/facilities', (req, res) => {
   const body = req.body ?? {};
   if (!body.name || !body.type) {
     return res.status(400).json({ error: 'name وtype مطلوبان' });
   }
   const now = new Date().toISOString();
+  const officeFeeAmount = numOrUndef(body.office_fee_amount);
+  const waterAmount = numOrUndef(body.water_amount);
+  const electricityAmount = numOrUndef(body.electricity_amount);
   const facility: Facility = {
     id: store.id(),
     name: body.name,
@@ -374,13 +386,19 @@ api.post('/facilities', (req, res) => {
     rental_amount: numOrUndef(body.rental_amount),
     rental_amount_frequency: body.rental_amount_frequency || undefined,
     payment_schedule: buildPaymentSchedule(body.payment_schedule),
-    office_fee_amount: numOrUndef(body.office_fee_amount),
+    office_fee_amount: officeFeeAmount,
+    office_fee_paid_amount: 0,
+    office_fee_status: computeFeeStatus(officeFeeAmount, 0),
     water_included: body.water_included !== undefined ? Boolean(body.water_included) : undefined,
-    water_amount: numOrUndef(body.water_amount),
+    water_amount: waterAmount,
     water_amount_frequency: body.water_amount_frequency || undefined,
+    water_paid_amount: 0,
+    water_status: computeFeeStatus(waterAmount, 0),
     electricity_included: body.electricity_included !== undefined ? Boolean(body.electricity_included) : undefined,
-    electricity_amount: numOrUndef(body.electricity_amount),
+    electricity_amount: electricityAmount,
     electricity_amount_frequency: body.electricity_amount_frequency || undefined,
+    electricity_paid_amount: 0,
+    electricity_status: computeFeeStatus(electricityAmount, 0),
     created_at: now,
     updated_at: now,
   };
@@ -391,6 +409,7 @@ api.post('/facilities', (req, res) => {
 
 api.patch('/facilities/:id', (req, res) => {
   const body = req.body ?? {};
+  const target = store.facilities.get(req.params.id);
   const patch: Partial<Facility> = {};
   if (body.name !== undefined) patch.name = body.name;
   if (body.type !== undefined) patch.type = body.type;
@@ -403,12 +422,24 @@ api.patch('/facilities/:id', (req, res) => {
   if (body.rental_contract_end_date !== undefined) patch.rental_contract_end_date = body.rental_contract_end_date || undefined;
   if (body.rental_amount !== undefined) patch.rental_amount = numOrUndef(body.rental_amount);
   if (body.rental_amount_frequency !== undefined) patch.rental_amount_frequency = body.rental_amount_frequency || undefined;
-  if (body.office_fee_amount !== undefined) patch.office_fee_amount = numOrUndef(body.office_fee_amount);
+  // تعديل مبلغ أيٍّ من الرسوم الثلاثة يُعيد احتساب status فقط — paid_amount
+  // المتراكم يبقى كما هو (لا يُصفَّر ولا يُعدَّل هنا)؛ انظر التعليق على
+  // Facility.office_fee_paid_amount في shared/types.ts.
+  if (body.office_fee_amount !== undefined) {
+    patch.office_fee_amount = numOrUndef(body.office_fee_amount);
+    patch.office_fee_status = computeFeeStatus(patch.office_fee_amount, target?.office_fee_paid_amount ?? 0);
+  }
   if (body.water_included !== undefined) patch.water_included = Boolean(body.water_included);
-  if (body.water_amount !== undefined) patch.water_amount = numOrUndef(body.water_amount);
+  if (body.water_amount !== undefined) {
+    patch.water_amount = numOrUndef(body.water_amount);
+    patch.water_status = computeFeeStatus(patch.water_amount, target?.water_paid_amount ?? 0);
+  }
   if (body.water_amount_frequency !== undefined) patch.water_amount_frequency = body.water_amount_frequency || undefined;
   if (body.electricity_included !== undefined) patch.electricity_included = Boolean(body.electricity_included);
-  if (body.electricity_amount !== undefined) patch.electricity_amount = numOrUndef(body.electricity_amount);
+  if (body.electricity_amount !== undefined) {
+    patch.electricity_amount = numOrUndef(body.electricity_amount);
+    patch.electricity_status = computeFeeStatus(patch.electricity_amount, target?.electricity_paid_amount ?? 0);
+  }
   if (body.electricity_amount_frequency !== undefined) patch.electricity_amount_frequency = body.electricity_amount_frequency || undefined;
   // جدول الدفعات — يُستبدَل بالكامل فقط عند إرساله صراحةً (تعديل تفاصيل
   // المرفق العامة لا يمسّه إطلاقاً)، وبنفس buildPaymentSchedule المستخدمة
@@ -1720,16 +1751,37 @@ api.post('/expenses', async (req, res) => {
     invoice_file_name: invoiceFileUrl ? body.invoice_file_name || undefined : undefined,
     created_at: new Date().toISOString(),
   });
-  // إن ارتبط مصروف "إيجار مبنى" ببند من جدول دفعات المرفق، يتراكم عليه
-  // مبلغه وحده (لا كامل المبلغ بالضرورة لو تجاوز المتبقي من ذلك البند)،
-  // وتُحدَّث حالته (مستحقة/جزئية/مسدَّدة) — نفس منطق POST
-  // /contracts/:id/payments بالضبط، لكن للمرافق لا العقود.
-  if (isFacility && body.facility_schedule_item_id && linkedFacility?.payment_schedule) {
-    const item = linkedFacility.payment_schedule.find((s) => s.id === body.facility_schedule_item_id);
-    if (item) {
-      item.paid_amount = Math.min(item.paid_amount + amount, item.amount);
-      item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
-      store.facilities.update(linkedFacility.id, { payment_schedule: linkedFacility.payment_schedule });
+  // إن ارتبط مصروف "إيجار مبنى" ببند من جدول دفعات المرفق، أو بأحد الرسوم
+  // الإضافية الثلاثة (رسوم المكتب/الماء/الكهرباء — قيم facility_schedule_
+  // item_id الخاصة 'office_fee'/'water'/'electricity')، يتراكم عليه مبلغه
+  // وحده (لا كامل مبلغ المصروف بالضرورة لو تجاوز المتبقي)، وتُحدَّث حالته
+  // (مستحقة/جزئية/مسدَّدة) — نفس منطق POST /contracts/:id/payments بالضبط،
+  // لكن للمرافق لا العقود.
+  if (isFacility && body.facility_schedule_item_id && linkedFacility) {
+    const feeField =
+      body.facility_schedule_item_id === 'office_fee'
+        ? 'office_fee'
+        : body.facility_schedule_item_id === 'water'
+          ? 'water'
+          : body.facility_schedule_item_id === 'electricity'
+            ? 'electricity'
+            : undefined;
+    if (feeField) {
+      const feeAmount = linkedFacility[`${feeField}_amount`];
+      if (feeAmount !== undefined) {
+        const paidAmount = Math.min((linkedFacility[`${feeField}_paid_amount`] ?? 0) + amount, feeAmount);
+        store.facilities.update(linkedFacility.id, {
+          [`${feeField}_paid_amount`]: paidAmount,
+          [`${feeField}_status`]: computeFeeStatus(feeAmount, paidAmount),
+        });
+      }
+    } else if (linkedFacility.payment_schedule) {
+      const item = linkedFacility.payment_schedule.find((s) => s.id === body.facility_schedule_item_id);
+      if (item) {
+        item.paid_amount = Math.min(item.paid_amount + amount, item.amount);
+        item.status = item.paid_amount >= item.amount - 0.005 ? 'paid' : item.paid_amount > 0 ? 'partial' : 'unpaid';
+        store.facilities.update(linkedFacility.id, { payment_schedule: linkedFacility.payment_schedule });
+      }
     }
   }
   logActivity(
