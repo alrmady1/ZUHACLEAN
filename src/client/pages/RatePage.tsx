@@ -131,7 +131,7 @@ export default function RatePage() {
             </div>
 
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">شاركنا رأيك باختصار (اختياري)</span>
+              <span className="mb-1 block font-medium text-slate-600">ملاحظاتك تساعدنا لنكون أفضل</span>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
