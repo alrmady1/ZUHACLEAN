@@ -6,6 +6,7 @@ import {
   Percent as CommissionsIcon,
   Landmark as TaxIcon,
   FileSignature as ContractsIcon,
+  Boxes as InventoryIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -15,8 +16,9 @@ import { EmployeeAccountsTab } from './EmployeeAccounts.js';
 import { CommissionsDashboardTab } from './Commissions.js';
 import { TaxTab } from './Tax.js';
 import Contracts from './Contracts.js';
+import { InventoryTab } from './Inventory.js';
 
-type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts';
+type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory';
 
 // صفحة "المحاسبة" — تجمع "المبيعات والفواتير" و"المصروفات" (كانتا
 // صفحتين مستقلتين في القائمة الجانبية) وتبويبي "الموظفين" (كانت "كشف حساب
@@ -38,8 +40,9 @@ export default function Accounting() {
   const canCommissions = can('view_commissions');
   const canTax = can('view_tax_page');
   const canContracts = can('view_contracts_page');
+  const canInventory = can('view_inventory_page');
   const canSalesTab = canSales || canManageDiscount;
-  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts].filter(Boolean).length;
+  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts, canInventory].filter(Boolean).length;
   const [tab, setTab] = useState<Tab>(
     canSalesTab
       ? 'sales'
@@ -51,7 +54,9 @@ export default function Accounting() {
             ? 'commissions'
             : canTax
               ? 'tax'
-              : 'contracts',
+              : canContracts
+                ? 'contracts'
+                : 'inventory',
   );
 
   return (
@@ -111,6 +116,14 @@ export default function Accounting() {
               <ContractsIcon className="h-4 w-4" /> {t('العقود')}
             </button>
           )}
+          {canInventory && (
+            <button
+              onClick={() => setTab('inventory')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'inventory' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <InventoryIcon className="h-4 w-4" /> {t('الجرد والأصول الثابتة')}
+            </button>
+          )}
         </div>
       )}
 
@@ -120,6 +133,7 @@ export default function Accounting() {
       {tab === 'commissions' && canCommissions && <CommissionsDashboardTab />}
       {tab === 'tax' && canTax && <TaxTab />}
       {tab === 'contracts' && canContracts && <Contracts allowCreate={false} />}
+      {tab === 'inventory' && canInventory && <InventoryTab />}
     </div>
   );
 }

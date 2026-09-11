@@ -125,7 +125,9 @@ export type PermissionKey =
   | 'view_tax_page'
   | 'view_live_chat'
   | 'manage_riyadh_zones'
-  | 'manage_sales_discount';
+  | 'manage_sales_discount'
+  | 'view_inventory_page'
+  | 'manage_inventory';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -183,6 +185,8 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   // الكاملة (تبقيان تحت issue_invoices/view_sales_invoices كسابقاً)، فقط
   // تفتح بطاقة إعداد الخصم داخل نفس الصفحة. انظر SalesDiscountSettings.
   manage_sales_discount: 'تعديل خصم المناسبات في المبيعات',
+  view_inventory_page: 'الاطلاع على تبويب الجرد والأصول الثابتة (المحاسبة)',
+  manage_inventory: 'إدارة الأصول الثابتة (إضافة/تعديل/شطب) وتنفيذ الجرد الدوري',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -272,6 +276,10 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // بالضرورة من يصدر الفواتير فعلياً؛ الفكرة أن يضبط أي منهم خصم مناسبة
   // (اليوم الوطني، يوم التأسيس...) ليستخدمه لاحقاً من يملك issue_invoices.
   manage_sales_discount: NOT_TECHNICIAN,
+  // جديدة تماماً — الجرد والأصول الثابتة حسّاسة مالياً (تأسيسي/إهلاك)
+  // بنفس درجة الضريبة، المدير العام ومدير النظام فقط افتراضياً.
+  view_inventory_page: GM_ADMIN,
+  manage_inventory: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -1837,6 +1845,138 @@ export interface Facility {
   electricity_status?: PaymentStatus;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// الجرد والأصول الثابتة (Inventory & Assets) — تبويب مستقل داخل صفحة
+// "المحاسبة" (InventoryTab في Inventory.tsx)، خلف صلاحيتي
+// view_inventory_page/manage_inventory. أربعة كيانات: Asset (سجل كل أصل
+// ثابت وبيانات إهلاكه)، AuditCycle (جلسة جرد دوري)، AuditItem (بند مقارنة
+// فعلي/متوقَّع ضمن جلسة جرد لأصل بعينه)، AssetScrappageLog (سجل شطب أصل
+// وخسارته الدفترية). حساب الإهلاك نفسه (مجمع الإهلاك/القيمة الدفترية)
+// ليس حقلاً مخزَّناً على Asset — يُحتسَب دائماً حيّاً من purchase_price/
+// purchase_date/useful_life_years/salvage_value (ولـ status === 'scrapped'
+// من scrapped_at كسقف بدل التاريخ الحالي) عبر computeAssetDepreciation في
+// src/shared/depreciation.ts، فيبقى صحيحاً تلقائياً شهراً بعد شهر بلا أي
+// مهمة مجدولة تُحدِّثه.
+// ============================================================================
+
+export type AssetCategory = 'cleaning_equipment' | 'housing_furniture' | 'hand_tools' | 'uniforms_gear';
+export const ASSET_CATEGORY_LABELS_AR: Record<AssetCategory, string> = {
+  cleaning_equipment: 'معدات نظافة',
+  housing_furniture: 'أثاث سكن',
+  hand_tools: 'أدوات يدوية',
+  uniforms_gear: 'ملابس وتجهيزات',
+};
+
+export type AssetCondition = 'excellent' | 'working' | 'needs_maintenance' | 'damaged';
+export const ASSET_CONDITION_LABELS_AR: Record<AssetCondition, string> = {
+  excellent: 'ممتاز',
+  working: 'يعمل',
+  needs_maintenance: 'يحتاج صيانة',
+  damaged: 'تالف',
+};
+
+export type AssetStatus = 'active' | 'maintenance' | 'scrapped';
+export const ASSET_STATUS_LABELS_AR: Record<AssetStatus, string> = {
+  active: 'نشط',
+  maintenance: 'صيانة',
+  scrapped: 'مشطوب',
+};
+
+// سجل أصل ثابت واحد — صفحة المحاسبة ← الجرد والأصول الثابتة. asset_code
+// فريد يُدخله المستخدم يدوياً (مثال: EQ-001) — لا يُشتَق تلقائياً، النظام
+// يرفض تكراره فقط (انظر POST /assets في api.ts).
+export interface Asset {
+  id: string;
+  asset_code: string;
+  name: string;
+  category: AssetCategory;
+  purchase_price: number;
+  purchase_date: string;
+  useful_life_years: number;
+  salvage_value: number;
+  current_condition: AssetCondition;
+  status: AssetStatus;
+  location?: string;
+  notes?: string;
+  // مضبوطة فقط عندما status === 'scrapped' — تاريخ اعتماد الشطب، وتُستخدَم
+  // كسقف زمني لحساب الإهلاك بدل التاريخ الحالي (تجميد الإهلاك فور الشطب،
+  // انظر computeAssetDepreciation).
+  scrapped_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AuditPeriodType = 'quarterly' | 'semi_annual' | 'annual';
+export const AUDIT_PERIOD_TYPE_LABELS_AR: Record<AuditPeriodType, string> = {
+  quarterly: 'ربع سنوي',
+  semi_annual: 'نصف سنوي',
+  annual: 'سنوي',
+};
+
+export type AuditCycleStatus = 'draft' | 'in_progress' | 'completed';
+export const AUDIT_CYCLE_STATUS_LABELS_AR: Record<AuditCycleStatus, string> = {
+  draft: 'مسودة',
+  in_progress: 'قيد التنفيذ',
+  completed: 'مكتمل',
+};
+
+// جلسة جرد دوري واحدة — تُنشأ بحالة 'draft' فارغة، ثم "بدء الجرد"
+// (POST /audit-cycles/:id/start) يولِّد AuditItem واحداً لكل أصل نشط حالياً
+// (status === 'active') تلقائياً ويحوّل الحالة إلى 'in_progress'. إكمالها
+// (POST /audit-cycles/:id/complete) يحوّلها 'completed' — لا يمنع هذا
+// تعديل بنودها لاحقاً من الخادم (نفس نمط كل قيد آخر في هذا التطبيق)، فقط
+// إشارة حالة تعرضها الواجهة.
+export interface AuditCycle {
+  id: string;
+  audit_code: string;
+  audit_date: string;
+  period_type: AuditPeriodType;
+  status: AuditCycleStatus;
+  created_by?: string;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// بند جرد واحد — أصل بعينه ضمن جلسة جرد بعينها. expected_qty يُضبَط دائماً
+// على 1 عند التوليد التلقائي (كل Asset سجل تتبّع فردي بكوده الخاص، لا كمية
+// إجمالية) — actual_qty/condition_at_audit/notes يملؤها المشرف ميدانياً
+// (PATCH /audit-items/:id)، وvariance = actual_qty - expected_qty يُعاد
+// احتسابه على الخادم في كل تحديث.
+export interface AuditItem {
+  id: string;
+  audit_id: string;
+  asset_id: string;
+  asset_name_snapshot?: string;
+  asset_code_snapshot?: string;
+  expected_qty: number;
+  actual_qty?: number;
+  variance?: number;
+  condition_at_audit?: AssetCondition;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// سجل شطب/إتلاف أصل — يُنشأ عند POST /assets/:id/scrap، الذي أيضاً يضبط
+// Asset.status على 'scrapped' وscrapped_at على وقت الشطب في نفس الطلب.
+// book_value_at_scrappage القيمة الدفترية المتبقية وقت الشطب بالضبط
+// (محسوبة من computeAssetDepreciation قبل ضبط scrapped_at) — تُقيَّد خسارة
+// إتلاف أصول ضمن المصاريف التشغيلية للفترة (عرضاً فقط في نظرة عامة الجرد،
+// دون إنشاء قيد Expense تلقائي مقابل — انظر ملاحظة عدم الربط أدناه).
+export interface AssetScrappageLog {
+  id: string;
+  asset_id: string;
+  asset_name_snapshot?: string;
+  audit_id?: string;
+  scrapped_date: string;
+  book_value_at_scrappage: number;
+  reason: string;
+  created_by?: string;
+  created_by_name?: string;
+  created_at: string;
 }
 
 // نظام إدارة الترجمة — صفحة الإعدادات ← الترجمة (TranslationsTab في

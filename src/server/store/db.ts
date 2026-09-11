@@ -46,6 +46,10 @@ import type {
   TranslationLanguage,
   Vehicle,
   Facility,
+  Asset,
+  AuditCycle,
+  AuditItem,
+  AssetScrappageLog,
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
@@ -172,6 +176,12 @@ interface DbShape {
   vehicles: Vehicle[];
   // صفحة الإعدادات ← المرافق — انظر Facility في src/shared/types.ts.
   facilities: Facility[];
+  // صفحة المحاسبة ← الجرد والأصول الثابتة — انظر Asset/AuditCycle/
+  // AuditItem/AssetScrappageLog في src/shared/types.ts.
+  assets: Asset[];
+  auditCycles: AuditCycle[];
+  auditItems: AuditItem[];
+  assetScrappageLogs: AssetScrappageLog[];
 }
 
 if (!process.env.DATABASE_URL) {
@@ -489,6 +499,10 @@ function seed(): DbShape {
     translationLanguages: [],
     vehicles: [],
     facilities: [],
+    assets: [],
+    auditCycles: [],
+    auditItems: [],
+    assetScrappageLogs: [],
   };
 }
 
@@ -639,6 +653,10 @@ async function load(): Promise<DbShape> {
     if (!parsed.translationLanguages) parsed.translationLanguages = [];
     if (!parsed.vehicles) parsed.vehicles = [];
     if (!parsed.facilities) parsed.facilities = [];
+    if (!parsed.assets) parsed.assets = [];
+    if (!parsed.auditCycles) parsed.auditCycles = [];
+    if (!parsed.auditItems) parsed.auditItems = [];
+    if (!parsed.assetScrappageLogs) parsed.assetScrappageLogs = [];
     // عقود قديمة قبل إضافة سجل الدفعات (payments) — تبقى paid_amount/
     // remaining_amount المحفوظتان سابقاً كما هي (لا يمكن إعادة بناء سجل
     // دفعات تفصيلي من رقم إجمالي محفوظ فقط)، فقط تُضاف مصفوفة فارغة حتى
@@ -1439,6 +1457,77 @@ export const store = {
       const idx = db.facilities.findIndex((f) => f.id === id);
       if (idx === -1) return false;
       db.facilities.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  assets: {
+    list: () => db.assets,
+    get: (id: string) => db.assets.find((a) => a.id === id),
+    insert: (a: Asset) => { db.assets.push(a); persist(); return a; },
+    update: (id: string, patch: Partial<Asset>) => {
+      const idx = db.assets.findIndex((a) => a.id === id);
+      if (idx === -1) return undefined;
+      db.assets[idx] = { ...db.assets[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.assets[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.assets.findIndex((a) => a.id === id);
+      if (idx === -1) return false;
+      db.assets.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  auditCycles: {
+    list: () => db.auditCycles,
+    get: (id: string) => db.auditCycles.find((c) => c.id === id),
+    insert: (c: AuditCycle) => { db.auditCycles.push(c); persist(); return c; },
+    update: (id: string, patch: Partial<AuditCycle>) => {
+      const idx = db.auditCycles.findIndex((c) => c.id === id);
+      if (idx === -1) return undefined;
+      db.auditCycles[idx] = { ...db.auditCycles[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.auditCycles[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.auditCycles.findIndex((c) => c.id === id);
+      if (idx === -1) return false;
+      db.auditCycles.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  auditItems: {
+    list: () => db.auditItems,
+    listByAudit: (auditId: string) => db.auditItems.filter((i) => i.audit_id === auditId),
+    get: (id: string) => db.auditItems.find((i) => i.id === id),
+    insert: (i: AuditItem) => { db.auditItems.push(i); persist(); return i; },
+    insertMany: (items: AuditItem[]) => { db.auditItems.push(...items); persist(); return items; },
+    update: (id: string, patch: Partial<AuditItem>) => {
+      const idx = db.auditItems.findIndex((i) => i.id === id);
+      if (idx === -1) return undefined;
+      db.auditItems[idx] = { ...db.auditItems[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.auditItems[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.auditItems.findIndex((i) => i.id === id);
+      if (idx === -1) return false;
+      db.auditItems.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  assetScrappageLogs: {
+    list: () => db.assetScrappageLogs,
+    get: (id: string) => db.assetScrappageLogs.find((l) => l.id === id),
+    insert: (l: AssetScrappageLog) => { db.assetScrappageLogs.push(l); persist(); return l; },
+    remove: (id: string) => {
+      const idx = db.assetScrappageLogs.findIndex((l) => l.id === id);
+      if (idx === -1) return false;
+      db.assetScrappageLogs.splice(idx, 1);
       persist();
       return true;
     },

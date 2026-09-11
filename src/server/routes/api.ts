@@ -62,6 +62,10 @@ import type {
   Vehicle,
   Facility,
   PaymentStatus,
+  Asset,
+  AuditCycle,
+  AuditItem,
+  AssetScrappageLog,
 } from '../../shared/types.js';
 import {
   VAT_RATE,
@@ -82,6 +86,7 @@ import {
   ANNUAL_LEAVE_BALANCE_DAYS,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
+import { computeAssetDepreciation } from '../../shared/depreciation.js';
 
 export const api = Router();
 
@@ -524,6 +529,203 @@ api.delete('/facilities/:id', (req, res) => {
   if (!removed) return res.status(404).json({ error: 'facility not found' });
   if (facility) logActivity(req, `تم حذف مرفق "${facility.name}"`);
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// الجرد والأصول الثابتة — صفحة المحاسبة ← الجرد والأصول الثابتة
+// (Inventory.tsx)، خلف صلاحيتي view_inventory_page/manage_inventory. انظر
+// التعليق الشارح الكامل أعلى قسم Asset/AuditCycle/AuditItem/
+// AssetScrappageLog في shared/types.ts.
+// ---------------------------------------------------------------------------
+api.get('/assets', (_req, res) => res.json(store.assets.list()));
+
+api.post('/assets', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.asset_code || !body.name || !body.category) {
+    return res.status(400).json({ error: 'asset_code وname وcategory مطلوبة' });
+  }
+  if (store.assets.list().some((a) => a.asset_code === body.asset_code)) {
+    return res.status(400).json({ error: 'كود الأصل مستخدَم مسبقاً' });
+  }
+  const now = new Date().toISOString();
+  const asset: Asset = {
+    id: store.id(),
+    asset_code: body.asset_code,
+    name: body.name,
+    category: body.category,
+    purchase_price: numOrUndef(body.purchase_price) ?? 0,
+    purchase_date: body.purchase_date ?? now.slice(0, 10),
+    useful_life_years: numOrUndef(body.useful_life_years) ?? 1,
+    salvage_value: numOrUndef(body.salvage_value) ?? 0,
+    current_condition: body.current_condition || 'excellent',
+    status: body.status || 'active',
+    location: body.location || undefined,
+    notes: body.notes || undefined,
+    created_at: now,
+    updated_at: now,
+  };
+  store.assets.insert(asset);
+  logActivity(req, `تم إضافة أصل "${asset.name}" (${asset.asset_code})`);
+  res.status(201).json(asset);
+});
+
+api.patch('/assets/:id', (req, res) => {
+  const body = req.body ?? {};
+  const target = store.assets.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'asset not found' });
+  if (body.asset_code !== undefined && body.asset_code !== target.asset_code && store.assets.list().some((a) => a.asset_code === body.asset_code)) {
+    return res.status(400).json({ error: 'كود الأصل مستخدَم مسبقاً' });
+  }
+  const patch: Partial<Asset> = {};
+  if (body.asset_code !== undefined) patch.asset_code = body.asset_code;
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.category !== undefined) patch.category = body.category;
+  if (body.purchase_price !== undefined) patch.purchase_price = numOrUndef(body.purchase_price) ?? 0;
+  if (body.purchase_date !== undefined) patch.purchase_date = body.purchase_date;
+  if (body.useful_life_years !== undefined) patch.useful_life_years = numOrUndef(body.useful_life_years) ?? 1;
+  if (body.salvage_value !== undefined) patch.salvage_value = numOrUndef(body.salvage_value) ?? 0;
+  if (body.current_condition !== undefined) patch.current_condition = body.current_condition;
+  if (body.status !== undefined) patch.status = body.status;
+  if (body.location !== undefined) patch.location = body.location || undefined;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  const updated = store.assets.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'asset not found' });
+  logActivity(req, `تم تعديل بيانات أصل "${updated.name}" (${updated.asset_code})`);
+  res.json(updated);
+});
+
+api.delete('/assets/:id', (req, res) => {
+  const asset = store.assets.get(req.params.id);
+  const removed = store.assets.remove(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'asset not found' });
+  if (asset) logActivity(req, `تم حذف أصل "${asset.name}" (${asset.asset_code})`);
+  res.status(204).end();
+});
+
+// شطب/إتلاف أصل — يحتسب القيمة الدفترية اللحظية قبل الشطب (الإهلاك ما
+// زال جارياً حتى هذه اللحظة بالضبط)، يسجّلها في asset_scrappage_logs
+// كخسارة، ثم يجمّد الإهلاك بضبط status='scrapped' وscrapped_at على نفس
+// اللحظة — أي احتساب لاحق لهذا الأصل (computeAssetDepreciation) يستخدم
+// scrapped_at سقفاً بدل الآن، فتبقى القيمة الدفترية ثابتة منذ هذه اللحظة.
+api.post('/assets/:id/scrap', (req, res) => {
+  const body = req.body ?? {};
+  const asset = store.assets.get(req.params.id);
+  if (!asset) return res.status(404).json({ error: 'asset not found' });
+  if (!body.reason || !String(body.reason).trim()) {
+    return res.status(400).json({ error: 'سبب الإتلاف مطلوب' });
+  }
+  if (asset.status === 'scrapped') return res.status(400).json({ error: 'هذا الأصل مشطوب مسبقاً' });
+  const now = new Date();
+  const { book_value } = computeAssetDepreciation(asset.purchase_price, asset.purchase_date, asset.useful_life_years, asset.salvage_value, now);
+  const log: AssetScrappageLog = {
+    id: store.id(),
+    asset_id: asset.id,
+    asset_name_snapshot: asset.name,
+    audit_id: body.audit_id || undefined,
+    scrapped_date: now.toISOString(),
+    book_value_at_scrappage: book_value,
+    reason: body.reason,
+    created_by: body.created_by || undefined,
+    created_by_name: body.created_by_name || undefined,
+    created_at: now.toISOString(),
+  };
+  store.assetScrappageLogs.insert(log);
+  store.assets.update(asset.id, { status: 'scrapped', current_condition: 'damaged', scrapped_at: now.toISOString() });
+  logActivity(req, `تم شطب أصل "${asset.name}" (${asset.asset_code}) — خسارة دفترية ${book_value} ر.س`);
+  res.status(201).json(log);
+});
+
+api.get('/asset-scrappage-logs', (_req, res) => res.json(store.assetScrappageLogs.list()));
+
+api.get('/audit-cycles', (_req, res) => res.json(store.auditCycles.list()));
+
+api.post('/audit-cycles', (req, res) => {
+  const body = req.body ?? {};
+  if (!body.audit_code || !body.audit_date || !body.period_type) {
+    return res.status(400).json({ error: 'audit_code وaudit_date وperiod_type مطلوبة' });
+  }
+  const now = new Date().toISOString();
+  const cycle: AuditCycle = {
+    id: store.id(),
+    audit_code: body.audit_code,
+    audit_date: body.audit_date,
+    period_type: body.period_type,
+    status: 'draft',
+    created_by: body.created_by || undefined,
+    created_by_name: body.created_by_name || undefined,
+    created_at: now,
+    updated_at: now,
+  };
+  store.auditCycles.insert(cycle);
+  logActivity(req, `تم إنشاء دورة جرد "${cycle.audit_code}"`);
+  res.status(201).json(cycle);
+});
+
+// بدء الجرد — يولِّد بند جرد واحداً (expected_qty: 1) لكل أصل نشط
+// (status === 'active') حالياً، ويحوّل حالة الدورة إلى 'in_progress'.
+// لا يُعاد التوليد لو استُدعيَت مرة أخرى بعد أن بدأت الدورة فعلاً (منعاً
+// لتكرار البنود).
+api.post('/audit-cycles/:id/start', (req, res) => {
+  const cycle = store.auditCycles.get(req.params.id);
+  if (!cycle) return res.status(404).json({ error: 'audit cycle not found' });
+  if (cycle.status !== 'draft') return res.status(400).json({ error: 'هذه الدورة بدأت مسبقاً' });
+  const now = new Date().toISOString();
+  const activeAssets = store.assets.list().filter((a) => a.status === 'active');
+  const items: AuditItem[] = activeAssets.map((a) => ({
+    id: store.id(),
+    audit_id: cycle.id,
+    asset_id: a.id,
+    asset_name_snapshot: a.name,
+    asset_code_snapshot: a.asset_code,
+    expected_qty: 1,
+    created_at: now,
+    updated_at: now,
+  }));
+  store.auditItems.insertMany(items);
+  const updated = store.auditCycles.update(cycle.id, { status: 'in_progress' });
+  logActivity(req, `تم بدء دورة جرد "${cycle.audit_code}" — ${items.length} بنداً`);
+  res.json(updated);
+});
+
+api.post('/audit-cycles/:id/complete', (req, res) => {
+  const cycle = store.auditCycles.get(req.params.id);
+  if (!cycle) return res.status(404).json({ error: 'audit cycle not found' });
+  const updated = store.auditCycles.update(cycle.id, { status: 'completed' });
+  logActivity(req, `تم اعتماد دورة جرد "${cycle.audit_code}"`);
+  res.json(updated);
+});
+
+api.delete('/audit-cycles/:id', (req, res) => {
+  const cycle = store.auditCycles.get(req.params.id);
+  if (!cycle) return res.status(404).json({ error: 'audit cycle not found' });
+  for (const item of store.auditItems.listByAudit(cycle.id)) store.auditItems.remove(item.id);
+  store.auditCycles.remove(cycle.id);
+  logActivity(req, `تم حذف دورة جرد "${cycle.audit_code}"`);
+  res.status(204).end();
+});
+
+// كل بنود الجرد، أو بنود دورة واحدة فقط عبر ?audit_id=... — نفس نمط
+// ?appointment_id تقريباً في مسارات أخرى من هذا الملف.
+api.get('/audit-items', (req, res) => {
+  const auditId = req.query.audit_id as string | undefined;
+  res.json(auditId ? store.auditItems.listByAudit(auditId) : store.auditItems.list());
+});
+
+api.patch('/audit-items/:id', (req, res) => {
+  const body = req.body ?? {};
+  const target = store.auditItems.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'audit item not found' });
+  const patch: Partial<AuditItem> = {};
+  if (body.actual_qty !== undefined) {
+    const actualQty = numOrUndef(body.actual_qty);
+    patch.actual_qty = actualQty;
+    patch.variance = actualQty !== undefined ? actualQty - target.expected_qty : undefined;
+  }
+  if (body.condition_at_audit !== undefined) patch.condition_at_audit = body.condition_at_audit || undefined;
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  const updated = store.auditItems.update(req.params.id, patch);
+  if (!updated) return res.status(404).json({ error: 'audit item not found' });
+  res.json(updated);
 });
 
 // Strip the password hash before a profile ever leaves the server.
