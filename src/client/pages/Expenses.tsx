@@ -13,6 +13,8 @@ import type {
   AdvanceDeductionMode,
   Vehicle,
   Facility,
+  ExpenseAccountingClassification,
+  ExpenseCostType,
 } from '../../shared/types.js';
 import {
   CUSTODY_CATEGORY_NAME,
@@ -25,7 +27,13 @@ import {
   VAT_RATE,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   ADVANCE_DEDUCTION_MODE_LABELS_AR,
+  EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR,
+  EXPENSE_COST_TYPE_LABELS_AR,
+  EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE,
+  DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY,
 } from '../../shared/types.js';
+
+const ACCOUNTING_CLASSIFICATIONS = Object.keys(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR) as ExpenseAccountingClassification[];
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -392,6 +400,10 @@ function GeneralExpensesTab() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
+  // التصنيف المحاسبي — يُقترَح تلقائياً عند اختيار الفئة الرئيسية
+  // (DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY)، ويبقى قابلاً للتعديل
+  // اليدوي دائماً بعدها عبر منتقيه الخاص.
+  const [accountingClassification, setAccountingClassification] = useState<ExpenseAccountingClassification | ''>('');
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [facilityId, setFacilityId] = useState('');
@@ -489,6 +501,27 @@ function GeneralExpensesTab() {
     return { daily, monthly, annual };
   }, [generalExpenses]);
 
+  // التصنيف المحاسبي — إجمالي مصروفات فعلية فقط (لا إيرادات، ولا عهدة —
+  // عهدة مال مُسلَّم للاحتفاظ به لا مصروفاً فعلياً بعد) لكل تصنيف من
+  // التصنيفات الثمانية، وإجمالي مجمَّع حسب نوع التكلفة (CapEx/OpEx/ميزانية
+  // عمومية) المشتق منها — يُعرَض باختصار أعلى صفحة المصروفات العامة.
+  const classificationTotals = useMemo(() => {
+    const totals: Partial<Record<ExpenseAccountingClassification, number>> = {};
+    for (const e of expenses) {
+      if (e.category === CUSTODY_CATEGORY_NAME || (e.entry_type ?? 'expense') !== 'expense') continue;
+      if (!e.accounting_classification) continue;
+      totals[e.accounting_classification] = (totals[e.accounting_classification] ?? 0) + e.amount;
+    }
+    return totals;
+  }, [expenses]);
+  const costTypeTotals = useMemo(() => {
+    const totals: Record<ExpenseCostType, number> = { capex: 0, opex: 0, balance_sheet: 0 };
+    for (const c of ACCOUNTING_CLASSIFICATIONS) {
+      totals[EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE[c]] += classificationTotals[c] ?? 0;
+    }
+    return totals;
+  }, [classificationTotals]);
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
@@ -501,6 +534,7 @@ function GeneralExpensesTab() {
         entry_type: entryType,
         income_type: entryType === 'income' ? incomeType : undefined,
         sub_category: subCategory || undefined,
+        accounting_classification: accountingClassification || undefined,
         amount: Number(amount),
         is_tax_invoice: isTaxInvoice,
         date: form.get('date'),
@@ -522,6 +556,7 @@ function GeneralExpensesTab() {
       });
       setShowForm(false);
       setSubCategory('');
+      setAccountingClassification('');
       setAdvanceEmployeeId('');
       setVehicleId('');
       setFacilityId('');
@@ -564,6 +599,36 @@ function GeneralExpensesTab() {
         <MiniStat label={t('اليوم')} value={formatMoney(totals.daily)} />
         <MiniStat label={t('هذا الشهر')} value={formatMoney(totals.monthly)} />
         <MiniStat label={t('هذه السنة')} value={formatMoney(totals.annual)} />
+      </div>
+
+      {/* التصنيف المحاسبي — ملخص مختصر لإجمالي كل تصنيف من كل مصروفات
+          النظام الفعلية (بصرف النظر عن أي تصفية جدول أدناه)، مع إجمالي
+          حسب نوع التكلفة (CapEx/OpEx/ميزانية عمومية). التفاصيل لكل عملية
+          من نموذج إضافة/تعديل المصروف نفسه. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h3 className="mb-3 text-xs font-semibold text-slate-500">{t('التصنيف المحاسبي للمصروفات')}</h3>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {ACCOUNTING_CLASSIFICATIONS.map((c) => (
+            <div key={c} className="rounded-xl bg-slate-50 px-3 py-2">
+              <div className="text-sm font-semibold text-slate-700">{formatMoney(classificationTotals[c] ?? 0)}</div>
+              <div className="text-[11px] text-slate-400">{t(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR[c])}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
+          <div>
+            <div className="text-sm font-bold text-slate-800">{formatMoney(costTypeTotals.capex)}</div>
+            <div className="text-[11px] text-slate-400">{t(EXPENSE_COST_TYPE_LABELS_AR.capex)}</div>
+          </div>
+          <div>
+            <div className="text-sm font-bold text-slate-800">{formatMoney(costTypeTotals.opex)}</div>
+            <div className="text-[11px] text-slate-400">{t(EXPENSE_COST_TYPE_LABELS_AR.opex)}</div>
+          </div>
+          <div>
+            <div className="text-sm font-bold text-slate-800">{formatMoney(costTypeTotals.balance_sheet)}</div>
+            <div className="text-[11px] text-slate-400">{t(EXPENSE_COST_TYPE_LABELS_AR.balance_sheet)}</div>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center justify-end">
@@ -722,6 +787,7 @@ function GeneralExpensesTab() {
                     setSubCategory('');
                     setAdvanceEmployeeId('');
                     setVehicleId('');
+                    setAccountingClassification(DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY[e.target.value] ?? '');
                   }}
                 >
                   {creatableCategories.length === 0 && <option value="">{t('لا توجد تصنيفات بعد')}</option>}
@@ -745,6 +811,21 @@ function GeneralExpensesTab() {
                   </select>
                 </label>
               )}
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('التصنيف المحاسبي (اختياري)')}</span>
+                <select
+                  className="input"
+                  value={accountingClassification}
+                  onChange={(e) => setAccountingClassification(e.target.value as ExpenseAccountingClassification | '')}
+                >
+                  <option value="">{t('غير مصنَّف')}</option>
+                  {ACCOUNTING_CLASSIFICATIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {t(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR[c])} — {t(EXPENSE_COST_TYPE_LABELS_AR[EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE[c]])}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {needsEmployeeLink && (
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>
@@ -1001,6 +1082,9 @@ function ExpenseDetailModal({
   const [title, setTitle] = useState(expense.title);
   const [category, setCategory] = useState(expense.category);
   const [subCategory, setSubCategory] = useState(expense.sub_category ?? '');
+  const [accountingClassification, setAccountingClassification] = useState<ExpenseAccountingClassification | ''>(
+    expense.accounting_classification ?? '',
+  );
   const [amount, setAmount] = useState(expense.amount);
   const [date, setDate] = useState(expense.date);
   const [invoiceNumber, setInvoiceNumber] = useState(expense.invoice_number ?? '');
@@ -1039,6 +1123,7 @@ function ExpenseDetailModal({
         entry_type: entryType,
         income_type: entryType === 'income' ? incomeType : undefined,
         sub_category: subCategory || undefined,
+        accounting_classification: accountingClassification || undefined,
         amount,
         is_tax_invoice: isTaxInvoice,
         date,
@@ -1124,6 +1209,12 @@ function ExpenseDetailModal({
                 {expense.vendor_name && <div>{t('اسم التاجر')}: {expense.vendor_name}</div>}
                 {expense.vehicle_label && <div>{t('المركبة')}: {expense.vehicle_label}</div>}
                 {expense.facility_label && <div>{t('المرفق')}: {expense.facility_label}</div>}
+                {expense.accounting_classification && (
+                  <div>
+                    {t('التصنيف المحاسبي')}: {t(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR[expense.accounting_classification])} —{' '}
+                    {t(EXPENSE_COST_TYPE_LABELS_AR[EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE[expense.accounting_classification]])}
+                  </div>
+                )}
                 {expense.recorded_by_name && <div>{t('سجّله')}: {expense.recorded_by_name}</div>}
                 {expense.notes && <div>{t('ملاحظات')}: {expense.notes}</div>}
               </div>
@@ -1213,6 +1304,21 @@ function ExpenseDetailModal({
                 </select>
               </label>
             )}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('التصنيف المحاسبي')}</span>
+              <select
+                value={accountingClassification}
+                onChange={(e) => setAccountingClassification(e.target.value as ExpenseAccountingClassification | '')}
+                className="input"
+              >
+                <option value="">{t('غير مصنَّف')}</option>
+                {ACCOUNTING_CLASSIFICATIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {t(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR[c])} — {t(EXPENSE_COST_TYPE_LABELS_AR[EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE[c]])}
+                  </option>
+                ))}
+              </select>
+            </label>
             {needsEmployeeLink && (
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('الموظف')}</span>

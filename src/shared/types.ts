@@ -1059,6 +1059,52 @@ export const ADVANCE_DEDUCTION_MODE_LABELS_AR: Record<AdvanceDeductionMode, stri
   period: 'خصمها بين فترتين محدَّدتين',
 };
 
+// التصنيف المحاسبي لعملية مصروف — Expense.accounting_classification
+// أدناه. مستقل تماماً عن category (فئة "مركبات" العملياتية مثلاً قد تصنَّف
+// محاسبياً "مصاريف تشغيلية")؛ اختياري يدوي بالكامل — انظر
+// DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY أدناه للاقتراح التلقائي
+// المبدئي فقط عند اختيار الفئة أول مرة في نموذج إضافة مصروف (Expenses.tsx).
+export type ExpenseAccountingClassification =
+  | 'fixed_assets'
+  | 'setup_short_lived_assets'
+  | 'general_admin'
+  | 'operating'
+  | 'utilities'
+  | 'raw_materials'
+  | 'employee_wages'
+  | 'current_assets_advances';
+
+export const EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR: Record<ExpenseAccountingClassification, string> = {
+  fixed_assets: 'أصول ثابتة',
+  setup_short_lived_assets: 'مصاريف تأسيس / أصول قصيرة',
+  general_admin: 'مصاريف عمومية وإدارية',
+  operating: 'مصاريف تشغيلية',
+  utilities: 'منافع ومرافق',
+  raw_materials: 'مواد خامات ومستهلكات',
+  employee_wages: 'أجور ومنافع الموظفين',
+  current_assets_advances: 'أصول متداولة (ذمم سلف)',
+};
+
+// نوع التكلفة — مشتق حصراً من التصنيف المحاسبي (ليس حقلاً مستقلاً على
+// Expense)، انظر EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE أدناه.
+export type ExpenseCostType = 'capex' | 'opex' | 'balance_sheet';
+export const EXPENSE_COST_TYPE_LABELS_AR: Record<ExpenseCostType, string> = {
+  capex: 'تأسيسي (CapEx)',
+  opex: 'تشغيلي (OpEx)',
+  balance_sheet: 'ميزانية عمومية',
+};
+
+export const EXPENSE_ACCOUNTING_CLASSIFICATION_COST_TYPE: Record<ExpenseAccountingClassification, ExpenseCostType> = {
+  fixed_assets: 'capex',
+  setup_short_lived_assets: 'capex',
+  general_admin: 'opex',
+  operating: 'opex',
+  utilities: 'opex',
+  raw_materials: 'opex',
+  employee_wages: 'opex',
+  current_assets_advances: 'balance_sheet',
+};
+
 export interface Expense {
   id: string;
   title: string;
@@ -1071,6 +1117,9 @@ export interface Expense {
   // Optional sub-item under the main category (e.g. category "مركبات",
   // sub_category "بنزين") — names of an ExpenseCategoryItem pair.
   sub_category?: string;
+  // التصنيف المحاسبي (اختياري) — أصول ثابتة/متداولة، مصاريف تشغيلية أو
+  // عمومية وإدارية، إلخ. مستقل عن category تماماً، انظر التعليق أعلاه.
+  accounting_classification?: ExpenseAccountingClassification;
   period_type: 'daily' | 'monthly' | 'annual';
   amount: number;
   // هل فاتورة هذا المصروف "فاتورة ضريبية" (صادرة من مورد مسجَّل في ضريبة
@@ -1717,6 +1766,24 @@ export const FACILITY_CATEGORY_NAME = 'إيجار مبنى';
 // اختيارياً بحتاً هنا، بخلاف فئة FACILITY_CATEGORY_NAME حيث هو المسار
 // المعتاد). انظر ELECTRICITY_CATEGORY_NAME أدناه.
 export const ELECTRICITY_CATEGORY_NAME = 'كهرباء';
+
+// تصنيف محاسبي افتراضي مقترح تلقائياً حسب فئة المصروف الرئيسية — يُطبَّق
+// فقط عند اختيار الفئة لأول مرة في نموذج إضافة مصروف (Expenses.tsx)؛
+// Expense.accounting_classification يبقى حقلاً مستقلاً قابلاً للتعديل
+// اليدوي دائماً بعد ذلك. فئات غير مذكورة هنا (مشتريات متفرقة، مصاريف
+// عهدة...) تبقى بلا اقتراح — يختارها المستخدم يدوياً.
+export const DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY: Partial<Record<string, ExpenseAccountingClassification>> = {
+  [VEHICLE_CATEGORY_NAME]: 'operating',
+  [SALARY_CATEGORY_NAME]: 'employee_wages',
+  [ADVANCE_CATEGORY_NAME]: 'current_assets_advances',
+  [ELECTRICITY_CATEGORY_NAME]: 'utilities',
+  [FACILITY_CATEGORY_NAME]: 'general_admin',
+  'مواد التشغيل والنظافة': 'raw_materials',
+  'إقامات': 'general_admin',
+  'إيجار': 'general_admin',
+  'غاز': 'utilities',
+  'تأسيس': 'setup_short_lived_assets',
+};
 
 // مرافق الشركة (مباني سكن، مستودعات، وخلافه) — صفحة الإعدادات ← المرافق
 // (FacilitiesTab في Settings.tsx). كل مرفق يحمل تفاصيل عقد إيجاره وجدول

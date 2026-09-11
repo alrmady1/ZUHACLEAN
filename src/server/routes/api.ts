@@ -51,6 +51,7 @@ import type {
   Expense,
   ExpenseEntryType,
   ExpenseIncomeType,
+  ExpenseAccountingClassification,
   TerminationReason,
   LiveChatThread,
   RiyadhZone,
@@ -1747,6 +1748,22 @@ function computeExpenseTax(isTaxInvoice: boolean, amount: number): number | unde
   return Math.round((amount - amount / (1 + VAT_RATE)) * 100) / 100;
 }
 
+const VALID_ACCOUNTING_CLASSIFICATIONS: ExpenseAccountingClassification[] = [
+  'fixed_assets',
+  'setup_short_lived_assets',
+  'general_admin',
+  'operating',
+  'utilities',
+  'raw_materials',
+  'employee_wages',
+  'current_assets_advances',
+];
+function parseAccountingClassification(value: unknown): ExpenseAccountingClassification | undefined {
+  return VALID_ACCOUNTING_CLASSIFICATIONS.includes(value as ExpenseAccountingClassification)
+    ? (value as ExpenseAccountingClassification)
+    : undefined;
+}
+
 api.post('/expenses', async (req, res) => {
   const body = req.body ?? {};
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
@@ -1790,6 +1807,7 @@ api.post('/expenses', async (req, res) => {
     entry_type: entryType,
     income_type: incomeType,
     sub_category: body.sub_category || undefined,
+    accounting_classification: parseAccountingClassification(body.accounting_classification),
     period_type: body.period_type ?? 'daily',
     amount,
     is_tax_invoice: isTaxInvoice,
@@ -1868,6 +1886,7 @@ api.patch('/expenses/:id', async (req, res) => {
   if (body.entry_type !== undefined) patch.entry_type = body.entry_type === 'income' ? 'income' : 'expense';
   if (body.income_type !== undefined) patch.income_type = body.income_type === 'additional_capital' ? 'additional_capital' : 'return';
   if (body.sub_category !== undefined) patch.sub_category = body.sub_category || undefined;
+  if (body.accounting_classification !== undefined) patch.accounting_classification = parseAccountingClassification(body.accounting_classification);
   if (body.amount !== undefined) patch.amount = Number(body.amount);
   if (body.date !== undefined) patch.date = body.date;
   if (body.invoice_number !== undefined) patch.invoice_number = body.invoice_number || undefined;
