@@ -19,5 +19,5 @@ export function waLink(phone: string, text?: string): string {
 // الخدمة وإصدار الفاتورة. الرابط يفتح صفحة تقييم عامة (5 نجوم + رأي مختصر)
 // بلا تسجيل دخول، انظر src/client/pages/RatePage.tsx.
 export function ratingRequestMessage(customerName: string, ratingUrl: string): string {
-  return `عزيزنا ${customerName}، سعدنا بفرصة خدمتك اليوم! 🌟\n\nرأيك يهمنا ويساعدنا لنكون دائماً عند حسن ظنّك، شاركنا تقييمك للخدمة من هنا:\n\n${ratingUrl}`;
+  return `عزيزي ${customerName}\nيهمنا رأيك! كيف كانت تجربتك معنا اليوم؟\n\n${ratingUrl}`;
 }
