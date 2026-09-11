@@ -2784,6 +2784,11 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     title: `راتب ${profile.full_name} — ${body.month_label ?? month}`,
     category: SALARY_CATEGORY_NAME,
     entry_type: 'expense',
+    // كل راتب يُصنَّف محاسبياً تلقائياً "أجور ومنافع الموظفين" (تشغيلي
+    // OpEx) — بلا حاجة لاختيار يدوي، بخلاف بقية فئات المصروفات التي
+    // تعتمد فقط على اقتراح الواجهة (DEFAULT_ACCOUNTING_CLASSIFICATION_BY_
+    // CATEGORY في shared/types.ts) القابل للتغيير يدوياً.
+    accounting_classification: 'employee_wages',
     period_type: 'monthly',
     amount: net,
     date: body.date ?? new Date().toISOString().slice(0, 10),
