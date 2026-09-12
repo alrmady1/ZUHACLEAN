@@ -488,6 +488,7 @@ export function InventoryTab() {
             <AuditItemsView
               cycle={activeAudit}
               items={activeAuditItems}
+              assets={assets}
               canManage={canManage}
               onBack={() => setActiveAuditId(null)}
               onScrap={(assetId) => {
@@ -927,12 +928,115 @@ function AssetLabelModal({ asset, onClose }: { asset: Asset; onClose: () => void
 }
 
 // ---------------------------------------------------------------------------
+// كشف جرد ورقي قابل للطباعة — يجيب على "كيف أسجّل ملاحظاتي وأنا أتفقَّد
+// الأصول ميدانياً بلا جوال بيدي؟": جدول بكل بنود دورة الجرد، بخانات
+// المتوقَّع مُعبَّأة والفعلي/الحالة/الملاحظات فارغة عمداً للتعبئة اليدوية
+// بالقلم، تُدخَل لاحقاً في واجهة الجرد الرقمية (AuditItemsView أعلاه) من
+// نفس الجهاز أو جهاز آخر. الطباعة معزولة بنفس .invoice-print-area
+// المستخدَمة في InvoiceDocument.tsx (صفحة كاملة، لا ملصق مصغَّر).
+// ---------------------------------------------------------------------------
+function AuditPrintSheet({
+  cycle,
+  items,
+  assets,
+  onClose,
+}: {
+  cycle: AuditCycle;
+  items: AuditItem[];
+  assets: Asset[];
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const assetById = new Map(assets.map((a) => [a.id, a]));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:w-auto print:overflow-visible print:rounded-none print:shadow-none">
+        <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
+          <h2 className="text-sm font-bold text-slate-800">{t('طباعة كشف الجرد')}</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+            >
+              <Printer className="h-3.5 w-3.5" /> {t('طباعة')}
+            </button>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        <div className="invoice-print-area overflow-y-auto p-6">
+          <div className="mb-4 text-center">
+            <h1 className="text-lg font-bold text-slate-800">{t('كشف جرد')}</h1>
+            <p className="text-sm text-slate-500" dir="ltr">
+              {cycle.audit_code} — {cycle.audit_date}
+            </p>
+          </div>
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="border border-slate-400 p-1.5 text-start">#</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الكود')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الاسم')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الفئة')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الموقع')}</th>
+                <th className="border border-slate-400 p-1.5 text-center">{t('المتوقَّع')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الفعلي')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('الحالة أثناء الجرد')}</th>
+                <th className="border border-slate-400 p-1.5 text-start">{t('ملاحظات')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => {
+                const asset = assetById.get(item.asset_id);
+                return (
+                  <tr key={item.id}>
+                    <td className="border border-slate-400 p-1.5">{i + 1}</td>
+                    <td className="border border-slate-400 p-1.5" dir="ltr">{item.asset_code_snapshot}</td>
+                    <td className="border border-slate-400 p-1.5">{item.asset_name_snapshot}</td>
+                    <td className="border border-slate-400 p-1.5">{asset ? t(ASSET_CATEGORY_LABELS_AR[asset.category]) : '—'}</td>
+                    <td className="border border-slate-400 p-1.5">{asset?.location || '—'}</td>
+                    <td className="border border-slate-400 p-1.5 text-center">{item.expected_qty}</td>
+                    <td className="border border-slate-400 p-1.5">
+                      <div className="h-6" />
+                    </td>
+                    <td className="border border-slate-400 p-1.5">
+                      <div className="h-6" />
+                    </td>
+                    <td className="border border-slate-400 p-1.5">
+                      <div className="h-6" />
+                    </td>
+                  </tr>
+                );
+              })}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="border border-slate-400 p-4 text-center text-slate-400">
+                    {t('لا توجد بنود في هذه الدورة')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="mt-10 grid grid-cols-2 gap-8 text-sm text-slate-700">
+            <div>{t('اسم القائم بالجرد')}: ____________________</div>
+            <div>{t('التوقيع والتاريخ')}: ____________________</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // واجهة إدخال المشرف الميداني لجلسة جرد قائمة — مخصَّصة للمس (الآيباد/
 // الجوال): حقول كبيرة، صف كامل يبرز أحمراً عند وجود عجز (variance < 0).
 // ---------------------------------------------------------------------------
 function AuditItemsView({
   cycle,
   items,
+  assets,
   canManage,
   onBack,
   onScrap,
@@ -940,6 +1044,7 @@ function AuditItemsView({
 }: {
   cycle: AuditCycle;
   items: AuditItem[];
+  assets: Asset[];
   canManage: boolean;
   onBack: () => void;
   onScrap: (assetId: string) => void;
@@ -947,6 +1052,7 @@ function AuditItemsView({
 }) {
   const { t, tt } = useI18n();
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [showPrintSheet, setShowPrintSheet] = useState(false);
 
   async function saveItem(item: AuditItem, patch: { actual_qty?: number; condition_at_audit?: AssetCondition; notes?: string }) {
     setSavingId(item.id);
@@ -969,8 +1075,18 @@ function AuditItemsView({
             {cycle.audit_code}
           </h3>
         </div>
-        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">{t(AUDIT_CYCLE_STATUS_LABELS_AR[cycle.status])}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPrintSheet(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <Printer className="h-3.5 w-3.5" /> {t('طباعة كشف الجرد')}
+          </button>
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">{t(AUDIT_CYCLE_STATUS_LABELS_AR[cycle.status])}</span>
+        </div>
       </div>
+
+      {showPrintSheet && <AuditPrintSheet cycle={cycle} items={items} assets={assets} onClose={() => setShowPrintSheet(false)} />}
 
       <div className="space-y-2">
         {items.map((item) => {
