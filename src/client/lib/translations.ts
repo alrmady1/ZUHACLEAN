@@ -1388,6 +1388,7 @@ export const AR_TO_EN: Record<string, string> = {
   "إضافية فوق سعر الشراء": "additional on top of the purchase price",
   "فاتورة الشراء": "Purchase Invoice",
   "فاتورة الشراء (صورة أو PDF، اختياري)": "Purchase Invoice (image or PDF, optional)",
+  "مواد نظافة": "Cleaning Supplies",
 };
 
 // قاموس الترجمة إلى اللغة البنغالية — لتطبيق ذلك، مقصورٌ عمداً على الشاشات
@@ -2641,4 +2642,5 @@ export const AR_TO_UR: Record<string, string> = {
   "إضافية فوق سعر الشراء": "خریداری کی قیمت کے علاوہ",
   "فاتورة الشراء": "خریداری کا انوائس",
   "فاتورة الشراء (صورة أو PDF، اختياري)": "خریداری کا انوائس (تصویر یا PDF، اختیاری)",
+  "مواد نظافة": "صفائی کا مواد",
 };

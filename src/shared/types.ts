@@ -1861,9 +1861,10 @@ export interface Facility {
 // مهمة مجدولة تُحدِّثه.
 // ============================================================================
 
-export type AssetCategory = 'cleaning_equipment' | 'housing_furniture' | 'hand_tools' | 'uniforms_gear';
+export type AssetCategory = 'cleaning_equipment' | 'cleaning_supplies' | 'housing_furniture' | 'hand_tools' | 'uniforms_gear';
 export const ASSET_CATEGORY_LABELS_AR: Record<AssetCategory, string> = {
   cleaning_equipment: 'معدات نظافة',
+  cleaning_supplies: 'مواد نظافة',
   housing_furniture: 'أثاث سكن',
   hand_tools: 'أدوات يدوية',
   uniforms_gear: 'ملابس وتجهيزات',
