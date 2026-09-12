@@ -88,10 +88,10 @@ import {
   LEAVE_TYPE_LABELS_AR,
   LEAD_STATUS_LABELS_AR,
   VISIT_OUTCOME_LABELS_AR,
-  ANNUAL_LEAVE_BALANCE_DAYS,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
+import { annualLeaveEntitlementDays } from '../../shared/leaves.js';
 
 export const api = Router();
 
@@ -985,11 +985,11 @@ api.post('/leaves', async (req, res) => {
   if (body.end_date < body.start_date) {
     return res.status(400).json({ error: 'تاريخ الانتهاء يجب أن يكون بعد تاريخ البدء' });
   }
-  // إجازة مدفوعة لا تُتاح قبل إتمام ١٢ شهراً من تاريخ التعيين — بموجب نظام
+  const owner = store.profiles.get(body.profile_id);
+  // إجازة سنوية لا تُتاح قبل إتمام ١٢ شهراً من تاريخ التعيين — بموجب نظام
   // العمل السعودي. بلا تاريخ تعيين مسجَّل، لا نمنع (لا بيانات كافية للحكم)
   // — نفس تساهل الواجهة (Settings.tsx isEligibleForPaidLeave).
   if (body.leave_type === 'paid') {
-    const owner = store.profiles.get(body.profile_id);
     if (owner?.hire_date) {
       const oneYearAfterHire = new Date(owner.hire_date);
       oneYearAfterHire.setFullYear(oneYearAfterHire.getFullYear() + 1);
@@ -1000,7 +1000,8 @@ api.post('/leaves', async (req, res) => {
   }
   const daysCount = daysBetweenInclusive(body.start_date, body.end_date);
   const deductFromBalance = Boolean(body.deduct_from_annual_balance);
-  // تجاوز رصيد الإجازة السنوي (٢١ يوماً) لا يمنع تسجيل الإجازة — يُعلَّم
+  // تجاوز رصيد الإجازة السنوي (٢١ يوماً أساساً، ٣٠ بعد ٥ سنوات خدمة —
+  // انظر annualLeaveEntitlementDays) لا يمنع تسجيل الإجازة — يُعلَّم
   // بانتظار اعتماد المدير العام، ويصله تنبيه فوري (انظر PATCH /leaves/:id
   // أدناه لاعتمادها لاحقاً).
   let exceedsBalance = false;
@@ -1010,7 +1011,7 @@ api.post('/leaves', async (req, res) => {
       .list()
       .filter((l) => l.profile_id === body.profile_id && l.deduct_from_annual_balance && l.start_date.slice(0, 4) === year)
       .reduce((sum, l) => sum + l.days_count, 0);
-    exceedsBalance = usedSoFar + daysCount > ANNUAL_LEAVE_BALANCE_DAYS;
+    exceedsBalance = usedSoFar + daysCount > annualLeaveEntitlementDays(owner?.hire_date);
   }
   const leave: LeaveRecord = {
     id: store.id(),

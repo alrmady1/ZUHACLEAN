@@ -4,13 +4,48 @@
 // scheduling.ts (اختيار مشرف متاح تلقائياً لموعد أنشأه الرد الآلي على
 // واتساب) — في src/shared عمداً لأنها بلا أي اعتماد على المتصفح.
 import type { LeaveRecord, Profile } from './types.js';
-import { LEAVE_TYPE_LABELS_AR } from './types.js';
+import { LEAVE_TYPE_LABELS_AR, ANNUAL_LEAVE_BALANCE_DAYS, ANNUAL_LEAVE_BALANCE_DAYS_AFTER_5_YEARS } from './types.js';
 
 // نص نوع الإجازة المعروض — "أخرى" تعرض النص الذي كتبه المدير يدوياً
 // (other_type_label) بدل التسمية الثابتة العامة.
 export function leaveTypeDisplay(leave: LeaveRecord): string {
   if (leave.leave_type === 'other' && leave.other_type_label) return leave.other_type_label;
   return LEAVE_TYPE_LABELS_AR[leave.leave_type];
+}
+
+// استحقاق الإجازة السنوية بالأيام حسب مدة الخدمة — ٢١ يوماً أساساً، تصبح
+// ٣٠ يوماً بعد إتمام ٥ سنوات خدمة متصلة (المادة ١٠٩ من نظام العمل
+// السعودي). بلا تاريخ تعيين مسجَّل تُعتمَد ٢١ يوماً (الأكثر تحفظاً، نفس
+// تساهل بقية الأماكن التي لا تملك بيانات كافية للحكم). دالة مشتركة
+// (عميل وخادم) — كل مكان يحسب "الرصيد المتبقي" يجب أن يمر منها بدل
+// الاعتماد مباشرة على ANNUAL_LEAVE_BALANCE_DAYS الثابت.
+export function annualLeaveEntitlementDays(hireDate: string | undefined, asOfDate: Date = new Date()): number {
+  if (!hireDate) return ANNUAL_LEAVE_BALANCE_DAYS;
+  const fiveYearsAfterHire = new Date(hireDate);
+  fiveYearsAfterHire.setFullYear(fiveYearsAfterHire.getFullYear() + 5);
+  return asOfDate >= fiveYearsAfterHire ? ANNUAL_LEAVE_BALANCE_DAYS_AFTER_5_YEARS : ANNUAL_LEAVE_BALANCE_DAYS;
+}
+
+export interface SickLeavePayBreakdown {
+  fullPayDays: number;
+  threeQuarterPayDays: number;
+  unpaidDays: number;
+}
+
+// توزيع أجر الإجازة المرضية على شرائح المادة ١١٧: أول ٣٠ يوماً (تراكمياً
+// خلال السنة) بأجر كامل، الـ٦٠ التالية بثلاثة أرباع الأجر، الـ٣٠ الأخيرة
+// (حتى سقف ١٢٠ يوماً) بلا أجر. daysUsedBeforeThisLeave = ما استُهلِك من
+// الرصيد هذا العام قبل هذه الإجازة تحديداً، thisLeaveDays = عدد أيامها.
+// عرض استرشادي فقط في نموذج الإضافة — لا يُطبَّق تلقائياً على الرواتب.
+export function sickLeavePayBreakdown(daysUsedBeforeThisLeave: number, thisLeaveDays: number): SickLeavePayBreakdown {
+  const start = Math.max(0, daysUsedBeforeThisLeave);
+  const end = start + Math.max(0, thisLeaveDays);
+  const overlap = (rangeStart: number, rangeEnd: number) => Math.max(0, Math.min(end, rangeEnd) - Math.max(start, rangeStart));
+  return {
+    fullPayDays: overlap(0, 30),
+    threeQuarterPayDays: overlap(30, 90),
+    unpaidDays: overlap(90, Infinity),
+  };
 }
 
 // appointment.scheduled_at كامل (ISO datetime)، وحقل التاريخ في نماذج

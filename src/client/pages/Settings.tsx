@@ -86,6 +86,7 @@ import type {
   PaymentStatus,
   NeighborhoodZoneAssignment,
   DistrictGeocode,
+  OfficialHolidayKey,
 } from '../../shared/types.js';
 import {
   DEFAULT_LANDING_SETTINGS,
@@ -103,13 +104,16 @@ import {
   ACTIVITY_LOG_DELETE_ROLES,
   LEAVE_TYPE_LABELS_AR,
   ANNUAL_LEAVE_BALANCE_DAYS,
+  LEAVE_TYPE_FIXED_DAYS,
+  LEAVE_TYPE_ONCE_PER_SERVICE,
+  OFFICIAL_HOLIDAYS,
   SERVICE_PRICING_MODEL_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDuration, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { WEEKDAYS } from '../../shared/weekdays.js';
-import { leaveTypeDisplay } from '../../shared/leaves.js';
+import { leaveTypeDisplay, annualLeaveEntitlementDays, sickLeavePayBreakdown } from '../../shared/leaves.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
@@ -1802,12 +1806,24 @@ function DaysOffTab() {
   const [deletingLeaveId, setDeletingLeaveId] = useState<string | null>(null);
   const [approvingLeaveId, setApprovingLeaveId] = useState<string | null>(null);
   const [leaveTypeInput, setLeaveTypeInput] = useState<LeaveType>('sick');
-  // خيار صريح لكل إجازة — هل تُخصَم من رصيد الـ٢١ يوماً السنوي؟ لا افتراض
-  // تلقائي حسب النوع، يبدأ غير محدَّد (false) في كل نموذج جديد.
+  // خيار صريح لكل إجازة — هل تُخصَم من رصيد الـ٢١/٣٠ يوماً السنوي؟ لا
+  // افتراض تلقائي حسب النوع، يبدأ غير محدَّد (false) في كل نموذج جديد.
   const [deductFromBalance, setDeductFromBalance] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [leavePhotoPreview, setLeavePhotoPreview] = useState<string | null>(null);
   const [compressingPhoto, setCompressingPhoto] = useState(false);
+  // تاريخا البداية والنهاية — عنصران متحكَّم بهما (لا FormData فقط) حتى
+  // يمكن اقتراح تاريخ النهاية تلقائياً لأنواع الإجازات محددة المدة قانوناً
+  // (LEAVE_TYPE_FIXED_DAYS) فور اختيار النوع أو تاريخ البداية، مع بقائه
+  // قابلاً للتعديل اليدوي دائماً بعدها.
+  const [leaveStartDateInput, setLeaveStartDateInput] = useState('');
+  const [leaveEndDateInput, setLeaveEndDateInput] = useState('');
+  // إضافة عطلة رسمية لجميع الموظفين دفعة واحدة (عيد الفطر/الأضحى/اليوم
+  // الوطني/يوم التأسيس) — بدل تكرار النموذج العادي لكل موظف على حدة.
+  const [showHolidayBulkForm, setShowHolidayBulkForm] = useState(false);
+  const [holidayKeyInput, setHolidayKeyInput] = useState<OfficialHolidayKey>('eid_fitr');
+  const [holidayStartDateInput, setHolidayStartDateInput] = useState('');
+  const [submittingHolidayBulk, setSubmittingHolidayBulk] = useState(false);
   // موعد قائم يتعارض مع فترة إجازة مقترحة (لشخص كان مسنَداً له فعلاً قبل
   // إضافة الإجازة) — يجب إعادة إسناده لشخص آخر قبل الموافقة على الإجازة
   // نفسها. انظر checkConflictsAndProceed أدناه.
@@ -1859,9 +1875,35 @@ function DaysOffTab() {
       setDeductFromBalance(false);
       setSelectedProfileId('');
       setLeavePhotoPreview(null);
+      setLeaveStartDateInput('');
+      setLeaveEndDateInput('');
       refreshLeaves();
     } finally {
       setSubmittingLeave(false);
+    }
+  }
+
+  // يضيف عدد أيام (شاملاً تاريخ البدء كيوم أول) إلى تاريخ (YYYY-MM-DD) —
+  // لاقتراح تاريخ نهاية أنواع الإجازات محددة المدة قانوناً تلقائياً.
+  function addInclusiveDays(dateStr: string, days: number): string {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + Math.max(1, days) - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function handleLeaveTypeChange(type: LeaveType) {
+    setLeaveTypeInput(type);
+    const fixedDays = LEAVE_TYPE_FIXED_DAYS[type];
+    if (fixedDays && leaveStartDateInput) {
+      setLeaveEndDateInput(addInclusiveDays(leaveStartDateInput, fixedDays));
+    }
+  }
+
+  function handleLeaveStartDateChange(value: string) {
+    setLeaveStartDateInput(value);
+    const fixedDays = LEAVE_TYPE_FIXED_DAYS[leaveTypeInput];
+    if (fixedDays && value) {
+      setLeaveEndDateInput(addInclusiveDays(value, fixedDays));
     }
   }
 
@@ -2005,8 +2047,20 @@ function DaysOffTab() {
       .filter((l) => l.profile_id === profileId && l.deduct_from_annual_balance && l.start_date.slice(0, 4) === String(currentYear))
       .reduce((sum, l) => sum + l.days_count, 0);
   }
+  // الرصيد السنوي المستحَق لهذا الموظف تحديداً — ٢١ يوماً أساساً، ٣٠ بعد
+  // ٥ سنوات خدمة متصلة (annualLeaveEntitlementDays، المادة ١٠٩).
+  function entitlementFor(profileId: string): number {
+    return annualLeaveEntitlementDays(people.find((p) => p.id === profileId)?.hire_date);
+  }
   function remainingAnnualBalance(profileId: string): number {
-    return ANNUAL_LEAVE_BALANCE_DAYS - usedAnnualBalance(profileId);
+    return entitlementFor(profileId) - usedAnnualBalance(profileId);
+  }
+  // أيام الإجازة المرضية المستخدَمة هذا العام (بصرف النظر عن خصم الرصيد
+  // السنوي — سقف الإجازة المرضية ١٢٠ يوماً مستقل تماماً، المادة ١١٧).
+  function usedSickDaysThisYear(profileId: string): number {
+    return leaves
+      .filter((l) => l.profile_id === profileId && l.leave_type === 'sick' && l.start_date.slice(0, 4) === String(currentYear))
+      .reduce((sum, l) => sum + l.days_count, 0);
   }
 
   const selectedProfile = people.find((p) => p.id === selectedProfileId);
@@ -2018,7 +2072,49 @@ function DaysOffTab() {
     oneYearAfterHire.setFullYear(oneYearAfterHire.getFullYear() + 1);
     return new Date() >= oneYearAfterHire;
   })();
-  const remainingBalanceForSelected = selectedProfileId ? remainingAnnualBalance(selectedProfileId) : ANNUAL_LEAVE_BALANCE_DAYS;
+  const entitlementForSelected = selectedProfileId ? entitlementFor(selectedProfileId) : ANNUAL_LEAVE_BALANCE_DAYS;
+  const remainingBalanceForSelected = selectedProfileId ? remainingAnnualBalance(selectedProfileId) : entitlementForSelected;
+  // تنبيه استرشادي غير مانع — هل استخدم هذا الموظف نفس نوع الإجازة "مرة
+  // واحدة طوال الخدمة" (الحج) من قبل في سجلاتنا؟
+  const alreadyUsedOnceType =
+    selectedProfileId && LEAVE_TYPE_ONCE_PER_SERVICE.includes(leaveTypeInput)
+      ? leaves.some((l) => l.profile_id === selectedProfileId && l.leave_type === leaveTypeInput)
+      : false;
+  // معاينة توزيع أجر الإجازة المرضية على شرائحها — تُحتسَب فقط حين اختيار
+  // النوع "مرضية" وتاريخي بداية ونهاية صالحين، عرض استرشادي فقط.
+  const sickPreview =
+    leaveTypeInput === 'sick' && selectedProfileId && leaveStartDateInput && leaveEndDateInput && leaveEndDateInput >= leaveStartDateInput
+      ? sickLeavePayBreakdown(
+          usedSickDaysThisYear(selectedProfileId),
+          Math.round((new Date(leaveEndDateInput).getTime() - new Date(leaveStartDateInput).getTime()) / 86_400_000) + 1,
+        )
+      : null;
+
+  // إضافة عطلة رسمية لجميع الموظفين (مشرفين وفنيين) دفعة واحدة.
+  async function submitHolidayBulk(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!holidayStartDateInput || people.length === 0) return;
+    const holiday = OFFICIAL_HOLIDAYS[holidayKeyInput];
+    const end = addInclusiveDays(holidayStartDateInput, holiday.days);
+    setSubmittingHolidayBulk(true);
+    try {
+      for (const p of people) {
+        await api.post('/leaves', {
+          profile_id: p.id,
+          leave_type: 'official_holiday',
+          start_date: holidayStartDateInput,
+          end_date: end,
+          notes: t(holiday.label),
+          deduct_from_annual_balance: false,
+        });
+      }
+      setShowHolidayBulkForm(false);
+      setHolidayStartDateInput('');
+      refreshLeaves();
+    } finally {
+      setSubmittingHolidayBulk(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -2078,13 +2174,86 @@ function DaysOffTab() {
               {t('فترة محددة بتاريخين — لا يمكن إسناد موعد جديد لصاحبها خلالها إطلاقاً.')}
             </p>
           </div>
-          <button
-            onClick={() => setShowLeaveForm((v) => !v)}
-            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-          >
-            <Plus className="h-3.5 w-3.5" /> {t('إضافة إجازة')}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowHolidayBulkForm((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+            >
+              <Plus className="h-3.5 w-3.5" /> {t('إضافة عطلة رسمية لجميع الموظفين')}
+            </button>
+            <button
+              onClick={() => setShowLeaveForm((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+            >
+              <Plus className="h-3.5 w-3.5" /> {t('إضافة إجازة')}
+            </button>
+          </div>
         </div>
+
+        {showHolidayBulkForm && (
+          <form
+            onSubmit={submitHolidayBulk}
+            className="mb-4 space-y-3 rounded-2xl border border-brand-200 bg-brand-50/40 p-4"
+          >
+            <p className="text-xs text-slate-500">
+              {t('تُسجَّل هذه العطلة تلقائياً لكل مشرف ميداني وفني حالياً — لا تُخصَم من الرصيد السنوي. التواريخ الفعلية (خصوصاً عيدي الفطر والأضحى) تتغيّر كل عام حسب التقويم الهجري، فتُدخَل يدوياً.')}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('العطلة')}</span>
+                <select
+                  value={holidayKeyInput}
+                  onChange={(e) => setHolidayKeyInput(e.target.value as OfficialHolidayKey)}
+                  className="input"
+                >
+                  {(Object.keys(OFFICIAL_HOLIDAYS) as OfficialHolidayKey[]).map((key) => (
+                    <option key={key} value={key}>
+                      {t(OFFICIAL_HOLIDAYS[key].label)} ({tt(`${OFFICIAL_HOLIDAYS[key].days} أيام`, `${OFFICIAL_HOLIDAYS[key].days} days`)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('تاريخ بداية العطلة')}</span>
+                <input
+                  type="date"
+                  required
+                  value={holidayStartDateInput}
+                  onChange={(e) => setHolidayStartDateInput(e.target.value)}
+                  className="input"
+                />
+              </label>
+              <div>
+                <span className="mb-1 block text-sm font-medium text-slate-600">{t('تاريخ النهاية (محتسَب)')}</span>
+                <div className="input flex items-center bg-slate-50 text-slate-500" dir="ltr">
+                  {holidayStartDateInput ? addInclusiveDays(holidayStartDateInput, OFFICIAL_HOLIDAYS[holidayKeyInput].days) : '—'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={submittingHolidayBulk || people.length === 0}
+                className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {submittingHolidayBulk
+                  ? t('جارِ الإضافة…')
+                  : tt(`إضافة للجميع (${people.length} موظف)`, `Add for everyone (${people.length} employees)`)}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHolidayBulkForm(false);
+                  setHolidayStartDateInput('');
+                }}
+                className="text-xs font-medium text-slate-400 hover:text-slate-600"
+              >
+                {t('إلغاء')}
+              </button>
+            </div>
+          </form>
+        )}
 
         {showLeaveForm && (
           <form
@@ -2117,7 +2286,7 @@ function DaysOffTab() {
                   name="leave_type"
                   required
                   value={leaveTypeInput}
-                  onChange={(e) => setLeaveTypeInput(e.target.value as LeaveType)}
+                  onChange={(e) => handleLeaveTypeChange(e.target.value as LeaveType)}
                   className="input"
                 >
                   {(Object.keys(LEAVE_TYPE_LABELS_AR) as LeaveType[]).map((key) => (
@@ -2139,6 +2308,46 @@ function DaysOffTab() {
                 {t('لا يحق لهذا الموظف إجازة مدفوعة قبل إتمام ١٢ شهراً من تاريخ التعيين')}
               </div>
             )}
+            {leaveTypeInput === 'paid' && (
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                {selectedProfileId &&
+                  tt(
+                    `استحقاق هذا الموظف السنوي: ${entitlementForSelected} يوماً${entitlementForSelected > ANNUAL_LEAVE_BALANCE_DAYS ? ' (بعد إتمام ٥ سنوات خدمة)' : ''}. `,
+                    `This employee's annual entitlement: ${entitlementForSelected} days${entitlementForSelected > ANNUAL_LEAVE_BALANCE_DAYS ? ' (after 5 years of service)' : ''}. `,
+                  )}
+                {t('يُدفع أجر الإجازة السنوية مقدماً، ولا يجوز التنازل عنها بمقابل نقدي أثناء العمل.')}
+              </div>
+            )}
+            {LEAVE_TYPE_ONCE_PER_SERVICE.includes(leaveTypeInput) && (
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                {t('إجازة الحج مرة واحدة فقط طوال فترة الخدمة، بشرط ألا يكون قد أداها سابقاً — من ١٠ إلى ١٥ يوماً بأجر.')}
+                {alreadyUsedOnceType && (
+                  <div className="mt-1 font-medium text-amber-700">
+                    {t('تنبيه: يوجد لهذا الموظف سجل إجازة حج سابق في النظام — تأكد قبل الإضافة.')}
+                  </div>
+                )}
+              </div>
+            )}
+            {(() => {
+              const fixedDays = LEAVE_TYPE_FIXED_DAYS[leaveTypeInput];
+              return (
+                fixedDays && (
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    {leaveTypeInput === 'iddah'
+                      ? t('المدة الشرعية: ٤ أشهر و١٠ أيام هجرية (≈ ١٣٠ يوماً) — تاريخ النهاية اقتراح تقريبي، يُنصح بمراجعته يدوياً.')
+                      : tt(`المدة القانونية: ${fixedDays} أيام بأجر كامل — تاريخ النهاية اقتُرح تلقائياً، يمكن تعديله.`, `Legal duration: ${fixedDays} days, full pay — end date suggested automatically, editable.`)}
+                  </div>
+                )
+              );
+            })()}
+            {sickPreview && (sickPreview.threeQuarterPayDays > 0 || sickPreview.unpaidDays > 0) && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {tt(
+                  `توزيع الأجر لهذه الإجازة: ${sickPreview.fullPayDays} يوم بأجر كامل، ${sickPreview.threeQuarterPayDays} يوم بثلاثة أرباع الأجر، ${sickPreview.unpaidDays} يوم بدون أجر (حسب إجمالي أيامه المرضية هذا العام).`,
+                  `Pay breakdown for this leave: ${sickPreview.fullPayDays} full-pay days, ${sickPreview.threeQuarterPayDays} three-quarter-pay days, ${sickPreview.unpaidDays} unpaid days (based on this employee's total sick days this year).`,
+                )}
+              </div>
+            )}
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -2146,7 +2355,9 @@ function DaysOffTab() {
                 onChange={(e) => setDeductFromBalance(e.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600"
               />
-              <span className="font-medium text-slate-600">{t('خصم من رصيد الإجازة السنوي (٢١ يوماً/سنة)')}</span>
+              <span className="font-medium text-slate-600">
+                {tt(`خصم من رصيد الإجازة السنوي (${entitlementForSelected} يوماً/سنة)`, `Deduct from annual leave balance (${entitlementForSelected} days/year)`)}
+              </span>
             </label>
             {deductFromBalance && selectedProfileId && (
               <div className={`rounded-lg px-3 py-2 text-xs ${remainingBalanceForSelected <= 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-500'}`}>
@@ -2158,11 +2369,25 @@ function DaysOffTab() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('من تاريخ')}</span>
-                <input type="date" name="start_date" required className="input" />
+                <input
+                  type="date"
+                  name="start_date"
+                  required
+                  value={leaveStartDateInput}
+                  onChange={(e) => handleLeaveStartDateChange(e.target.value)}
+                  className="input"
+                />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-600">{t('إلى تاريخ')}</span>
-                <input type="date" name="end_date" required className="input" />
+                <input
+                  type="date"
+                  name="end_date"
+                  required
+                  value={leaveEndDateInput}
+                  onChange={(e) => setLeaveEndDateInput(e.target.value)}
+                  className="input"
+                />
               </label>
             </div>
             <label className="block text-sm">
@@ -2202,6 +2427,8 @@ function DaysOffTab() {
                   setDeductFromBalance(false);
                   setSelectedProfileId('');
                   setLeavePhotoPreview(null);
+                  setLeaveStartDateInput('');
+                  setLeaveEndDateInput('');
                 }}
                 className="text-xs font-medium text-slate-400 hover:text-slate-600"
               >
@@ -2238,8 +2465,8 @@ function DaysOffTab() {
                       className={`rounded-full px-2.5 py-1 text-xs font-medium ${remainingAnnualBalance(p.id) < 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}
                     >
                       {tt(
-                        `المتبقي من الرصيد السنوي: ${remainingAnnualBalance(p.id)} من ${ANNUAL_LEAVE_BALANCE_DAYS}`,
-                        `Annual balance remaining: ${remainingAnnualBalance(p.id)} of ${ANNUAL_LEAVE_BALANCE_DAYS}`,
+                        `المتبقي من الرصيد السنوي: ${remainingAnnualBalance(p.id)} من ${entitlementFor(p.id)}`,
+                        `Annual balance remaining: ${remainingAnnualBalance(p.id)} of ${entitlementFor(p.id)}`,
                       )}
                     </span>
                   </div>

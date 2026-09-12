@@ -496,22 +496,84 @@ export interface EmployeeLocation {
   updated_at: string;
 }
 
-export type LeaveType = 'sick' | 'emergency' | 'absence' | 'unpaid' | 'paid' | 'other';
+// "paid" هي مفتاح الإجازة السنوية تاريخياً (اسم الحقل بقي كما هو تفادياً
+// لأي هجرة بيانات على السجلات القديمة — انظر isEligibleForPaidLeave في
+// Settings.tsx وPOST /leaves في api.ts، كلاهما كان يطبِّق منطق الإجازة
+// السنوية على هذا المفتاح أصلاً)، بقية الأنواع أُضيفت بموجب نظام العمل
+// السعودي (مواد ١٠٩، ١١٧، ١١٣، ١١٤، ١٦٠) — انظر LEAVE_TYPE_FIXED_DAYS
+// وLEAVE_TYPE_ONCE_PER_SERVICE وOFFICIAL_HOLIDAYS أدناه لتفاصيل كل نوع.
+export type LeaveType =
+  | 'paid'
+  | 'sick'
+  | 'emergency'
+  | 'marriage'
+  | 'bereavement'
+  | 'paternity'
+  | 'iddah'
+  | 'hajj'
+  | 'official_holiday'
+  | 'absence'
+  | 'unpaid'
+  | 'other';
 
 export const LEAVE_TYPE_LABELS_AR: Record<LeaveType, string> = {
-  sick: 'مرضية',
+  paid: 'الإجازة السنوية',
+  sick: 'إجازة مرضية',
   emergency: 'اضطرارية',
+  marriage: 'إجازة زواج',
+  bereavement: 'إجازة وفاة',
+  paternity: 'إجازة مولود جديد (للأب)',
+  iddah: 'عدة الوفاة (للمرأة المسلمة)',
+  hajj: 'إجازة الحج',
+  official_holiday: 'عطلة رسمية',
   absence: 'غياب',
   unpaid: 'بدون راتب',
-  paid: 'إجازة مدفوعة',
   other: 'أخرى',
 };
 
 // رصيد الإجازة السنوية الأساسي لكل موظف (مشرف ميداني أو فني)، ٢١ يوماً —
-// بموجب نظام العمل السعودي (المادة ١٠٩). ثابت واحد لكل الموظفين حالياً
-// (لا فرق حسب سنوات الخدمة بعد). يُستهلَك من إجازات LeaveRecord الموسومة
+// بموجب نظام العمل السعودي (المادة ١٠٩)، تصبح ٣٠ يوماً بعد إتمام ٥ سنوات
+// خدمة متصلة — انظر annualLeaveEntitlementDays في src/shared/leaves.ts
+// (الدالة الفعلية المعتمَدة في كل حساب رصيد، هذا الثابت هو القيمة
+// الأساسية/الافتراضية فقط قبل استيفاء الخدمة الطويلة أو حين لا يوجد
+// تاريخ تعيين مسجَّل). يُستهلَك من إجازات LeaveRecord الموسومة
 // deduct_from_annual_balance فقط — انظر التعليق على ذلك الحقل أدناه.
 export const ANNUAL_LEAVE_BALANCE_DAYS = 21;
+// رصيد الإجازة السنوية بعد إتمام ٥ سنوات خدمة متصلة (المادة ١٠٩).
+export const ANNUAL_LEAVE_BALANCE_DAYS_AFTER_5_YEARS = 30;
+
+// مدة افتراضية ثابتة بالأيام لأنواع إجازات محددة المدة قانوناً — تُقترَح
+// تلقائياً (تاريخ النهاية = تاريخ البداية + المدة - يوم واحد) فور اختيار
+// النوع وتاريخ البداية في نموذج إضافة إجازة (DaysOffTab في Settings.tsx)،
+// وتبقى قابلة للتعديل اليدوي دائماً بعدها. عدة الوفاة تقريبية (٤ أشهر
+// و١٠ أيام هجرية ≈ ١٣٠ يوماً ميلادياً، المادة ١٦٠) — يُنصح بمراجعتها
+// يدوياً لكل حالة. إجازة الحج بلا افتراض عمداً (١٠-١٥ يوماً حسب الحالة،
+// المادة ١١٤).
+export const LEAVE_TYPE_FIXED_DAYS: Partial<Record<LeaveType, number>> = {
+  marriage: 5,
+  bereavement: 5,
+  paternity: 3,
+  iddah: 130,
+};
+
+// أنواع إجازات "مرة واحدة طوال فترة الخدمة" (المادة ١١٤) — يُظهر النموذج
+// تنبيهاً غير مانع لو وُجد سجل سابق من نفس النوع لهذا الموظف (لا يمكن
+// التحقق مما إذا أدّى الحج قبل الانضمام للشركة، فالتنبيه استرشادي فقط).
+export const LEAVE_TYPE_ONCE_PER_SERVICE: LeaveType[] = ['hajj'];
+
+// العطل الرسمية المعتمَدة عبر منصة قوى — تُستخدَم في نموذج "إضافة عطلة
+// رسمية لجميع الموظفين دفعة واحدة" (DaysOffTab في Settings.tsx). التواريخ
+// الفعلية تتغيّر كل عام (تقويم هجري لعيدي الفطر والأضحى تحديداً)، فتبقى
+// مُدخَلة يدوياً من المدير عند كل عطلة؛ هذه القائمة توفر فقط الاسم وعدد
+// الأيام الرسمي المعتمَد.
+export type OfficialHolidayKey = 'eid_fitr' | 'eid_adha' | 'national_day' | 'founding_day';
+
+export const OFFICIAL_HOLIDAYS: Record<OfficialHolidayKey, { label: string; days: number }> = {
+  eid_fitr: { label: 'عيد الفطر', days: 4 },
+  eid_adha: { label: 'عيد الأضحى', days: 4 },
+  national_day: { label: 'اليوم الوطني', days: 1 },
+  founding_day: { label: 'يوم التأسيس', days: 1 },
+};
 
 // إجازة سنوية مسجَّلة لمشرف ميداني أو فني — بخلاف weekly_days_off (إجازة
 // أسبوعية ثابتة متكررة، تُنبِّه فقط)، هذه فترة محددة بتاريخين لا يمكن خلالها
