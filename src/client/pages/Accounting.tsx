@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Receipt as SalesIcon,
   Wallet as ExpensesIcon,
@@ -43,20 +44,27 @@ export default function Accounting() {
   const canInventory = can('view_inventory_page');
   const canSalesTab = canSales || canManageDiscount;
   const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts, canInventory].filter(Boolean).length;
+  // رابط ملصق أصل مطبوع (?tab=inventory، انظر AssetLabelModal في
+  // Inventory.tsx) يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له —
+  // وإلا يُتبَع نفس ترتيب الأولوية المعتاد.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const [tab, setTab] = useState<Tab>(
-    canSalesTab
-      ? 'sales'
-      : canExpenses
-        ? 'expenses'
-        : canEmployees
-          ? 'employees'
-          : canCommissions
-            ? 'commissions'
-            : canTax
-              ? 'tax'
-              : canContracts
-                ? 'contracts'
-                : 'inventory',
+    requestedTab === 'inventory' && canInventory
+      ? 'inventory'
+      : canSalesTab
+        ? 'sales'
+        : canExpenses
+          ? 'expenses'
+          : canEmployees
+            ? 'employees'
+            : canCommissions
+              ? 'commissions'
+              : canTax
+                ? 'tax'
+                : canContracts
+                  ? 'contracts'
+                  : 'inventory',
   );
 
   return (

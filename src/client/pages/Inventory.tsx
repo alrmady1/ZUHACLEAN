@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import QRCode from 'qrcode';
 import {
   Plus,
   X,
@@ -9,6 +11,8 @@ import {
   AlertTriangle,
   PlayCircle,
   CheckCircle2,
+  Printer,
+  QrCode as QrCodeIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Asset, AssetCategory, AssetCondition, AssetStatus, AuditCycle, AuditItem, AssetScrappageLog } from '../../shared/types.js';
@@ -93,6 +97,10 @@ export function InventoryTab() {
   const { t, tt } = useI18n();
   const { user, can } = useAuth();
   const canManage = can('manage_inventory');
+  // فتح الصفحة عبر رابط ملصق QR أصل (انظر AssetLabelModal أدناه) يصل
+  // بمعامل ?search=<كود الأصل> — يُقرأ مرة واحدة فقط عند التحميل لتعبئة
+  // البحث تلقائياً، فيفتح مباشرة على الأصل المقصود.
+  const [searchParams] = useSearchParams();
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [cycles, setCycles] = useState<AuditCycle[]>([]);
@@ -102,10 +110,11 @@ export function InventoryTab() {
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
   const [locationFilter, setLocationFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [showAssetForm, setShowAssetForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [scrappingAsset, setScrappingAsset] = useState<Asset | null>(null);
+  const [printingAsset, setPrintingAsset] = useState<Asset | null>(null);
   const [showNewAudit, setShowNewAudit] = useState(false);
   const [activeAuditId, setActiveAuditId] = useState<string | null>(null);
 
@@ -297,30 +306,38 @@ export function InventoryTab() {
                       <td className="p-3"><AssetStatusBadge status={a.status} /></td>
                       <td className="p-3 text-slate-700">{dep ? formatMoney(dep.book_value) : '—'}</td>
                       <td className="p-3">
-                        {canManage && (
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => {
-                                setEditingAsset(a);
-                                setShowAssetForm(true);
-                              }}
-                              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-                            >
-                              <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
-                            </button>
-                            {a.status !== 'scrapped' && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => setPrintingAsset(a)}
+                            className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:underline"
+                          >
+                            <QrCodeIcon className="h-3.5 w-3.5" /> {t('ملصق الأصل')}
+                          </button>
+                          {canManage && (
+                            <>
                               <button
-                                onClick={() => setScrappingAsset(a)}
-                                className="flex items-center gap-1 text-xs font-medium text-red-500 hover:underline"
+                                onClick={() => {
+                                  setEditingAsset(a);
+                                  setShowAssetForm(true);
+                                }}
+                                className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                               >
-                                <AlertTriangle className="h-3.5 w-3.5" /> {t('شطب')}
+                                <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
                               </button>
-                            )}
-                            <button onClick={() => handleDeleteAsset(a)} className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:underline">
-                              <Trash2 className="h-3.5 w-3.5" /> {t('حذف')}
-                            </button>
-                          </div>
-                        )}
+                              {a.status !== 'scrapped' && (
+                                <button
+                                  onClick={() => setScrappingAsset(a)}
+                                  className="flex items-center gap-1 text-xs font-medium text-red-500 hover:underline"
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5" /> {t('شطب')}
+                                </button>
+                              )}
+                              <button onClick={() => handleDeleteAsset(a)} className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:underline">
+                                <Trash2 className="h-3.5 w-3.5" /> {t('حذف')}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -476,6 +493,8 @@ export function InventoryTab() {
       )}
 
       {showNewAudit && <NewAuditModal onClose={() => setShowNewAudit(false)} onCreate={startNewAudit} />}
+
+      {printingAsset && <AssetLabelModal asset={printingAsset} onClose={() => setPrintingAsset(null)} />}
     </div>
   );
 }
@@ -731,6 +750,54 @@ function NewAuditModal({
         </button>
       </form>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ملصق تعريف أصل قابل للطباعة — الحل العملي لسؤال "كيف أربط الكود
+// بالأصل بالواقع؟": رمز QR يفتح مباشرةً صفحة الجرد مع البحث معبَّأً
+// تلقائياً بكود هذا الأصل (انظر قراءة ?search= في InventoryTab أعلاه)،
+// بالإضافة إلى الاسم والكود بخط كبير يمكن قراءته بالعين المجرَّدة كذلك —
+// يُلصَق على الأصل نفسه (أو يُكتَب كوده يدوياً لمن لا يريد طباعة ملصقات).
+// الطباعة تعزل هذه المنطقة فقط عبر .asset-label-print-area في index.css،
+// نفس أسلوب .invoice-print-area في InvoiceDocument.tsx بالضبط.
+// ---------------------------------------------------------------------------
+function AssetLabelModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+  const { t } = useI18n();
+  const [qrDataUrl, setQrDataUrl] = useState('');
+
+  useEffect(() => {
+    const url = `${window.location.origin}/accounting?tab=inventory&search=${encodeURIComponent(asset.asset_code)}`;
+    QRCode.toDataURL(url, { width: 220, margin: 1 }).then(setQrDataUrl);
+  }, [asset.asset_code]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
+      <div className="w-full max-w-xs rounded-2xl bg-white shadow-2xl print:w-auto print:rounded-none print:shadow-none">
+        <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
+          <h2 className="text-sm font-bold text-slate-800">{t('ملصق الأصل')}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="asset-label-print-area flex flex-col items-center gap-2 p-6 text-center">
+          {qrDataUrl && <img src={qrDataUrl} alt="QR" className="h-40 w-40" />}
+          <div className="text-lg font-bold text-slate-800" dir="ltr">{asset.asset_code}</div>
+          <div className="text-sm text-slate-600">{asset.name}</div>
+        </div>
+        <div className="p-4 pt-0 print:hidden">
+          <p className="mb-3 text-xs text-slate-400">
+            {t('اطبع هذا الملصق والصقه على الأصل — مسحه ضوئياً بالجوال يفتح هذا الأصل مباشرة في صفحة الجرد. أو اكتب الكود يدوياً على الأصل إن كنت تفضّل ذلك.')}
+          </p>
+          <button
+            onClick={() => window.print()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            <Printer className="h-4 w-4" /> {t('طباعة الملصق')}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -253,3 +253,19 @@ html.dark .input::placeholder {
     padding: 16px;
   }
 }
+
+/* طباعة ملصق تعريف أصل (انظر AssetLabelModal في Inventory.tsx) — نفس
+   منطق .invoice-print-area أعلاه بالضبط، بمساحة أصغر تناسب ملصقاً واحداً. */
+@media print {
+  .asset-label-print-area,
+  .asset-label-print-area * {
+    visibility: visible;
+  }
+  .asset-label-print-area {
+    position: absolute;
+    inset: 0;
+    max-height: none;
+    overflow: visible;
+    padding: 16px;
+  }
+}
