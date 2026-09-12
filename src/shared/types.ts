@@ -1625,6 +1625,20 @@ export interface EmployeeViolation {
   created_at: string;
 }
 
+// درجة الإنذار الوظيفي — أربع مراحل تصعيدية شائعة في لوائح تنظيم العمل
+// السعودية (لا يفرضها نظام العمل نصاً بعدد ثابت، لكنها الممارسة المعتمَدة
+// غالباً قبل الفصل أو الإجراء التأديبي الأشد، وفق اللائحة الخاصة بكل
+// منشأة). اختياري (warning_type? على EmployeeWarning) — سجلات قديمة قبل
+// هذا الحقل تبقى بلا درجة محدَّدة، تُعرَض بلا وسم درجة بدل خطأ.
+export type EmployeeWarningType = 'verbal' | 'written_first' | 'written_second' | 'final';
+
+export const EMPLOYEE_WARNING_TYPE_LABELS_AR: Record<EmployeeWarningType, string> = {
+  verbal: 'إنذار شفهي',
+  written_first: 'إنذار كتابي أول',
+  written_second: 'إنذار كتابي ثاني',
+  final: 'إنذار نهائي (أخير)',
+};
+
 // إنذار رسمي لموظف بسبب تجاوز أو مخالفة لأنظمة/متطلبات العمل — كيان مستقل
 // عن EmployeeViolation (تلك تحمل غرامة مالية اختيارية؛ هذا مجرَّد إشعار
 // كتابي رسمي بلا أي بعد مالي)، له قسم وزر إضافة خاصان في كشف حساب
@@ -1634,6 +1648,8 @@ export interface EmployeeWarning {
   employee_id: string;
   employee_name?: string;
   title: string;
+  // درجة الإنذار — انظر EmployeeWarningType أعلاه.
+  warning_type?: EmployeeWarningType;
   date: string;
   notes?: string;
   recorded_by?: string;

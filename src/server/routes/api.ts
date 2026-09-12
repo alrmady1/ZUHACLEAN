@@ -2768,6 +2768,7 @@ api.post('/employee-warnings', (req, res) => {
     employee_id: body.employee_id,
     employee_name: store.profiles.get(body.employee_id)?.full_name ?? body.employee_name,
     title: body.title,
+    warning_type: body.warning_type || undefined,
     date: body.date ?? new Date().toISOString().slice(0, 10),
     notes: body.notes || undefined,
     recorded_by: body.recorded_by || undefined,

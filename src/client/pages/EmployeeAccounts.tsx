@@ -35,6 +35,7 @@ import type {
   EmployeeDeductionCategory,
   EmployeeViolation,
   EmployeeWarning,
+  EmployeeWarningType,
   EmployeeOvertimeRecord,
   Profile,
   CommissionEligibility,
@@ -52,6 +53,7 @@ import {
   ADVANCE_DEDUCTION_MODE_LABELS_AR,
   USER_LANGUAGE_LABELS_AR,
   EMPLOYEE_OVERTIME_STATUS_LABELS_AR,
+  EMPLOYEE_WARNING_TYPE_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
@@ -1664,7 +1666,12 @@ function EmployeeDetail({
             headers={[t('التاريخ'), t('البيان'), '']}
             rows={summary.warnings.map((w) => [
               formatDateAr(w.date),
-              w.title,
+              <span key={`${w.id}-title`}>
+                {w.title}
+                {w.warning_type && (
+                  <div className="text-[11px] text-slate-400">{t(EMPLOYEE_WARNING_TYPE_LABELS_AR[w.warning_type])}</div>
+                )}
+              </span>,
               canDelete ? (
                 <button key={w.id} onClick={() => handleDeleteWarning(w.id)} className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1831,17 +1838,13 @@ function EmployeeDetail({
       )}
 
       {showWarningForm && (
-        <EntryForm
-          zIndexTop
-          title={t('إنذار جديد')}
-          amountRequired={false}
-          amountLabel=""
-          showAmount={false}
+        <WarningForm
           onClose={() => setShowWarningForm(false)}
           onSubmit={async (values) => {
             await api.post('/employee-warnings', {
               employee_id: summary.profile.id,
               title: values.title,
+              warning_type: values.warningType,
               date: values.date,
               notes: values.notes || undefined,
               recorded_by: recordedById,
@@ -2103,6 +2106,79 @@ function DeductionForm({
             <span className="mb-1 block font-medium text-slate-600">{t('عدد الأشهر للتقسيط')}</span>
             <input type="number" name="installment_months" min={1} step="1" defaultValue={1} className="input" />
             <span className="mt-1 block text-xs text-slate-400">{t('١ = تُخصَم بالكامل من راتب هذا الشهر')}</span>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
+            <textarea name="notes" rows={2} className="input resize-none" />
+          </label>
+        </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {submitting ? t('جارِ الحفظ…') : t('حفظ')}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// نموذج "إنذار جديد" — نفس بنية DeductionForm أعلاه بالضبط، مع منتقي
+// درجة الإنذار (EmployeeWarningType) بدل نوع الخصم، وبلا حقل مبلغ (الإنذار
+// بلا أي بعد مالي، انظر تعليق EmployeeWarning في shared/types.ts).
+function WarningForm({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (values: { title: string; warningType: EmployeeWarningType | undefined; date: string; notes: string }) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await onSubmit({
+        title: String(form.get('title') ?? ''),
+        warningType: (form.get('warning_type') as EmployeeWarningType) || undefined,
+        date: String(form.get('date') ?? ''),
+        notes: String(form.get('notes') ?? ''),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">{t('إنذار جديد')}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('البيان')}</span>
+            <input name="title" required className="input" placeholder={t('مثال: التأخر عن موعد العمل بشكل متكرر')} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('درجة الإنذار')}</span>
+            <select name="warning_type" defaultValue="verbal" className="input">
+              <option value="verbal">{t(EMPLOYEE_WARNING_TYPE_LABELS_AR.verbal)}</option>
+              <option value="written_first">{t(EMPLOYEE_WARNING_TYPE_LABELS_AR.written_first)}</option>
+              <option value="written_second">{t(EMPLOYEE_WARNING_TYPE_LABELS_AR.written_second)}</option>
+              <option value="final">{t(EMPLOYEE_WARNING_TYPE_LABELS_AR.final)}</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('التاريخ')}</span>
+            <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required className="input" />
           </label>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات (اختياري)')}</span>
