@@ -1931,11 +1931,12 @@ export const AUDIT_PERIOD_TYPE_LABELS_AR: Record<AuditPeriodType, string> = {
   annual: 'سنوي',
 };
 
-export type AuditCycleStatus = 'draft' | 'in_progress' | 'completed';
+export type AuditCycleStatus = 'draft' | 'in_progress' | 'completed' | 'cancelled';
 export const AUDIT_CYCLE_STATUS_LABELS_AR: Record<AuditCycleStatus, string> = {
   draft: 'مسودة',
   in_progress: 'قيد التنفيذ',
   completed: 'مكتمل',
+  cancelled: 'ملغاة',
 };
 
 // جلسة جرد دوري واحدة — تُنشأ بحالة 'draft' فارغة، ثم "بدء الجرد"
@@ -1943,7 +1944,9 @@ export const AUDIT_CYCLE_STATUS_LABELS_AR: Record<AuditCycleStatus, string> = {
 // (status === 'active') تلقائياً ويحوّل الحالة إلى 'in_progress'. إكمالها
 // (POST /audit-cycles/:id/complete) يحوّلها 'completed' — لا يمنع هذا
 // تعديل بنودها لاحقاً من الخادم (نفس نمط كل قيد آخر في هذا التطبيق)، فقط
-// إشارة حالة تعرضها الواجهة.
+// إشارة حالة تعرضها الواجهة. إلغاؤها وهي 'in_progress' (POST
+// /audit-cycles/:id/cancel) يحوّلها 'cancelled' — بنودها تبقى كما هي
+// (سجل تاريخي)، لا تُحذَف ولا يمكن استكمالها بعد الإلغاء.
 export interface AuditCycle {
   id: string;
   audit_code: string;

@@ -746,6 +746,19 @@ api.post('/audit-cycles/:id/complete', (req, res) => {
   res.json(updated);
 });
 
+// إلغاء دورة جرد أثناء قيد التنفيذ — بنودها (AuditItem) تبقى كما هي كسجل
+// تاريخي، لا تُحذَف؛ فقط status تتحوّل 'cancelled' فلا يمكن استكمالها بعد
+// ذلك (الواجهة تقفل حقول الإدخال، والخادم يرفض بدأها من جديد أصلاً لأنها
+// لم تعد 'draft').
+api.post('/audit-cycles/:id/cancel', (req, res) => {
+  const cycle = store.auditCycles.get(req.params.id);
+  if (!cycle) return res.status(404).json({ error: 'audit cycle not found' });
+  if (cycle.status !== 'in_progress') return res.status(400).json({ error: 'لا يمكن إلغاء إلا دورة قيد التنفيذ' });
+  const updated = store.auditCycles.update(cycle.id, { status: 'cancelled' });
+  logActivity(req, `تم إلغاء دورة جرد "${cycle.audit_code}"`);
+  res.json(updated);
+});
+
 api.delete('/audit-cycles/:id', (req, res) => {
   const cycle = store.auditCycles.get(req.params.id);
   if (!cycle) return res.status(404).json({ error: 'audit cycle not found' });

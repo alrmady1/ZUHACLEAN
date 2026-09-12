@@ -207,6 +207,21 @@ export function InventoryTab() {
     refresh();
   }
 
+  async function cancelAudit(cycle: AuditCycle) {
+    if (
+      !window.confirm(
+        tt(
+          `إلغاء دورة الجرد "${cycle.audit_code}"؟ تبقى بنودها كسجل تاريخي، لا يمكن استكمالها بعد الإلغاء.`,
+          `Cancel audit cycle "${cycle.audit_code}"? Its items stay as a historical record — it can't be resumed after cancelling.`,
+        ),
+      )
+    )
+      return;
+    await api.post(`/audit-cycles/${cycle.id}/cancel`, {});
+    setActiveAuditId((current) => (current === cycle.id ? null : current));
+    refresh();
+  }
+
   const activeAudit = cycles.find((c) => c.id === activeAuditId);
   const activeAuditItems = items.filter((i) => i.audit_id === activeAuditId);
 
@@ -451,7 +466,9 @@ export function InventoryTab() {
                                 ? 'bg-emerald-100 text-emerald-700'
                                 : c.status === 'in_progress'
                                   ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-slate-100 text-slate-500'
+                                  : c.status === 'cancelled'
+                                    ? 'bg-red-100 text-red-600'
+                                    : 'bg-slate-100 text-slate-500'
                             }`}
                           >
                             {t(AUDIT_CYCLE_STATUS_LABELS_AR[c.status])}
@@ -467,6 +484,11 @@ export function InventoryTab() {
                             {canManage && c.status === 'in_progress' && (
                               <button onClick={() => completeAudit(c)} className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:underline">
                                 <CheckCircle2 className="h-3.5 w-3.5" /> {t('اعتماد الجرد')}
+                              </button>
+                            )}
+                            {canManage && c.status === 'in_progress' && (
+                              <button onClick={() => cancelAudit(c)} className="flex items-center gap-1 text-xs font-medium text-red-500 hover:underline">
+                                <X className="h-3.5 w-3.5" /> {t('إلغاء الجرد')}
                               </button>
                             )}
                           </div>
@@ -495,6 +517,7 @@ export function InventoryTab() {
                 const asset = assets.find((a) => a.id === assetId);
                 if (asset) setScrappingAsset(asset);
               }}
+              onCancel={() => cancelAudit(activeAudit)}
               onRefresh={refresh}
             />
           )}
@@ -1040,6 +1063,7 @@ function AuditItemsView({
   canManage,
   onBack,
   onScrap,
+  onCancel,
   onRefresh,
 }: {
   cycle: AuditCycle;
@@ -1048,6 +1072,7 @@ function AuditItemsView({
   canManage: boolean;
   onBack: () => void;
   onScrap: (assetId: string) => void;
+  onCancel: () => void;
   onRefresh: () => void;
 }) {
   const { t, tt } = useI18n();
@@ -1082,7 +1107,21 @@ function AuditItemsView({
           >
             <Printer className="h-3.5 w-3.5" /> {t('طباعة كشف الجرد')}
           </button>
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">{t(AUDIT_CYCLE_STATUS_LABELS_AR[cycle.status])}</span>
+          {canManage && cycle.status === 'in_progress' && (
+            <button
+              onClick={onCancel}
+              className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+            >
+              <X className="h-3.5 w-3.5" /> {t('إلغاء الجرد')}
+            </button>
+          )}
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              cycle.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+            }`}
+          >
+            {t(AUDIT_CYCLE_STATUS_LABELS_AR[cycle.status])}
+          </span>
         </div>
       </div>
 
@@ -1116,7 +1155,7 @@ function AuditItemsView({
                     type="number"
                     min={0}
                     step="1"
-                    disabled={!canManage}
+                    disabled={!canManage || cycle.status !== 'in_progress'}
                     defaultValue={item.actual_qty}
                     onBlur={(e) => {
                       const v = e.target.value === '' ? undefined : Number(e.target.value);
@@ -1127,7 +1166,7 @@ function AuditItemsView({
                 </Field>
                 <Field label={t('الحالة أثناء الجرد')}>
                   <select
-                    disabled={!canManage}
+                    disabled={!canManage || cycle.status !== 'in_progress'}
                     defaultValue={item.condition_at_audit ?? ''}
                     onChange={(e) => saveItem(item, { condition_at_audit: (e.target.value || undefined) as AssetCondition | undefined })}
                     className="input"
@@ -1142,7 +1181,7 @@ function AuditItemsView({
                 </Field>
                 <Field label={t('ملاحظات')}>
                   <input
-                    disabled={!canManage}
+                    disabled={!canManage || cycle.status !== 'in_progress'}
                     defaultValue={item.notes}
                     onBlur={(e) => {
                       if (e.target.value !== (item.notes ?? '')) saveItem(item, { notes: e.target.value });
