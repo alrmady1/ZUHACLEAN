@@ -1902,6 +1902,12 @@ export interface Asset {
   // (computeAssetDepreciation يستخدم purchase_price كما هو دائماً).
   purchase_price_includes_vat?: boolean;
   purchase_price_vat_amount?: number;
+  // فاتورة الشراء — صورة أو PDF، تُرفع كـ base64 data URL من العميل
+  // وتُخزَّن في Supabase Storage (انظر uploadAssetPurchaseInvoice في
+  // server/lib/storage.ts)؛ هذا الحقل يحمل الرابط الموقَّع فقط، نفس نمط
+  // Expense.invoice_file_url بالضبط.
+  purchase_invoice_file_url?: string;
+  purchase_invoice_file_name?: string;
   purchase_date: string;
   useful_life_years: number;
   salvage_value: number;

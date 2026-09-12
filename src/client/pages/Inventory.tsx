@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Printer,
   QrCode as QrCodeIcon,
+  Paperclip,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Asset, AssetCategory, AssetCondition, AssetStatus, AuditCycle, AuditItem, AssetScrappageLog } from '../../shared/types.js';
@@ -25,6 +26,10 @@ import {
   VAT_RATE,
 } from '../../shared/types.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
+import { formatMoney, formatDateAr } from '../lib/date.js';
+import { useAuth } from '../lib/auth.js';
+import { useI18n } from '../lib/i18n.js';
+import { compressImageToDataUrl } from '../lib/image.js';
 
 // معاينة حيّة لمبلغ الضريبة على سعر شراء أصل قبل الحفظ — نفس منطق
 // computeAssetPurchaseVat في api.ts بالضبط؛ القيمة الفعلية المحفوظة
@@ -32,9 +37,6 @@ import { computeAssetDepreciation } from '../../shared/depreciation.js';
 function previewAssetVat(includesVat: boolean, price: number): number {
   return includesVat ? Math.round((price - price / (1 + VAT_RATE)) * 100) / 100 : Math.round(price * VAT_RATE * 100) / 100;
 }
-import { formatMoney, formatDateAr } from '../lib/date.js';
-import { useAuth } from '../lib/auth.js';
-import { useI18n } from '../lib/i18n.js';
 
 // ---------------------------------------------------------------------------
 // عناصر واجهة صغيرة مشتركة داخل هذا الملف — نفس نمط Field/Modal في
@@ -321,6 +323,16 @@ export function InventoryTab() {
                           >
                             <QrCodeIcon className="h-3.5 w-3.5" /> {t('ملصق الأصل')}
                           </button>
+                          {a.purchase_invoice_file_url && (
+                            <a
+                              href={a.purchase_invoice_file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:underline"
+                            >
+                              <Paperclip className="h-3.5 w-3.5" /> {t('فاتورة الشراء')}
+                            </a>
+                          )}
                           {canManage && (
                             <>
                               <button
@@ -518,18 +530,24 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
   // الكتابة — نفس فكرة previewExpenseTax في Expenses.tsx بالضبط.
   const [purchasePrice, setPurchasePrice] = useState(asset?.purchase_price != null ? String(asset.purchase_price) : '');
   const [includesVat, setIncludesVat] = useState(asset?.purchase_price_includes_vat ?? true);
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     const form = new FormData(e.currentTarget);
+    const purchase_invoice_file_data_url = invoiceFile ? await compressImageToDataUrl(invoiceFile) : undefined;
     const payload = {
       asset_code: form.get('asset_code'),
       name: form.get('name'),
       category: form.get('category'),
       purchase_price: purchasePrice,
       purchase_price_includes_vat: includesVat,
+      purchase_invoice_file_data_url,
+      purchase_invoice_file_name: invoiceFile?.name || undefined,
+      remove_purchase_invoice_file: !invoiceFile && removeInvoiceFile ? true : undefined,
       purchase_date: form.get('purchase_date'),
       useful_life_years: form.get('useful_life_years'),
       salvage_value: form.get('salvage_value'),
@@ -633,6 +651,33 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
         <Field label={t('موقع العهدة (اختياري)')}>
           <input name="location" defaultValue={asset?.location} className="input" placeholder={t('سكن العمال / السيارة / الموقع الميداني')} />
         </Field>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">{t('فاتورة الشراء (صورة أو PDF، اختياري)')}</span>
+          {asset?.purchase_invoice_file_url && !removeInvoiceFile && !invoiceFile && (
+            <div className="mb-1.5 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
+              <a href={asset.purchase_invoice_file_url} target="_blank" rel="noreferrer" className="truncate text-brand-600 hover:underline">
+                {asset.purchase_invoice_file_name || t('ملف مرفق حالياً')}
+              </a>
+              <button type="button" onClick={() => setRemoveInvoiceFile(true)} className="shrink-0 font-medium text-red-600 hover:underline">
+                {t('إزالة')}
+              </button>
+            </div>
+          )}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => {
+              setInvoiceFile(e.target.files?.[0] ?? null);
+              setRemoveInvoiceFile(false);
+            }}
+            className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+          />
+          {invoiceFile && (
+            <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+              <Paperclip className="h-3 w-3" /> {invoiceFile.name}
+            </span>
+          )}
+        </label>
         <Field label={t('ملاحظات (اختياري)')}>
           <textarea name="notes" defaultValue={asset?.notes} rows={2} className="input" />
         </Field>

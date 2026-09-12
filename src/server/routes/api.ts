@@ -9,6 +9,7 @@ import {
   uploadExpenseInvoice,
   uploadEmployeeIdPhoto,
   uploadVehicleRegistrationPhoto,
+  uploadAssetPurchaseInvoice,
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
@@ -546,7 +547,7 @@ function computeAssetPurchaseVat(includesVat: boolean, price: number): number {
   return includesVat ? Math.round((price - price / (1 + VAT_RATE)) * 100) / 100 : Math.round(price * VAT_RATE * 100) / 100;
 }
 
-api.post('/assets', (req, res) => {
+api.post('/assets', async (req, res) => {
   const body = req.body ?? {};
   if (!body.asset_code || !body.name || !body.category) {
     return res.status(400).json({ error: 'asset_code وname وcategory مطلوبة' });
@@ -554,17 +555,31 @@ api.post('/assets', (req, res) => {
   if (store.assets.list().some((a) => a.asset_code === body.asset_code)) {
     return res.status(400).json({ error: 'كود الأصل مستخدَم مسبقاً' });
   }
+  const assetId = store.id();
+  // فاتورة شراء اختيارية — نفس منطق صورة استمارة المركبة/فاتورة المصروف
+  // بالضبط (نرفعها أولاً باستخدام المعرّف المولَّد سلفاً، ثم نحفظ رابطها فقط).
+  let invoiceFileUrl: string | undefined;
+  if (body.purchase_invoice_file_data_url) {
+    try {
+      invoiceFileUrl = await uploadAssetPurchaseInvoice(assetId, body.purchase_invoice_file_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع فاتورة الشراء إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع فاتورة الشراء' });
+    }
+  }
   const now = new Date().toISOString();
   const purchasePrice = numOrUndef(body.purchase_price) ?? 0;
   const includesVat = body.purchase_price_includes_vat !== undefined ? Boolean(body.purchase_price_includes_vat) : true;
   const asset: Asset = {
-    id: store.id(),
+    id: assetId,
     asset_code: body.asset_code,
     name: body.name,
     category: body.category,
     purchase_price: purchasePrice,
     purchase_price_includes_vat: includesVat,
     purchase_price_vat_amount: computeAssetPurchaseVat(includesVat, purchasePrice),
+    purchase_invoice_file_url: invoiceFileUrl,
+    purchase_invoice_file_name: invoiceFileUrl ? body.purchase_invoice_file_name || undefined : undefined,
     purchase_date: body.purchase_date ?? now.slice(0, 10),
     useful_life_years: numOrUndef(body.useful_life_years) ?? 1,
     salvage_value: numOrUndef(body.salvage_value) ?? 0,
@@ -580,7 +595,7 @@ api.post('/assets', (req, res) => {
   res.status(201).json(asset);
 });
 
-api.patch('/assets/:id', (req, res) => {
+api.patch('/assets/:id', async (req, res) => {
   const body = req.body ?? {};
   const target = store.assets.get(req.params.id);
   if (!target) return res.status(404).json({ error: 'asset not found' });
@@ -588,6 +603,21 @@ api.patch('/assets/:id', (req, res) => {
     return res.status(400).json({ error: 'كود الأصل مستخدَم مسبقاً' });
   }
   const patch: Partial<Asset> = {};
+  // استبدال/إرفاق فاتورة شراء جديدة — نفس منطق فاتورة المصروف بالضبط؛
+  // ملف قديم على Supabase Storage يبقى يتيماً بلا مشكلة (نفس منطق حذف
+  // صور المواعيد).
+  if (body.purchase_invoice_file_data_url) {
+    try {
+      patch.purchase_invoice_file_url = await uploadAssetPurchaseInvoice(req.params.id, body.purchase_invoice_file_data_url);
+      patch.purchase_invoice_file_name = body.purchase_invoice_file_name || undefined;
+    } catch (err) {
+      console.error('❌ فشل رفع فاتورة الشراء إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع فاتورة الشراء' });
+    }
+  } else if (body.remove_purchase_invoice_file) {
+    patch.purchase_invoice_file_url = undefined;
+    patch.purchase_invoice_file_name = undefined;
+  }
   if (body.asset_code !== undefined) patch.asset_code = body.asset_code;
   if (body.name !== undefined) patch.name = body.name;
   if (body.category !== undefined) patch.category = body.category;
