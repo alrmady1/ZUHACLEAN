@@ -52,6 +52,7 @@ import {
   Maximize2,
   MapPin as MapIcon,
   Paperclip,
+  Megaphone as MarketingPlanIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -5218,6 +5219,23 @@ function ActivityLogTab() {
   );
 }
 
+// الخطة التسويقية — صفحة الإعدادات ← الخطة التسويقية (MarketingPlanTab).
+// المحتوى صفحة HTML مستقلة كاملة التنسيق (public/marketing-plan.html)،
+// تُعرض هنا داخل iframe من نفس الأصل (same-origin) بدل تحويلها لعناصر
+// React — هذا يضمن تطابقاً بصرياً كاملاً مع النسخة الأصلية (خطوط، تبويب
+// جانبي، ألوان فاتح/داكن) بلا أي تعارض مع أنماط Tailwind الخاصة بالتطبيق.
+function MarketingPlanTab() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <iframe
+        src="/marketing-plan.html"
+        title="الخطة التسويقية"
+        className="h-[calc(100vh-220px)] w-full border-0"
+      />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 export default function Settings() {
   const { user, can } = useAuth();
@@ -5233,6 +5251,7 @@ export default function Settings() {
   const canTranslations = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canVehicles = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canFacilities = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
+  const canMarketingPlan = user ? SETTINGS_ACCESS_ROLES.includes(user.role) : false;
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
@@ -5252,6 +5271,7 @@ export default function Settings() {
     | 'facilities'
     | 'commissions'
     | 'riyadh_zones'
+    | 'marketing_plan'
     | 'activity_log';
   const [tab, setTab] = useState<SettingsTab>(() => {
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
@@ -5269,6 +5289,7 @@ export default function Settings() {
     if (canFacilities) return 'facilities';
     if (canCommissions) return 'commissions';
     if (canRiyadhZones) return 'riyadh_zones';
+    if (canMarketingPlan) return 'marketing_plan';
     return 'activity_log';
   });
 
@@ -5397,6 +5418,14 @@ export default function Settings() {
             <RiyadhZonesIcon className="h-4 w-4" /> {t('مناطق الرياض')}
           </button>
         )}
+        {canMarketingPlan && (
+          <button
+            onClick={() => setTab('marketing_plan')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'marketing_plan' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <MarketingPlanIcon className="h-4 w-4" /> {t('الخطة التسويقية')}
+          </button>
+        )}
         {canActivityLog && (
           <button
             onClick={() => setTab('activity_log')}
@@ -5435,6 +5464,8 @@ export default function Settings() {
         <CommissionsTab />
       ) : tab === 'riyadh_zones' && canRiyadhZones ? (
         <RiyadhZonesTab />
+      ) : tab === 'marketing_plan' && canMarketingPlan ? (
+        <MarketingPlanTab />
       ) : canActivityLog ? (
         <ActivityLogTab />
       ) : null}

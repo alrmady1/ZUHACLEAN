@@ -1,0 +1,1447 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>محرك نمو زُهى</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=El+Messiri:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --paper:#F7F5EF;
+  --paper-raised:#FFFFFF;
+  --ink:#1C2624;
+  --ink-soft:#57635D;
+  --ink-faint:#8A9089;
+  --line:#E2DECF;
+  --line-strong:#CFC9B4;
+  --teal:#0E6E5F;
+  --teal-deep:#0A4F45;
+  --teal-tint:#E4EFE9;
+  --sand:#B9772E;
+  --sand-tint:#F5E9D8;
+  --violet:#6E5C96;
+  --violet-tint:#EBE7F2;
+  --rose:#AE463D;
+  --rose-tint:#F5E4E1;
+  --shadow: 0 1px 2px rgba(28,38,36,.04), 0 6px 20px -12px rgba(28,38,36,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1A17;
+    --paper-raised:#152420;
+    --ink:#ECE8DD;
+    --ink-soft:#AEB6AC;
+    --ink-faint:#79837B;
+    --line:#243934;
+    --line-strong:#33504A;
+    --teal:#3FBFA3;
+    --teal-deep:#7FDCC4;
+    --teal-tint:#17322B;
+    --sand:#E3A467;
+    --sand-tint:#2E2416;
+    --violet:#B3A2D9;
+    --violet-tint:#241F35;
+    --rose:#E2897D;
+    --rose-tint:#331E1B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1A17;
+  --paper-raised:#152420;
+  --ink:#ECE8DD;
+  --ink-soft:#AEB6AC;
+  --ink-faint:#79837B;
+  --line:#243934;
+  --line-strong:#33504A;
+  --teal:#3FBFA3;
+  --teal-deep:#7FDCC4;
+  --teal-tint:#17322B;
+  --sand:#E3A467;
+  --sand-tint:#2E2416;
+  --violet:#B3A2D9;
+  --violet-tint:#241F35;
+  --rose:#E2897D;
+  --rose-tint:#331E1B;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  direction:rtl;
+  font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
+  font-size:15.5px;
+  line-height:1.75;
+}
+h1,h2,h3,h4{
+  font-family:'El Messiri','Segoe UI',Tahoma,sans-serif;
+  font-weight:700;
+  color:var(--ink);
+  text-wrap:balance;
+  margin:0;
+}
+p{margin:0 0 12px}
+p:last-child{margin-bottom:0}
+ul,ol{margin:0 0 12px;padding-inline-start:22px}
+li{margin-bottom:6px}
+a{color:var(--teal-deep)}
+.mono{font-family:'JetBrains Mono',Consolas,monospace;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+
+/* ---------- layout ---------- */
+.app{display:flex;min-height:100vh}
+.toc{
+  width:272px;flex:none;
+  border-inline-start:1px solid var(--line);
+  padding:28px 20px;
+  position:sticky;top:0;align-self:flex-start;
+  height:100vh;overflow-y:auto;
+  background:var(--paper);
+}
+.toc-brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.toc-mark{width:34px;height:34px;border-radius:9px;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'El Messiri';font-weight:700;font-size:17px;flex:none}
+.toc-brand-name{font-family:'El Messiri';font-weight:700;font-size:17px}
+.toc-brand-sub{font-size:11px;color:var(--ink-faint);letter-spacing:.03em}
+.toc-group{margin-bottom:4px}
+.toc-group-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);margin:18px 0 6px;font-weight:600}
+.toc a{
+  display:flex;gap:9px;align-items:baseline;
+  color:var(--ink-soft);text-decoration:none;
+  font-size:13px;padding:5px 8px;border-radius:7px;
+}
+.toc a:hover{background:var(--teal-tint);color:var(--ink)}
+.toc a.active{background:var(--teal-tint);color:var(--teal-deep);font-weight:600}
+.toc-num{font-family:'JetBrains Mono';font-size:11px;color:var(--ink-faint);flex:none;width:18px}
+
+.content{flex:1;min-width:0;max-width:1180px;padding:44px 56px 120px}
+
+.hero{
+  border-bottom:1px solid var(--line);
+  padding-bottom:34px;margin-bottom:8px;
+}
+.hero-eyebrow{
+  font-family:'JetBrains Mono';font-size:12px;letter-spacing:.08em;
+  color:var(--teal-deep);text-transform:uppercase;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.hero-eyebrow::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--sand)}
+.hero h1{font-size:32px;line-height:1.3;margin-bottom:14px}
+.hero-lead{font-size:16.5px;color:var(--ink-soft);max-width:66ch}
+.hero-meta{display:flex;gap:26px;flex-wrap:wrap;margin-top:22px}
+.hero-meta div{font-size:12.5px;color:var(--ink-faint)}
+.hero-meta b{display:block;color:var(--ink);font-size:13.5px;font-weight:600;margin-bottom:2px}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+
+/* ---------- phase blocks ---------- */
+.phase{padding:46px 0;border-top:1px solid var(--line)}
+.phase-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+.phase-num{font-family:'JetBrains Mono';font-size:13px;color:var(--sand);flex:none}
+.phase-head h2{font-size:23px}
+.phase-part{font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.phase-why{
+  background:var(--teal-tint);border-radius:10px;padding:12px 16px;
+  font-size:13.5px;color:var(--ink);margin:16px 0 22px;
+  border-inline-start:3px solid var(--teal);
+}
+.phase-why b{color:var(--teal-deep)}
+.phase h3{font-size:16px;margin:26px 0 10px}
+.phase h4{font-size:14px;margin:18px 0 8px;color:var(--ink-soft)}
+.prose{max-width:72ch}
+.prose p{color:var(--ink)}
+
+/* ---------- tags ---------- */
+.tag{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;
+  font-family:'JetBrains Mono';letter-spacing:.01em;white-space:nowrap;
+}
+.tag.fact{background:var(--teal-tint);color:var(--teal-deep)}
+.tag.assumption{background:var(--sand-tint);color:var(--sand)}
+.tag.hypothesis{background:var(--violet-tint);color:var(--violet)}
+.tag.rec{background:var(--paper-raised);color:var(--ink);border:1px solid var(--line-strong)}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:14px 0}
+table.data{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
+table.data th{
+  text-align:start;background:var(--paper-raised);color:var(--ink-soft);
+  font-weight:600;font-size:12px;padding:10px 14px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;
+}
+table.data td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink)}
+table.data tr:last-child td{border-bottom:none}
+table.data tr:hover td{background:var(--teal-tint)}
+table.data td.num{font-family:'JetBrains Mono';font-variant-numeric:tabular-nums}
+
+/* ---------- cards ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:16px 0}
+.card{
+  background:var(--paper-raised);border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px;box-shadow:var(--shadow);
+}
+.card h4{margin:0 0 8px;font-size:14.5px;color:var(--ink)}
+.card p{font-size:13px;color:var(--ink-soft)}
+.card .tier{font-family:'JetBrains Mono';font-size:11px;color:var(--sand);margin-bottom:6px;display:block}
+
+/* ---------- callouts ---------- */
+.callout{
+  border-radius:14px;padding:20px 22px;margin:18px 0;
+  background:var(--paper-raised);border:1px solid var(--line-strong);
+  box-shadow:var(--shadow);
+}
+.callout.sand{border-inline-start:4px solid var(--sand)}
+.callout.teal{border-inline-start:4px solid var(--teal)}
+.callout.rose{border-inline-start:4px solid var(--rose);background:var(--rose-tint)}
+.callout h4{margin-bottom:8px;font-size:14.5px}
+
+/* ---------- kpi row ---------- */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.kpi{background:var(--paper-raised);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi b{display:block;font-family:'JetBrains Mono';font-size:22px;color:var(--teal-deep);font-weight:600}
+.kpi span{font-size:11.5px;color:var(--ink-faint)}
+
+/* ---------- funnel ---------- */
+.funnel{display:flex;flex-direction:column;gap:0;margin:20px 0}
+.funnel-step{
+  display:grid;grid-template-columns:120px 1fr;gap:18px;
+  padding:14px 0;border-top:1px solid var(--line);
+}
+.funnel-step:first-child{border-top:none}
+.funnel-stage{font-family:'El Messiri';font-weight:700;font-size:15px;color:var(--teal-deep)}
+.funnel-detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;font-size:12.5px;color:var(--ink-soft)}
+.funnel-detail b{display:block;color:var(--ink-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;font-family:'JetBrains Mono';font-weight:600}
+
+/* ---------- steps (do this first) ---------- */
+.steps{counter-reset:step;margin:18px 0}
+.step{
+  display:grid;grid-template-columns:44px 1fr;gap:16px;
+  padding:18px 0;border-top:1px solid var(--line);
+}
+.step:first-child{border-top:none}
+.step-badge{
+  counter-increment:step;width:36px;height:36px;border-radius:10px;
+  background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono';font-weight:600;font-size:15px;
+}
+.step-badge::before{content:counter(step)}
+.step h4{margin:0 0 6px;font-size:15px;color:var(--ink)}
+.step-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 16px;margin-top:10px;font-size:12.5px}
+.step-grid b{display:block;color:var(--ink-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-family:'JetBrains Mono';font-weight:600;margin-bottom:2px}
+
+/* ---------- whatsapp bubbles ---------- */
+.wa{background:var(--paper-raised);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:10px 0;max-width:520px}
+.wa-label{font-family:'JetBrains Mono';font-size:10.5px;color:var(--teal-deep);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.wa-msg{background:var(--teal-tint);border-radius:10px;padding:10px 14px;font-size:13.5px;color:var(--ink);margin-bottom:6px;display:inline-block}
+
+.source-note{font-size:11.5px;color:var(--ink-faint);margin-top:16px;border-top:1px dashed var(--line);padding-top:10px}
+.source-note a{color:var(--ink-faint)}
+
+hr.soft{border:none;border-top:1px solid var(--line);margin:22px 0}
+
+@media (max-width: 880px){
+  .toc{display:none}
+  .content{padding:28px 18px 100px;max-width:100%}
+  .hero h1{font-size:26px}
+}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="app" dir="rtl" lang="ar">
+
+  <nav class="toc" id="toc">
+    <div class="toc-brand">
+      <div class="toc-mark">ز</div>
+      <div>
+        <div class="toc-brand-name">زُهى</div>
+        <div class="toc-brand-sub">محرك النمو التسويقي</div>
+      </div>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">الأساس</div>
+      <a href="#s01"><span class="toc-num">01</span>الملخص التنفيذي</a>
+      <a href="#s02"><span class="toc-num">02</span>تحليل العمل</a>
+      <a href="#s03"><span class="toc-num">03</span>تحليل السوق</a>
+      <a href="#s04"><span class="toc-num">04</span>استخبارات المنافسين</a>
+      <a href="#s05"><span class="toc-num">05</span>شخصيات العملاء</a>
+      <a href="#s06"><span class="toc-num">06</span>رحلة العميل</a>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">الهوية</div>
+      <a href="#s07"><span class="toc-num">07</span>التموضع</a>
+      <a href="#s08"><span class="toc-num">08</span>رسائل العلامة</a>
+      <a href="#s09"><span class="toc-num">09</span>صوت العلامة</a>
+      <a href="#s10"><span class="toc-num">10</span>التوطين السعودي</a>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">الاكتساب</div>
+      <a href="#s11"><span class="toc-num">11</span>الاكتساب المحلي</a>
+      <a href="#s12"><span class="toc-num">12</span>استراتيجية Google</a>
+      <a href="#s13"><span class="toc-num">13</span>SEO المحلي</a>
+      <a href="#s14"><span class="toc-num">14</span>استراتيجية TikTok</a>
+      <a href="#s15"><span class="toc-num">15</span>استراتيجية Instagram</a>
+      <a href="#s16"><span class="toc-num">16</span>محرك المحتوى</a>
+      <a href="#s17"><span class="toc-num">17</span>تقويم 30 يوم</a>
+      <a href="#s18"><span class="toc-num">18</span>الإعلانات المدفوعة</a>
+      <a href="#s19"><span class="toc-num">19</span>نظام اختبار الإبداع</a>
+      <a href="#s20"><span class="toc-num">20</span>استراتيجية العروض</a>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">التحويل والاحتفاظ</div>
+      <a href="#s21"><span class="toc-num">21</span>واتساب للتحويل</a>
+      <a href="#s22"><span class="toc-num">22</span>نظام UGC</a>
+      <a href="#s23"><span class="toc-num">23</span>استراتيجية الصنّاع</a>
+      <a href="#s24"><span class="toc-num">24</span>الاحتفاظ بالعملاء</a>
+      <a href="#s25"><span class="toc-num">25</span>نظام الإحالة</a>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">الأنظمة</div>
+      <a href="#s26"><span class="toc-num">26</span>حزمة أدوات AI</a>
+      <a href="#s27"><span class="toc-num">27</span>نظام الأتمتة</a>
+      <a href="#s28"><span class="toc-num">28</span>لوحة التحليلات</a>
+      <a href="#s29"><span class="toc-num">29</span>نظام الإسناد</a>
+      <a href="#s30"><span class="toc-num">30</span>شجرة القرار</a>
+      <a href="#s31"><span class="toc-num">31</span>إدارة السمعة</a>
+      <a href="#s32"><span class="toc-num">32</span>خطة الأزمات</a>
+    </div>
+
+    <div class="toc-group">
+      <div class="toc-group-title">التنفيذ</div>
+      <a href="#s33"><span class="toc-num">33</span>خطة 90 يوم</a>
+      <a href="#s34"><span class="toc-num">34</span>20 تجربة نمو</a>
+      <a href="#s35"><span class="toc-num">35</span>نظام التشغيل الأسبوعي</a>
+      <a href="#s36"><span class="toc-num">36</span>التقرير الشهري</a>
+      <a href="#sfirst" style="color:var(--sand);font-weight:700"><span class="toc-num">★</span>ابدأ خلال 7 أيام</a>
+      <a href="#sinfo"><span class="toc-num">؟</span>معلومات مطلوبة</a>
+    </div>
+  </nav>
+
+  <main class="content">
+
+    <header class="hero">
+      <div class="hero-eyebrow">قسم التسويق والنمو · زُهى</div>
+      <h1>محرك نمو زُهى — من الوعي إلى التكرار والإحالة</h1>
+      <p class="hero-lead">نظام تشغيل تسويقي كامل لشركة زُهى للتنظيف والصيانة المنزلية في السوق السعودي. كل قرار هنا مربوط بنتيجة تجارية: حجز، تكرار، أو إحالة — وليس متابعين أو مشاهدات.</p>
+      <div class="legend">
+        <span class="tag fact">FACT — حقيقة مؤكدة بمصدر</span>
+        <span class="tag assumption">ASSUMPTION — افتراض غير مؤكد</span>
+        <span class="tag hypothesis">HYPOTHESIS — يحتاج اختبار</span>
+        <span class="tag rec">RECOMMENDATION — توصية للتنفيذ</span>
+      </div>
+      <div class="hero-meta">
+        <div><b>النطاق</b>36 قسم استراتيجي + خطة تنفيذ 90 يوم</div>
+        <div><b>السوق</b>المملكة العربية السعودية</div>
+        <div><b>الحالة</b>نسخة أولى — تُحدَّث مع كل بيانات فعلية جديدة</div>
+        <div><b>القاعدة</b>لا بيانات مُختلقة — كل رقم غير مؤكد مُوسوم</div>
+      </div>
+    </header>
+
+    <!-- 01 -->
+    <section class="phase" id="s01">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">01</span><h2>الملخص التنفيذي</h2></div>
+      <div class="prose">
+        <p>زُهى تدخل سوقًا حقيقيًا وينمو: خدمات التنظيف في السعودية تُقدَّر بنحو <b>7.59 مليار دولار</b> في 2024 وتتجه نحو <b>13.9 مليار دولار</b> بحلول 2033 <span class="tag fact">FACT</span>. لكن السوق مزدحم بمنصات إقليمية تعاني من ثقة ضعيفة — أبرزها منافس رئيسي تُظهر مراجعاته شكاوى متكررة حول الإلغاء بعد الدفع وضعف الدعم <span class="tag fact">FACT</span>. هذه فجوة الثقة هي أكبر فرصة تسويقية لزُهى، وليست سرعة النمو في المتابعين.</p>
+        <p>التوصية المركزية: <b>لا تبدأ زُهى بالمحتوى الفيروسي، تبدأ بإثبات الثقة القابل للتحقق</b> — تقنيون موثّقون، فريق ثابت لكل عميل، تسعير شفاف قبل الحجز، ومحادثة واتساب حقيقية بدل تطبيق بلا وجه <span class="tag rec">RECOMMENDATION</span>. القنوات ذات النية الشرائية العالية (بحث Google، خرائط Google، الإحالة) يجب أن تُموَّل قبل TikTok، لأن جمهور TikTok الإعلاني في السعودية يميل ذكوريًا (61.3% ذكور مقابل 38.7% إناث) <span class="tag fact">FACT</span> بينما قرار حجز خدمة منزلية غالبًا ما تتخذه أو تؤثر فيه سيدة المنزل <span class="tag hypothesis">HYPOTHESIS</span> — وهذا يستحق اختبارًا مباشرًا قبل تخصيص الميزانية.</p>
+        <p>هذا المستند نظام تشغيل كامل: تحليل، قنوات، محتوى، إعلانات، احتفاظ، إحالة، أدوات، ولوحة قرار. لأن معلومات زُهى الفعلية (الخدمات الدقيقة، المدينة، الأسعار، القنوات الحالية) غير متوفرة بعد، كل افتراض مُوسوم بوضوح، والقسم الأخير <a href="#sinfo">«معلومات مطلوبة»</a> يحدد بالضبط ما يلزم لتحويل هذا من استراتيجية إلى تنفيذ دقيق.</p>
+      </div>
+      <div class="callout teal">
+        <h4>القرار الوحيد الذي يهم هذا الأسبوع</h4>
+        <p>لا تسأل «كيف نصنع فيديو رائج؟». اسأل «كيف يرى عميل محتمل، خلال 10 ثوانٍ من فتح واتساب أو Google، دليلًا يجعله يثق بفريقنا داخل بيته؟». كل قناة وكل قطعة محتوى في هذا المستند تخدم هذا السؤال أولًا.</p>
+      </div>
+    </section>
+
+    <!-- 02 -->
+    <section class="phase" id="s02">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">02</span><h2>تحليل العمل</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> كل خطة تسويقية لاحقة (الرسائل، القنوات، العروض) مبنية على الإجابات هنا. إذا كانت إجابة واحدة خاطئة، تنهار الاستراتيجية فوق منها.</div>
+
+      <div class="prose">
+        <p><b>ماذا تبيع زُهى فعليًا؟</b> بناءً على الاسم والقطاع المُعطى فقط: خدمات تنظيف وصيانة منزلية <span class="tag fact">FACT (مُعطى من العميل)</span>. القائمة الدقيقة للخدمات، الباقات، والتسعير <b>غير متوفرة</b> — أي تفصيل أدناه عن خدمات محددة هو افتراض للتوضيح فقط، ويجب استبداله بقائمة زُهى الحقيقية فور توفرها <span class="tag assumption">ASSUMPTION</span>.</p>
+        <p><b>ما المشكلة التي تحلها؟</b> ندرة الوقت لدى الأسر ذات الدخلين، وفجوة ثقة حقيقية في إدخال شخص غريب إلى المنزل، وسوق عمالة حرة مُجزّأ وغير موثّق (عمال بلا خلفية معروفة، بلا تسعير ثابت، بلا ضمان حضور) <span class="tag hypothesis">HYPOTHESIS مبنية على معرفة عامة بالسوق الخليجي</span>.</p>
+        <p><b>من يحتاجها ولماذا الآن؟</b> ازدياد مشاركة المرأة في سوق العمل ضمن رؤية 2030، تحوّل الأسر نحو نواة أصغر بدل الاعتماد على الخدم المقيمين، وتوسّع الشقق المفروشة/الإيجار القصير في المدن الكبرى — كلها تزيد الطلب على خدمة منزلية يمكن حجزها عند الحاجة لا الاستئجار الدائم <span class="tag hypothesis">HYPOTHESIS</span>.</p>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>السؤال</th><th>الإجابة العملية</th><th>التصنيف</th></tr></thead>
+          <tbody>
+            <tr><td>ما الذي يُحفّز الحجز؟</td><td>ضيوف قادمون، الانتقال لمنزل جديد، تنظيف ما قبل رمضان/العيد، عطل مفاجئ (تكييف صيفًا، تسريب مياه)، تجديد عقد الإيجار</td><td><span class="tag hypothesis">HYPOTHESIS</span></td></tr>
+            <tr><td>ما الذي يمنع الحجز؟</td><td>عدم وضوح السعر قبل التواصل، خوف من إدخال غريب للمنزل خصوصًا مع وجود نساء/أطفال بمفردهم، تجربة سيئة سابقة مع عامل حر أو منصة أخرى، صعوبة التواصل بلغة واضحة</td><td><span class="tag hypothesis">HYPOTHESIS</span></td></tr>
+            <tr><td>ما الذي يصنع تكرار الحجز؟</td><td>نفس الفريق/الفني في كل مرة، جودة ثابتة، سهولة إعادة الحجز عبر واتساب بدون تكرار التفاصيل</td><td><span class="tag rec">RECOMMENDATION</span></td></tr>
+            <tr><td>ما الذي يبني الثقة؟</td><td>تحقق هوية العاملين، صور قبل/بعد، عدد وجودة تقييمات Google، خيار فريق نسائي بالكامل عند الطلب، تسعير معلن قبل الحجز</td><td><span class="tag rec">RECOMMENDATION</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>تصنيف الخدمات</h3>
+      <p class="prose">هذا التصنيف <b>إطار عمل</b> وليس قائمة زُهى الفعلية — استبدله بالخدمات الحقيقية فور توفرها. الفرص المستقبلية في آخر الجدول مفصولة عمدًا لأنها غير موجودة بعد.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الفئة</th><th>مثال</th><th>الدور في القمع التسويقي</th></tr></thead>
+          <tbody>
+            <tr><td>خدمات أساسية</td><td>تنظيف منزلي عام، صيانة عامة (سباكة/كهرباء/تكييف)</td><td>محور الرسائل الرئيسية</td></tr>
+            <tr><td>عالية الهامش</td><td>التنظيف العميق، عقود صيانة تكييف موسمية</td><td>أهداف الإعلانات المدفوعة</td></tr>
+            <tr><td>عالية التكرار</td><td>اشتراك تنظيف أسبوعي/نصف شهري</td><td>محور الاحتفاظ (Retention)</td></tr>
+            <tr><td>عالية الطلب الموسمي</td><td>تنظيف ما قبل رمضان، صيانة تكييف الصيف</td><td>حملات موسمية مجدولة</td></tr>
+            <tr><td>خدمة دخول (Entry)</td><td>تنظيف عادي لمرة واحدة</td><td>تقليل حاجز التجربة الأولى</td></tr>
+            <tr><td>Upsell</td><td>تنظيف الفرن/الستائر/النوافذ كإضافة</td><td>زيادة قيمة الحجز</td></tr>
+            <tr><td>Cross-sell</td><td>عميل صيانة → تنظيف، وعكسه</td><td>زيادة القيمة الدائمة للعميل</td></tr>
+            <tr><td>اشتراك متكرر</td><td>باقة صيانة شهرية شاملة</td><td>تثبيت الإيراد المتكرر</td></tr>
+            <tr><td style="color:var(--sand)">فرصة مستقبلية <span class="tag rec">RECOMMENDATION</span></td><td>باقات تسليم شقق مفروشة/Airbnb، عقود مكتبية صغيرة</td><td>توسّع لاحق بعد إثبات النموذج الأساسي</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 03 -->
+    <section class="phase" id="s03">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">03</span><h2>تحليل السوق</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> يحدد حجم الفرصة الحقيقي، وأي قناة تحمل الجمهور الفعلي، بدل الاعتماد على انطباعات عامة عن «السوق السعودي مهتم بـTikTok».</div>
+
+      <div class="kpi-row">
+        <div class="kpi"><b>$7.59B</b><span>سوق خدمات التنظيف السعودي 2024</span></div>
+        <div class="kpi"><b>$13.9B</b><span>الحجم المتوقع بحلول 2033 (نمو 6.93% سنويًا)</span></div>
+        <div class="kpi"><b>34.1M</b><span>مستخدم بالغ لتيك توك في السعودية مطلع 2025</span></div>
+        <div class="kpi"><b>16.9M</b><span>وصول إعلانات إنستغرام في السعودية</span></div>
+      </div>
+      <p class="source-note">المصادر: <a href="https://deepmarketinsights.com/vista/insights/cleaning-services-market/saudi-arabia" target="_blank">Deep Market Insights — Saudi Cleaning Services Market</a> · <a href="https://www.imarcgroup.com/saudi-arabia-household-cleaners-market" target="_blank">IMARC — Household Cleaners Market</a> · <a href="https://datareportal.com/reports/digital-2025-saudi-arabia" target="_blank">DataReportal — Digital 2025: Saudi Arabia</a> · <a href="https://www.statista.com/statistics/1394073/saudi-arabia-most-used-social-media-platforms/" target="_blank">Statista — Most Used Platforms KSA</a></p>
+
+      <div class="prose">
+        <p><b>تنبيه منهجي:</b> أرقام السوق أعلاه تصف «خدمات التنظيف» و«منظفات الأسر» كقطاع عام، وليست بالضرورة سوق «حجز خدمة تنظيف منزلي عند الطلب» تحديدًا — فهي تشمل عقودًا تجارية وقطاع منظفات استهلاكية <span class="tag assumption">ASSUMPTION في التفسير</span>. استخدمها كإشارة اتجاه (سوق ينمو، ليس راكدًا) لا كرقم دقيق لحجم السوق القابل للحجز رقميًا.</p>
+        <p><b>محرك الطلب:</b> ازدياد الوعي بالنظافة بعد كوفيد-19، ارتفاع الدخل القابل للتصرف، والتوجه نحو حلول توفّر الوقت — هذه دوافع عامة موثّقة في تقارير السوق <span class="tag fact">FACT</span>.</p>
+        <p><b>سلوك المنصات الاجتماعية:</b> تيك توك يصل لأكثر من 138% من عدد البالغين في السعودية (تكرار حسابات/تداخل جمهور) بميل ذكوري واضح (61.3% ذكور) <span class="tag fact">FACT</span>. إنستغرام ينمو بمعدل 5.6% في 6 أشهر مع صعود قوة المؤثرين الصغار (Micro-influencers) في التفاعل مقارنة بالحسابات الكبرى <span class="tag fact">FACT</span>.</p>
+        <p><b>الاستنتاج الذي يتحدى الافتراض الشائع:</b> كون تيك توك الأكبر وصولًا لا يعني أنه الأنسب لخدمة يتخذ قرار حجزها غالبًا شخص آخر غير الجمهور الذكوري الغالب على المنصة. هذا لا يُلغي تيك توك، لكنه يحدد دوره: <b>وعي وترفيه وبناء علامة</b>، وليس القناة الأساسية للتحويل المباشر <span class="tag hypothesis">HYPOTHESIS تحتاج اختبار A/B فعلي بين القنوات</span>.</p>
+      </div>
+    </section>
+
+    <!-- 04 -->
+    <section class="phase" id="s04">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">04</span><h2>استخبارات المنافسين</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> فجوة كل منافس هي فرصة تموضع لزُهى. الهدف ليس النسخ، بل إيجاد الفراغ الذي لا أحد يملأه.</div>
+
+      <div class="cards">
+        <div class="card">
+          <span class="tier">منافس مباشر إقليمي <span class="tag fact">FACT</span></span>
+          <h4>منصة تنظيف/خدمات إقليمية كبرى</h4>
+          <p>تطبيق تحت الطلب يغطي عدة دول خليجية بالإضافة لمصر. المراجعات العامة تُظهر شكاوى متكررة: إلغاء بعد الدفع، ضعف خدمة العملاء، وانطباع لدى بعض المستخدمين بأن التشغيل فعليًا من خارج السعودية رغم الظهور محليًا.</p>
+        </div>
+        <div class="card">
+          <span class="tier">منافس مباشر — صيانة <span class="tag fact">FACT</span></span>
+          <h4>تطبيق صيانة مدعوم من مجموعة كبرى</h4>
+          <p>خدمة صيانة منزلية عبر تطبيق، بدعم شركة أم راسخة ماليًا — قوة في الثقة المؤسسية، لكنه صيانة فقط بدون تنظيف.</p>
+        </div>
+        <div class="card">
+          <span class="tier">منافس مباشر — صيانة <span class="tag fact">FACT</span></span>
+          <h4>سوق فنيين متعدد (+6000 فني)</h4>
+          <p>حجز بخطوتين، حجم كبير من الفنيين لكن تجربة سوق مفتوح (marketplace) تعني تفاوتًا في الجودة وغياب فريق ثابت للعميل.</p>
+        </div>
+        <div class="card">
+          <span class="tier">منافس غير مباشر <span class="tag hypothesis">HYPOTHESIS</span></span>
+          <h4>عمالة حرة عبر التواصل الاجتماعي</h4>
+          <p>عاملات/عمال يُوجدون عبر مجموعات واتساب أو منصة X أو التوصية الشخصية — أرخص لكن بلا ضمان أو تسعير ثابت.</p>
+        </div>
+        <div class="card">
+          <span class="tier">منافس غير مباشر <span class="tag hypothesis">HYPOTHESIS</span></span>
+          <h4>فرق الصيانة الداخلية لإدارات العقارات</h4>
+          <p>للمستأجرين في مجمعات مُدارة، الصيانة أحيانًا مشمولة أو تُطلب من إدارة العقار مباشرة.</p>
+        </div>
+      </div>
+
+      <h3>ماذا يفعل الجميع؟</h3>
+      <p class="prose">التنافس عبر التطبيق أولًا وأكواد الخصم، تجميع خدمات غير متجانسة تحت مظلة واحدة (تنظيف + غسيل + غسيل سيارات) مما يُضعف الثقة بأي فئة تحديدًا، وواجهات/هوية بصرية تميل للطابع الإقليمي العام لا السعودي الخاص.</p>
+
+      <h3>ماذا يُغفل الجميع؟</h3>
+      <p class="prose">لا أحد يبني الثقة عبر سرد حقيقي (توثيق العاملين، صوت سعودي أصيل، محتوى واقعي)، أغلبهم يتنافس بالسعر لا بالثبات، والتنظيف والصيانة نادرًا ما يُسوَّقان معًا بمنطق cross-sell واضح.</p>
+
+      <div class="callout sand">
+        <h4>الفراغ الأبيض لزُهى</h4>
+        <p>امتلاك <b>«الثقة القابلة للإثبات»</b> + <b>«نفس الفريق كل مرة»</b> + <b>تسعير معلن قبل الحجز</b> + قناة تحويل عبر <b>واتساب مباشرة</b> بدل الإجبار على تحميل تطبيق. هذا تمايز تشغيلي قبل أن يكون تسويقيًا — يتطلب التزامًا حقيقيًا من العمليات لا الرسائل فقط.</p>
+      </div>
+    </section>
+
+    <!-- 05 -->
+    <section class="phase" id="s05">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">05</span><h2>شخصيات العملاء</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> رسالة واحدة لكل الجمهور تُضعف كل القنوات. الأولوية هنا تحدد أين تذهب الميزانية أولًا.</div>
+
+      <h3>Tier 1 — الأولوية القصوى</h3>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th></th><th>الأم/السيدة العاملة</th><th>مضيف شقة مفروشة / Airbnb</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">العمر/الموقع</td><td>28–45، الرياض/جدة والمدن الكبرى</td><td>مالك أو مدير عقار، أي مدينة سياحية/تجارية</td></tr>
+            <tr><td class="mono">نمط الحياة</td><td>دخلين في الأسرة، وقت محدود، مسؤولة عن تنسيق المنزل</td><td>يدير عدة وحدات، يحتاج جدولة سريعة بين النزلاء</td></tr>
+            <tr><td class="mono">الألم</td><td>لا وقت للتنظيف، قلق من إدخال غرباء والأطفال في المنزل</td><td>تأخر التسليم بين الحجوزات يعني خسارة تقييم على منصة الإيجار</td></tr>
+            <tr><td class="mono">المحفّز</td><td>ضيوف، إرهاق تراكمي، رمضان/العيد</td><td>حجز جديد قادم خلال ساعات</td></tr>
+            <tr><td class="mono">الاعتراض</td><td>«مين بيدخل بيتي؟» / «كم بالضبط بيكلفني؟»</td><td>«هل يقدرون يوصلون بالوقت المحدد كل مرة؟»</td></tr>
+            <tr><td class="mono">القناة المفضلة</td><td>واتساب، إنستغرام، بحث Google</td><td>واتساب، إحالة من مجموعات ملاك مفروشات</td></tr>
+            <tr><td class="mono">محفّز التحويل</td><td>صور قبل/بعد + تقييمات + سعر واضح</td><td>سرعة استجابة + موثوقية الحضور في الوقت</td></tr>
+            <tr><td class="mono">فرصة الاحتفاظ</td><td>نفس الفريق أسبوعيًا/شهريًا</td><td>عقد شهري لكل وحدات المحفظة</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Tier 2 — ثانوية</h3>
+      <div class="cards">
+        <div class="card"><h4>مالكو منازل جدد / حديثو الزواج</h4><p>تنظيف عميق لمرة واحدة عالي القيمة عند الاستلام، يكتشفون الخدمة عبر بحث Google ومحتوى تعليمي على إنستغرام/TikTok.</p></div>
+        <div class="card"><h4>ملاك عقارات صغار / مدراء أملاك</h4><p>عقود صيانة دورية بالجملة — يحتاج تعاملًا مباشرًا (مبيعات B2B) لا إعلانات فقط.</p></div>
+      </div>
+
+      <h3>Tier 3 — فرصة مستقبلية</h3>
+      <p class="prose">مكاتب صغيرة، شركات ناشئة، ومطورو عقارات بعد التسليم — تُبنى لها استراتيجية منفصلة بعد إثبات النموذج مع Tier 1.</p>
+    </section>
+
+    <!-- 06 -->
+    <section class="phase" id="s06">
+      <div class="phase-part">الأساس</div>
+      <div class="phase-head"><span class="phase-num">06</span><h2>رحلة العميل</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> كل قطعة محتوى أو إعلان يجب أن تخدم مرحلة واحدة بوضوح — خلط المراحل يُنتج رسائل مشتتة.</div>
+
+      <div class="funnel">
+        <div class="funnel-step">
+          <div class="funnel-stage">الوعي</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«فيه شركة تنظيف موثوقة أصلًا؟»</div>
+            <div><b>المحتوى</b>Reels/TikTok واقعي، قبل/بعد</div>
+            <div><b>المنصة</b>TikTok, Instagram Reels</div>
+            <div><b>CTA</b>متابعة/مشاهدة</div>
+            <div><b>KPI</b>Reach, Watch time</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الاهتمام</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«شكلهم شغلهم نظيف، بس وش يقدمون بالضبط؟»</div>
+            <div><b>المحتوى</b>شرح الخدمات، معايير الفريق</div>
+            <div><b>المنصة</b>Instagram, Google Business</div>
+            <div><b>CTA</b>زيارة الصفحة/الملف</div>
+            <div><b>KPI</b>Profile visits</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الدراسة</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«كم السعر؟ هل هذا أفضل من غيرهم؟»</div>
+            <div><b>المحتوى</b>تسعير شفاف، مقارنة ضمنية بالثقة لا السعر</div>
+            <div><b>المنصة</b>Google Search, Landing page</div>
+            <div><b>CTA</b>محادثة واتساب</div>
+            <div><b>KPI</b>Click-to-WhatsApp</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الثقة</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«مين بيدخل بيتي فعليًا؟»</div>
+            <div><b>المحتوى</b>توثيق الهوية، تقييمات حقيقية، رد سريع</div>
+            <div><b>المنصة</b>واتساب، Google Reviews</div>
+            <div><b>CTA</b>تأكيد الحجز</div>
+            <div><b>KPI</b>Response time, Trust proof views</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الحجز</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«هل الحجز سهل وواضح؟»</div>
+            <div><b>المحتوى</b>تأكيد فوري + تفاصيل الفريق القادم</div>
+            <div><b>المنصة</b>واتساب</div>
+            <div><b>CTA</b>تثبيت الموعد</div>
+            <div><b>KPI</b>Booking rate</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الخدمة</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«هل جاؤوا في الوقت وأدّوا الشغل صح؟»</div>
+            <div><b>المحتوى</b>وصول الفريق + صور إنجاز</div>
+            <div><b>المنصة</b>واتساب</div>
+            <div><b>CTA</b>—</div>
+            <div><b>KPI</b>On-time rate, Job photos</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">التقييم</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«يستاهلون أشاركهم تجربتي؟»</div>
+            <div><b>المحتوى</b>طلب تقييم بعد ساعات من الخدمة</div>
+            <div><b>المنصة</b>واتساب → Google Review</div>
+            <div><b>CTA</b>تقييم 5 نجوم</div>
+            <div><b>KPI</b>Review rate</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">التكرار</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«وقتها أحجز ثاني؟»</div>
+            <div><b>المحتوى</b>تذكير مبني على دورة الخدمة لا موعد ثابت للجميع</div>
+            <div><b>المنصة</b>واتساب</div>
+            <div><b>CTA</b>إعادة حجز بضغطة</div>
+            <div><b>KPI</b>Repeat rate</div>
+          </div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-stage">الإحالة</div>
+          <div class="funnel-detail">
+            <div><b>سؤال العميل</b>«ليش ما أرشحهم لجارتي/أختي؟»</div>
+            <div><b>المحتوى</b>عرض إحالة واضح بمكافأة للطرفين</div>
+            <div><b>المنصة</b>واتساب</div>
+            <div><b>CTA</b>مشاركة رابط/كود</div>
+            <div><b>KPI</b>Referral rate, CAC عبر الإحالة</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 -->
+    <section class="phase" id="s07">
+      <div class="phase-part">الهوية</div>
+      <div class="phase-head"><span class="phase-num">07</span><h2>التموضع</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> التموضع الغامض («جودة عالية وخدمة ممتازة») لا يميز زُهى عن أي منافس. التموضع القابل للإثبات وحده يبني ثقة حقيقية.</div>
+
+      <div class="callout teal">
+        <h4>جملة التموضع المقترحة <span class="tag rec">RECOMMENDATION</span></h4>
+        <p style="font-family:'El Messiri';font-size:17px;font-weight:600">«زُهى: نفس الفريق، نفس الجودة، بدون مفاجآت — كل مرة تحجز.»</p>
+      </div>
+
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>العنصر</th><th>التفصيل</th></tr></thead>
+          <tbody>
+            <tr><td>الوعد</td><td>ثبات النتيجة، لا مجرد «تنظيف جيد» لمرة واحدة</td></tr>
+            <tr><td>القيمة المقترحة</td><td>فريق موثّق الهوية، مُخصَّص لعميلك بشكل متكرر، بسعر معلن قبل أي التزام</td></tr>
+            <tr><td>أسباب التصديق (يجب إثباتها تشغيليًا)</td><td>شارة تحقق للعاملين، سجل صور قبل/بعد لكل مهمة، وقت استجابة واتساب معلن (مثلاً أقل من 15 دقيقة)</td></tr>
+            <tr><td>لماذا زُهى لا غيرها؟</td><td>لأن المنافسين الكبار إما بلا هوية سعودية واضحة (شكاوى ثقة موثّقة) أو يخدمون فئة واحدة (تنظيف أو صيانة، ليس الاثنين بثبات نفس الفريق)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">هذا التموضع <b>التزام تشغيلي</b> قبل أن يكون شعارًا — إذا لم تضمن العمليات تكرار نفس الفني/الفريق فعليًا، لا تُستخدم هذه الرسالة <span class="tag rec">RECOMMENDATION</span>.</p>
+    </section>
+
+    <!-- 08 -->
+    <section class="phase" id="s08">
+      <div class="phase-part">الهوية</div>
+      <div class="phase-head"><span class="phase-num">08</span><h2>رسائل العلامة</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الركيزة</th><th>الرسالة</th><th>دليل الإثبات</th></tr></thead>
+          <tbody>
+            <tr><td>الثقة</td><td>«تدخل بيتك أيادٍ موثّقة، مو غريب»</td><td>تحقق هوية، خيار فريق نسائي بالكامل</td></tr>
+            <tr><td>الثبات</td><td>«نفس الفريق يعرف بيتك ويعرف تفضيلاتك»</td><td>تعيين فريق ثابت لكل عميل متكرر</td></tr>
+            <tr><td>السهولة</td><td>«احجز بدون ما تشرح من الصفر كل مرة»</td><td>إعادة حجز بضغطة واحدة عبر واتساب</td></tr>
+            <tr><td>الانتماء المحلي</td><td>«شركة سعودية، فريق يفهم بيتك السعودي»</td><td>رقم واتساب سعودي مباشر، دعم بلهجتك، لا تحويل لدعم خارج البلاد</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 -->
+    <section class="phase" id="s09">
+      <div class="phase-part">الهوية</div>
+      <div class="phase-head"><span class="phase-num">09</span><h2>صوت العلامة</h2></div>
+      <div class="prose">
+        <p>صوت زُهى: دافئ لكنه كفوء، يحترم خصوصية المنزل، واثق بدون مبالغة. لهجة سعودية/خليجية محادثية في السوشيال ميديا والواتساب — لا مصرية ولا شامية، ولا ترجمة حرفية من الإنجليزية.</p>
+      </div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>نستخدم</th><th>نتجنب</th></tr></thead>
+          <tbody>
+            <tr><td>«بيتك أمانة عندنا»</td><td>«نحن الأفضل في المملكة» (ادعاء غير قابل للإثبات)</td></tr>
+            <tr><td>«نفس الفريق كل مرة»</td><td>«جودة عالمية» (كلام عام بلا دليل)</td></tr>
+            <tr><td>«احجز بواتساب، خلاص»</td><td>مصطلحات تقنية أو إنجليزية غير ضرورية</td></tr>
+            <tr><td>لهجة سعودية طبيعية في الكابشن</td><td>فصحى جافة في محتوى السوشيال (تُحفظ للمحتوى الرسمي/القانوني فقط)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>مثال Do / Don't</h4>
+      <div class="cards">
+        <div class="card"><span class="tier" style="color:var(--teal)">✓ صح</span><p>«جهزنا لك البيت قبل ما يوصل ضيوفك. نفس الفريق اللي يعرف كل ركن فيه.»</p></div>
+        <div class="card"><span class="tier" style="color:var(--rose)">✗ خطأ</span><p>«نقدم أفضل تجربة تنظيف على مستوى العالم بمعايير عالمية لا مثيل لها.»</p></div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="phase" id="s10">
+      <div class="phase-part">الهوية</div>
+      <div class="phase-head"><span class="phase-num">10</span><h2>التوطين السعودي</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>السياق</th><th>اللغة/اللهجة</th><th>ملاحظة</th></tr></thead>
+          <tbody>
+            <tr><td>Google Business / محتوى قانوني</td><td>فصحى مبسّطة (MSA)</td><td>للمصداقية والفهرسة</td></tr>
+            <tr><td>سوشيال ميديا وواتساب</td><td>سعودي/خليجي محادثي</td><td>الأقرب للجمهور المستهدف</td></tr>
+            <tr><td>محتوى لمضيفي Airbnb/ملاك أجانب</td><td>إنجليزي عند الحاجة</td><td>شريحة فرعية فقط، ليست الأساس</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>التقويم الثقافي</h4>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>المناسبة</th><th>الفرصة التسويقية</th></tr></thead>
+          <tbody>
+            <tr><td>ما قبل رمضان</td><td>حملة «تنظيف قبل الشهر» — أعلى موسم طلب متوقع</td></tr>
+            <tr><td>بعد العيد</td><td>«ريسِت البيت بعد الضيافة»</td></tr>
+            <tr><td>الصيف</td><td>صيانة تكييف وقائية قبل الذروة، عروض عاجلة عند الأعطال</td></tr>
+            <tr><td>بداية العام الدراسي</td><td>تنظيم وتنظيف غرف الأطفال</td></tr>
+            <tr><td>موسم السفر/الحج</td><td>«نظّف بيتك قبل السفر أو جهّزه لعودتك»</td></tr>
+            <tr><td>اليوم الوطني</td><td>حضور محتشم وصادق، لا استغلال تسويقي مبالغ فيه</td></tr>
+            <tr><td>موسم الانتقال/تجديد الإيجار</td><td>باقات تنظيف/فحص صيانة عند الانتقال</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose"><b>اعتبارات الخصوصية:</b> إتاحة خيار فريق نسائي بالكامل بوضوح، التواصل الصريح حول توثيق هوية العاملين قبل الدخول للمنزل، وإمكانية اختيار مواعيد مسبقة بدل الحضور المفاجئ — نقاط تُطمئن الأسر السعودية تحديدًا <span class="tag rec">RECOMMENDATION</span>.</p>
+    </section>
+
+    <!-- 11 -->
+    <section class="phase" id="s11">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">11</span><h2>الاكتساب المحلي</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> هذا القرار الأهم في كامل الاستراتيجية — أين تذهب أول ريال تسويقي.</div>
+
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>القناة</th><th>النية الشرائية</th><th>التكلفة</th><th>السرعة</th><th>الصعوبة</th><th>قابلية التوسع</th></tr></thead>
+          <tbody>
+            <tr><td>بحث Google</td><td>مرتفعة جدًا</td><td>متوسطة–مرتفعة</td><td>سريعة</td><td>متوسطة</td><td>عالية</td></tr>
+            <tr><td>خرائط Google (GBP)</td><td>مرتفعة جدًا</td><td>منخفضة</td><td>متوسطة (تراكمية)</td><td>منخفضة</td><td>متوسطة</td></tr>
+            <tr><td>الإحالة/الشفهي</td><td>مرتفعة جدًا</td><td>منخفضة جدًا</td><td>بطيئة البداية</td><td>منخفضة</td><td>متوسطة</td></tr>
+            <tr><td>إنستغرام (عضوي+مدفوع)</td><td>متوسطة</td><td>متوسطة</td><td>متوسطة</td><td>متوسطة</td><td>عالية</td></tr>
+            <tr><td>TikTok</td><td>منخفضة–متوسطة (وعي)</td><td>منخفضة–متوسطة</td><td>سريعة الانتشار</td><td>عالية (إنتاج مستمر)</td><td>عالية جدًا</td></tr>
+            <tr><td>واتساب أعمال (تحويل)</td><td>—</td><td>منخفضة</td><td>فورية</td><td>منخفضة</td><td>متوسطة</td></tr>
+            <tr><td>شراكات مدراء عقارات/Airbnb</td><td>مرتفعة (B2B)</td><td>متوسطة (وقت مبيعات)</td><td>بطيئة</td><td>متوسطة</td><td>متوسطة</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout sand">
+        <h4>القنوات الثلاث الأولى <span class="tag rec">RECOMMENDATION</span></h4>
+        <p>1) <b>بحث Google + خرائط Google</b> — أعلى نية شرائية موجودة أصلًا، يلتقط العميل وقت حاجته الفعلية.<br>
+        2) <b>واتساب كقناة تحويل مركزية</b> — احتكاك أقل من تحميل تطبيق، ومناسب لثقافة التواصل السعودية.<br>
+        3) <b>إنستغرام + محتوى إثبات ثقة محلي</b> — يبني الطبقة الوسطى من القمع (اهتمام → دراسة → ثقة) ويغذي بحث Google لاحقًا.<br><br>
+        TikTok يُدرَج في المرحلة الثانية كأداة وعي وانتشار — وليس أولوية اليوم الأول، لأن تكلفة الإنتاج المستمر عالية وعائده على التحويل المباشر غير مؤكد لهذا النوع من الخدمة <span class="tag hypothesis">HYPOTHESIS يُختبر لاحقًا بميزانية محدودة</span>.</p>
+      </div>
+    </section>
+
+    <!-- 12 -->
+    <section class="phase" id="s12">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">12</span><h2>استراتيجية Google</h2></div>
+
+      <h3>Google Business Profile</h3>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td class="mono">الفئة الأساسية</td><td>House Cleaning Service</td></tr>
+            <tr><td class="mono">فئات فرعية</td><td>Home Maintenance, HVAC Contractor, Plumber (حسب الخدمات الفعلية)</td></tr>
+            <tr><td class="mono">الوصف</td><td>يذكر التوثيق، الفريق الثابت، والتسعير الشفاف — لا كلام عام</td></tr>
+            <tr><td class="mono">الصور</td><td>صور حقيقية للفريق والعمل، لا صور ستوك</td></tr>
+            <tr><td class="mono">المنشورات</td><td>عروض موسمية أسبوعية</td></tr>
+            <tr><td class="mono">التقييمات</td><td>طلب منهجي بعد كل خدمة عبر واتساب (خطة كاملة في القسم 21)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>حملة البحث</h3>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>مجموعة الكلمات</th><th>أمثلة</th></tr></thead>
+          <tbody>
+            <tr><td>خدمة + مدينة</td><td>شركة تنظيف منازل الرياض، شركة صيانة منزلية جدة</td></tr>
+            <tr><td>نية عاجلة</td><td>فني كهرباء اليوم، تسليك مجاري عاجل</td></tr>
+            <tr><td>موسمية</td><td>تنظيف قبل رمضان، صيانة تكييف قبل الصيف</td></tr>
+            <tr><td>كلمات سلبية (استبعاد)</td><td>وظائف، تدريب، تنظيف مجاني، وظيفة عاملة منزلية</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose"><b>صفحة الهبوط:</b> سعر تقديري ظاهر قبل أي تعبئة نموذج، شارات ثقة (توثيق، تقييمات)، وزر واتساب ثابت أعلى الصفحة. <b>تتبع التحويل:</b> حدث GA4 لكل ضغطة واتساب/اتصال، لا الاكتفاء بعدد الزيارات.</p>
+    </section>
+
+    <!-- 13 -->
+    <section class="phase" id="s13">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">13</span><h2>SEO المحلي</h2></div>
+      <ul class="prose">
+        <li>صفحة مستقلة لكل خدمة أساسية (تنظيف عام، تنظيف عميق، صيانة تكييف...) بمحتوى حقيقي لا محشو بالكلمات.</li>
+        <li>صفحة لكل مدينة تعمل بها زُهى فعليًا — لا صفحات لمدن لا تُخدَم (يضر بالثقة والفهرسة).</li>
+        <li>أسئلة شائعة حقيقية (السعر، مدة الحضور، سياسة الإلغاء، توثيق العاملين) مع Schema FAQ.</li>
+        <li>ربط داخلي بين صفحات الخدمات والمدن والمدونة.</li>
+        <li>محتوى تعليمي مرتبط بالخدمة (مثلاً «كل كم يحتاج التكييف صيانة في مناخ الرياض؟») يخدم SEO والثقة معًا.</li>
+      </ul>
+    </section>
+
+    <!-- 14 -->
+    <section class="phase" id="s14">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">14</span><h2>استراتيجية TikTok</h2></div>
+      <div class="phase-why"><b>دور القناة:</b> وعي وانتشار وبناء علامة تُغذي بحث Google والإحالة — ليست قناة التحويل المباشر الأولى (انظر القسم 03 و11) <span class="tag hypothesis">HYPOTHESIS يُعاد تقييمه بالبيانات الفعلية</span>.</div>
+
+      <p class="prose">منطق كل فيديو: <b>توقف → مشاهدة → ثقة → تذكّر → بحث → حجز</b>. الأعمدة: قبل/بعد مُرضٍ بصريًا، مواقف سعودية واقعية، محتوى تعليمي قصير، خلف الكواليس مع الفريق، وردود على تعليقات كمحتوى مستقل.</p>
+
+      <h3>منهجية الخطافات (Hooks)</h3>
+      <p class="prose">بدل اختلاق 100 خطاف عشوائي، الأصح بناء 5 صيغ خطاف قابلة للتكرار على أي خدمة — هذا ما يُنتج فعليًا 100+ فيديو دون تكرار ممل:</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الصيغة</th><th>مثال</th></tr></thead>
+          <tbody>
+            <tr><td>الصدمة البصرية</td><td>«شوف هالفرن قبل ما نلمسه... وبعده»</td></tr>
+            <tr><td>السؤال المباشر</td><td>«تعرف كل كم يحتاج التكييف صيانة عشان ما يفصل بالصيف؟»</td></tr>
+            <tr><td>الموقف الواقعي</td><td>«لما تعرف الضيوف جايين بعد ساعتين والبيت مو جاهز»</td></tr>
+            <tr><td>خلف الكواليس</td><td>«كذا نتحقق من كل فرد بفريقنا قبل ما يدخل أي بيت»</td></tr>
+            <tr><td>خرافة/تصحيح</td><td>«وقف تستخدم هالطريقة تنظف فيها التكييف، تضره أكثر»</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>أمثلة مكتملة (8 من أصل خطة أوسع)</h3>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>#</th><th>الخطاف</th><th>الفكرة</th><th>المرحلة</th><th>CTA</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>«هذا الفرن قبل وبعد زُهى»</td><td>تايم لابس تنظيف فرن مهمل</td><td>وعي</td><td>متابعة</td></tr>
+            <tr><td class="num">2</td><td>«ليش نرسل نفس الفني كل مرة؟»</td><td>شرح سياسة الفريق الثابت</td><td>ثقة</td><td>احجز عبر البايو</td></tr>
+            <tr><td class="num">3</td><td>«كذا نتحقق من هوية كل عامل عندنا»</td><td>خلف الكواليس للتوثيق</td><td>ثقة</td><td>تعليق «آمنة»</td></tr>
+            <tr><td class="num">4</td><td>«3 علامات تكييفك محتاج صيانة الحين»</td><td>تعليمي قصير</td><td>اهتمام</td><td>احجز فحص</td></tr>
+            <tr><td class="num">5</td><td>«جهزنا بيت كامل قبل استقبال ضيوف بساعتين»</td><td>موقف واقعي + نتيجة</td><td>اهتمام</td><td>واتساب</td></tr>
+            <tr><td class="num">6</td><td>«وش يصير لو ما نظفت السجاد قبل رمضان»</td><td>موسمي تحذيري خفيف</td><td>وعي</td><td>متابعة</td></tr>
+            <tr><td class="num">7</td><td>«عميلة سألتنا: ليش أدفع أكثر من عامل حر؟ هذا جوابنا»</td><td>معالجة اعتراض السعر مباشرة</td><td>دراسة</td><td>رابط الأسعار</td></tr>
+            <tr><td class="num">8</td><td>«فريقنا النسائي بالكامل — لو تفضلينه»</td><td>خيار خصوصية</td><td>ثقة</td><td>واتساب</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">وتيرة النشر المقترحة: 4–5 فيديوهات أسبوعيًا كحد أدنى لبناء زخم الخوارزمية <span class="tag rec">RECOMMENDATION</span>، مدة 15–35 ثانية، نص على الشاشة دائمًا (كثير من المشاهدة بلا صوت).</p>
+    </section>
+
+    <!-- 15 -->
+    <section class="phase" id="s15">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">15</span><h2>استراتيجية Instagram</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td class="mono">البايو</td><td>جملة تموضع + مدينة الخدمة + رابط واتساب مباشر</td></tr>
+            <tr><td class="mono">المنشورات المثبتة</td><td>كيف نتحقق من فريقنا / الأسعار بشفافية / قبل-بعد الأقوى</td></tr>
+            <tr><td class="mono">الـHighlights</td><td>الخدمات، الأسعار، التقييمات، الأسئلة الشائعة، فريقنا</td></tr>
+            <tr><td class="mono">Stories</td><td>يومية: كواليس مهمة اليوم + استطلاع رأي + رد على استفسار متكرر</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose"><b>إعادة الاستخدام من TikTok:</b> الفيديوهات القصيرة الناجحة تُعاد كـReels مباشرة. <b>يُنتج خصيصًا لإنستغرام:</b> Carousels تعليمية (مثال: «5 أخطاء تدمر تكييفك») وشهادات نصية مصممة — صيغ لا تعمل جيدًا على TikTok لكنها تقوية على إنستغرام.</p>
+    </section>
+
+    <!-- 16 -->
+    <section class="phase" id="s16">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">16</span><h2>محرك المحتوى</h2></div>
+      <div class="kpi-row">
+        <div class="kpi"><b>30%</b><span>الثقة (توثيق، فريق، تقييمات)</span></div>
+        <div class="kpi"><b>25%</b><span>تعليمي (صيانة، نظافة)</span></div>
+        <div class="kpi"><b>20%</b><span>ترفيهي/قبل-بعد</span></div>
+        <div class="kpi"><b>15%</b><span>إثبات اجتماعي</span></div>
+        <div class="kpi"><b>10%</b><span>عروض/تحويل مباشر</span></div>
+      </div>
+      <p class="prose">هذه النسب <span class="tag rec">توصية بداية</span> — تُعدَّل بعد شهر واحد بناءً على أي ركيزة تُنتج فعليًا محادثات واتساب لا مجرد مشاهدات.</p>
+    </section>
+
+    <!-- 17 -->
+    <section class="phase" id="s17">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">17</span><h2>تقويم 30 يوم</h2></div>
+      <p class="prose">بدل تكرار نفس البنية 30 مرة، إليك الأسبوع النموذجي (يتكرر 4 مرات مع تبديل المواضيع)، متبوعًا بأيام كاملة التفصيل كنموذج تنفيذي مباشر.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>اليوم</th><th>الركيزة</th><th>الصيغة</th><th>المنصة</th></tr></thead>
+          <tbody>
+            <tr><td>السبت</td><td>ثقة</td><td>خلف الكواليس / توثيق فريق</td><td>TikTok + Reels</td></tr>
+            <tr><td>الأحد</td><td>تعليمي</td><td>نصيحة صيانة قصيرة</td><td>TikTok</td></tr>
+            <tr><td>الاثنين</td><td>إثبات اجتماعي</td><td>تقييم عميل حقيقي مصمم</td><td>Instagram</td></tr>
+            <tr><td>الثلاثاء</td><td>ترفيهي</td><td>قبل/بعد مُرضٍ</td><td>TikTok + Reels</td></tr>
+            <tr><td>الأربعاء</td><td>تعليمي</td><td>Carousel «5 أخطاء شائعة»</td><td>Instagram</td></tr>
+            <tr><td>الخميس</td><td>عرض/تحويل</td><td>عرض الأسبوع + CTA واتساب</td><td>كل المنصات + Stories</td></tr>
+            <tr><td>الجمعة</td><td>ترفيهي/موقف واقعي</td><td>سيناريو منزلي طريف</td><td>TikTok</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>نموذج يوم كامل (مثال: الخميس الأول)</h4>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td class="mono">الموضوع</td><td>عرض «تنظيف قبل الضيوف» بخصم على الحجز الأول</td></tr>
+            <tr><td class="mono">الخطاف</td><td>«خلك مرتاح لما يوصلون ضيوفك، احنا سوينا الباقي»</td></tr>
+            <tr><td class="mono">السكربت</td><td>3 لقطات: بيت فوضوي (5 ثوانٍ) → الفريق يعمل (Time-lapse 10 ثوانٍ) → البيت جاهز + عائلة تستقبل ضيوف (5 ثوانٍ)</td></tr>
+            <tr><td class="mono">نص الشاشة</td><td>«عندك ضيوف اليوم؟» → «زُهى تجهز بيتك» → «احجز الآن — رابط بالبايو»</td></tr>
+            <tr><td class="mono">الكابشن</td><td>«ضيوفك يستاهلون بيت مرتب، وانتِ تستاهلين ترتاحين. احجزي الآن (رابط بالبايو) 🧺✨»</td></tr>
+            <tr><td class="mono">CTA</td><td>ضغط رابط واتساب</td></tr>
+            <tr><td class="mono">KPI</td><td>Click-to-WhatsApp، عدد الحجوزات المرتبطة بكود العرض</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 18 -->
+    <section class="phase" id="s18">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">18</span><h2>الإعلانات المدفوعة</h2></div>
+      <div class="phase-why"><b>تنبيه:</b> الأرقام أدناه سيناريوهات تخطيط وليست نتائج مضمونة — كل معدل تحويل حقيقي يُكتشف فقط بعد أول 2–4 أسابيع تشغيل فعلي.</div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>السيناريو</th><th>الميزانية الشهرية التقديرية</th><th>القنوات</th><th>الهدف</th></tr></thead>
+          <tbody>
+            <tr><td>محدود (Lean)</td><td class="num">3,000–6,000 ريال</td><td>Google Search فقط + GBP</td><td>إثبات جدوى النية الشرائية العالية أولًا</td></tr>
+            <tr><td>متوسط (Moderate)</td><td class="num">10,000–20,000 ريال</td><td>Google Search + Meta Retargeting</td><td>إضافة إعادة الاستهداف بعد بناء جمهور موقع/صفحة</td></tr>
+            <tr><td>نمو (Growth)</td><td class="num">30,000+ ريال</td><td>Google + Meta + TikTok Ads</td><td>توسع جغرافي/موسمي بعد إثبات CAC مقبول</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">التقسيم دائمًا: <b>Cold</b> (رسائل ثقة + عرض تجربة أولى) → <b>Warm</b> (زوار الموقع/المتابعون، رسائل مقارنة وضمانات) → <b>Retargeting</b> (من شاهد فيديو أو زار صفحة الأسعار دون حجز) → <b>عملاء حاليون</b> (رسائل اشتراك/تكرار، ليست رسائل اكتساب).</p>
+    </section>
+
+    <!-- 19 -->
+    <section class="phase" id="s19">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">19</span><h2>نظام اختبار الإبداع</h2></div>
+      <p class="prose">مصفوفة الاختبار: <b>الخطاف × الزاوية × الصيغة × الصانع × العرض × CTA</b>. ابدأ بمتغير واحد فقط لكل اختبار حتى تُعرف النتيجة بوضوح.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>المقياس</th><th>مرحلة القمع</th></tr></thead>
+          <tbody>
+            <tr><td>Hook rate / Hold rate</td><td>هل يوقف المحتوى المستخدم فعلًا؟</td></tr>
+            <tr><td>CTR</td><td>هل الرسالة/الإبداع مقنع؟</td></tr>
+            <tr><td>CVR (صفحة → واتساب)</td><td>هل العرض والصفحة يُقنعان؟</td></tr>
+            <tr><td>CPA / CAC</td><td>هل التكلفة مستدامة تجاريًا؟</td></tr>
+            <tr><td>Repeat booking rate</td><td>هل العميل المكتسب يستحق تكلفته؟</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose"><b>معيار الإيقاف:</b> إنفاق يعادل 3× متوسط قيمة الحجز بلا أي تحويل. <b>معيار التوسع:</b> CPA أقل من هامش الربح على أول حجز، مع اتجاه تكرار إيجابي.</p>
+    </section>
+
+    <!-- 20 -->
+    <section class="phase" id="s20">
+      <div class="phase-part">الاكتساب</div>
+      <div class="phase-head"><span class="phase-num">20</span><h2>استراتيجية العروض</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>العرض</th><th>الهدف</th><th>المشغّل</th><th>ملاحظة الهامش</th></tr></thead>
+          <tbody>
+            <tr><td>خصم الحجز الأول</td><td>عملاء جدد Tier 1</td><td>تقليل تردد التجربة الأولى</td><td>خصم محدود، ليس مجانيًا — يحافظ على قيمة الخدمة المدركة</td></tr>
+            <tr><td>باقة اشتراك شهري</td><td>الاحتفاظ + إيراد متكرر</td><td>عميل بعد 2–3 حجوزات ناجحة</td><td>سعر لكل زيارة أقل، هامش أعلى عبر الحجم</td></tr>
+            <tr><td>عرض ما قبل رمضان</td><td>موسمي</td><td>تقويم ثقافي</td><td>الطلب مرتفع أصلًا — لا حاجة لخصم كبير</td></tr>
+            <tr><td>باقة الانتقال (Move-in/out)</td><td>عملاء جدد عالي القيمة</td><td>حدث حياة</td><td>سعر ثابت للمهمة الكاملة لا بالساعة</td></tr>
+            <tr><td>باقة مضيفي الشقق المفروشة</td><td>B2B متكرر</td><td>حجم الوحدات</td><td>سعر بالجملة مقابل التزام شهري</td></tr>
+            <tr><td>مكافأة الإحالة</td><td>اكتساب منخفض التكلفة</td><td>رضا العميل الحالي</td><td>مكافأة للطرفين، ليست للمُحيل فقط</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 21 -->
+    <section class="phase" id="s21">
+      <div class="phase-part">التحويل والاحتفاظ</div>
+      <div class="phase-head"><span class="phase-num">21</span><h2>واتساب للتحويل</h2></div>
+      <div class="phase-why"><b>لماذا يهم:</b> واتساب هو نقطة الالتقاء الفعلية لكل قناة — إذا كانت الرسائل هنا ضعيفة، كل الإنفاق الإعلاني يتسرب من هنا بالذات.</div>
+
+      <div class="wa"><div class="wa-label">الترحيب</div><div class="wa-msg">هلا وغلا 👋 معك زُهى للتنظيف والصيانة المنزلية. تحتاج تنظيف، ولا صيانة، ولا الاثنين؟</div></div>
+      <div class="wa"><div class="wa-label">التأهيل</div><div class="wa-msg">تمام. عطنا نوع المكان (شقة/فيلا) وعدد الغرف، ووش الموعد اللي يناسبك؟</div></div>
+      <div class="wa"><div class="wa-label">عرض السعر</div><div class="wa-msg">حسب التفاصيل، السعر التقديري [X] ريال شامل [كذا]. تبين نثبت الموعد؟</div></div>
+      <div class="wa"><div class="wa-label">تأكيد الحجز</div><div class="wa-msg">تم ✅ حجزك يوم [التاريخ] الساعة [الوقت]. فريقك: [الاسم]. بنذكّرك قبل الموعد بيوم.</div></div>
+      <div class="wa"><div class="wa-label">تذكير</div><div class="wa-msg">بكرة موعدك مع زُهى الساعة [الوقت] 🙌 لو فيه أي تغيير خبرنا الحين.</div></div>
+      <div class="wa"><div class="wa-label">الوصول</div><div class="wa-msg">فريقك [الاسم] في الطريق، يوصلك خلال [X] دقيقة.</div></div>
+      <div class="wa"><div class="wa-label">إتمام الخدمة</div><div class="wa-msg">خلصنا! تكفى شوف الصور 📸 وقولنا رأيك.</div></div>
+      <div class="wa"><div class="wa-label">طلب تقييم</div><div class="wa-msg">يسعدنا تقييمك بدقيقة وحدة، يفرق وايد لنا 🙏 [رابط Google Review]</div></div>
+      <div class="wa"><div class="wa-label">إعادة الحجز</div><div class="wa-msg">وقتها تحجز نفس الخدمة ثاني؟ فريقك [الاسم] جاهز يرجع لك.</div></div>
+      <div class="wa"><div class="wa-label">استرجاع (Win-back)</div><div class="wa-msg">اشتقنا لك 👋 مرّ وقت من آخر حجز، عندنا عرض خاص لعودتك.</div></div>
+      <div class="wa"><div class="wa-label">الإحالة</div><div class="wa-msg">لو عجبتك تجربتك، رشّحنا لأي حد قريب منك — يكسب هو خصم وتكسبين أنتِ خصم كمان 🎁</div></div>
+    </section>
+
+    <!-- 22 -->
+    <section class="phase" id="s22">
+      <div class="phase-part">التحويل والاحتفاظ</div>
+      <div class="phase-head"><span class="phase-num">22</span><h2>نظام UGC</h2></div>
+      <div class="prose">
+        <p><b>متى نطلب؟</b> فور اكتمال الخدمة، ورسالة متابعة بعد 24 ساعة لمن لم يرد. <b>ماذا نطلب؟</b> صورة/فيديو قصير للنتيجة، وإذن استخدام الاسم الأول فقط ما لم يوافق العميل صراحة على الظهور الكامل. <b>هل نصوّر العميل؟</b> فقط بموافقة صريحة مسبقة، وأغلب المحتوى يركّز على النتيجة (المكان) لا وجه العميل — يحترم خصوصية المنزل.</p>
+        <p><b>مسار التحويل:</b> تقييم Google مكتوب → مقتطف مصمم لـStory → إذا كان قويًا يتحول لـReel كامل → إذا أثبت أداءً جيدًا يُختبر كإعلان → يُضاف كدليل ثقة في صفحة الهبوط.</p>
+      </div>
+    </section>
+
+    <!-- 23 -->
+    <section class="phase" id="s23">
+      <div class="phase-part">التحويل والاحتفاظ</div>
+      <div class="phase-head"><span class="phase-num">23</span><h2>استراتيجية الصنّاع (Creators)</h2></div>
+      <p class="prose">التقييم لا يعتمد على عدد المتابعين وحده، بل: الموقع الجغرافي (نفس مدينة الخدمة)، جودة التفاعل الحقيقي، ومدى ملاءمة جمهوره لعائلات/سيدات منزل. صنّاع محتوى محليون متوسطو الحجم (10K–100K) غالبًا أعلى عائدًا من حساب ضخم عام <span class="tag hypothesis">HYPOTHESIS مبنية على اتجاه صعود المؤثرين الصغار المذكور في تحليل السوق</span>.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td class="mono">Brief</td><td>مشكلة منزلية حقيقية + حل زُهى + تجربة صادقة، بدون سكربت مصطنع</td></tr>
+            <tr><td class="mono">المخرجات</td><td>فيديو واحد أصلي + إذن استخدامه كإعلان لمدة محددة (مثلاً 60 يومًا)</td></tr>
+            <tr><td class="mono">حقوق الاستخدام</td><td>يجب التفاوض عليها كتابيًا قبل النشر، تشمل الاستخدام المدفوع صراحة</td></tr>
+            <tr><td class="mono">التتبع</td><td>كود خصم فريد لكل صانع لقياس الحجوزات الفعلية لا المشاهدات فقط</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 24 -->
+    <section class="phase" id="s24">
+      <div class="phase-part">التحويل والاحتفاظ</div>
+      <div class="phase-head"><span class="phase-num">24</span><h2>الاحتفاظ بالعملاء</h2></div>
+      <div class="funnel">
+        <div class="funnel-step"><div class="funnel-stage">اليوم 0</div><div class="funnel-detail"><div><b>الفعل</b>رسالة شكر + صور الإنجاز</div></div></div>
+        <div class="funnel-step"><div class="funnel-stage">1–3 أيام</div><div class="funnel-detail"><div><b>الفعل</b>طلب تقييم/ملاحظات</div></div></div>
+        <div class="funnel-step"><div class="funnel-stage">نافذة إعادة الحجز</div><div class="funnel-detail"><div><b>الفعل</b>تذكير مبني على دورة الخدمة الفعلية (أسبوعي/شهري/موسمي) — لا توقيت موحّد للجميع</div></div></div>
+        <div class="funnel-step"><div class="funnel-stage">بعد فترة غياب</div><div class="funnel-detail"><div><b>الفعل</b>رسالة استرجاع (Win-back) بعرض مخصص</div></div></div>
+        <div class="funnel-step"><div class="funnel-stage">عميل متكرر</div><div class="funnel-detail"><div><b>الفعل</b>عرض اشتراك/عضوية بأولوية حجز وسعر أفضل</div></div></div>
+      </div>
+      <p class="prose"><b>مبدأ أساسي:</b> نافذة التذكير تختلف حسب نوع الخدمة — تنظيف أسبوعي يحتاج تذكيرًا كل 6 أيام، وصيانة تكييف موسمية تحتاج تذكيرًا كل 4–6 أشهر. توقيت موحّد للجميع يبدو كإزعاج آلي لا اهتمام حقيقي <span class="tag rec">RECOMMENDATION</span>.</p>
+    </section>
+
+    <!-- 25 -->
+    <section class="phase" id="s25">
+      <div class="phase-part">التحويل والاحتفاظ</div>
+      <div class="phase-head"><span class="phase-num">25</span><h2>نظام الإحالة</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td class="mono">الحافز</td><td>خصم متبادل للطرفين (المُحيل والمُحال)، لا للمُحيل فقط — يقلل شعور «البيع» ويرفع معدل المشاركة</td></tr>
+            <tr><td class="mono">الآلية</td><td>رابط/كود شخصي عبر واتساب بعد تقييم إيجابي مباشرة</td></tr>
+            <tr><td class="mono">التتبع</td><td>كود فريد لكل عميل مربوط بسجل الحجوزات</td></tr>
+            <tr><td class="mono">منع الاحتيال</td><td>الخصم يُفعَّل فقط بعد إتمام أول حجز فعلي للمُحال، لا عند التسجيل</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 26 -->
+    <section class="phase" id="s26">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">26</span><h2>حزمة أدوات AI</h2></div>
+      <p class="prose">المبدأ: أقل عدد أدوات يحقق أكبر نتيجة — ليس كل أداة مشهورة تستحق الاشتراك.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الأداة</th><th>الاستخدام</th><th>الأهمية</th><th>ملاحظة</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">Claude / ChatGPT</td><td>استراتيجية، نصوص، تحليل بيانات</td><td>أساسي</td><td>محرك هذا المستند نفسه</td></tr>
+            <tr><td class="mono">Canva</td><td>تصميم منشورات وHighlights</td><td>أساسي</td><td>سريع، لا يحتاج مصمم لكل قطعة</td></tr>
+            <tr><td class="mono">CapCut</td><td>مونتاج TikTok/Reels</td><td>أساسي</td><td>قوالب نص متحرك جاهزة للعربي</td></tr>
+            <tr><td class="mono">أداة جدولة (Meta Business Suite / Metricool)</td><td>جدولة النشر</td><td>أساسي</td><td>يوفر وقت الفريق اليومي</td></tr>
+            <tr><td class="mono">WhatsApp Business API (عبر مزوّد مثل Wati/360dialog)</td><td>ردود شبه آلية، تذكيرات، تتبع محادثات</td><td>أساسي بمجرد تجاوز حجم الرد اليدوي</td><td>يحتاج ميزانية مزوّد شهرية</td></tr>
+            <tr><td class="mono">Google Analytics 4 + Looker Studio</td><td>لوحة التحليلات (قسم 28)</td><td>أساسي</td><td>مجاني</td></tr>
+            <tr><td class="mono">جدول بيانات + Zapier/Make/n8n</td><td>ربط النماذج بواتساب/CRM بسيط في المرحلة المبكرة</td><td>أساسي في البداية</td><td>بديل اقتصادي لـCRM كامل قبل إثبات الحجم</td></tr>
+            <tr><td class="mono">ElevenLabs</td><td>تعليق صوتي للفيديوهات</td><td>اختياري</td><td>يجب اختبار جودة اللهجة السعودية فعليًا قبل الاعتماد عليه <span class="tag assumption">ASSUMPTION</span></td></tr>
+            <tr><td class="mono">TikTok Symphony</td><td>مساعد إنتاج إعلانات TikTok</td><td>اختياري</td><td>مفيد فقط بعد إثبات إعلانات TikTok نفسها</td></tr>
+            <tr><td class="mono">Runway / أدوات فيديو AI</td><td>مؤثرات بصرية خاصة</td><td>اختياري</td><td>غير ضروري في المرحلة التأسيسية</td></tr>
+            <tr><td class="mono">HubSpot (نسخة مجانية) أو CRM بسيط</td><td>إدارة العملاء عند تجاوز حجم جدول البيانات</td><td>اختياري حتى النمو</td><td>الانتقال إليه عند تجاوز ~200 عميل نشط تقديريًا</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 27 -->
+    <section class="phase" id="s27">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">27</span><h2>نظام الأتمتة</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الخطوة</th><th>أتمتة كاملة؟</th></tr></thead>
+          <tbody>
+            <tr><td>بحث الأفكار وتحليل المنافسين</td><td>مساعدة AI + مراجعة بشرية</td></tr>
+            <tr><td>كتابة السكربت والكابشن</td><td>مسودة AI + تعديل بشري إلزامي (يحمي الصوت الحقيقي)</td></tr>
+            <tr><td>الإنتاج والتصوير</td><td>بشري بالكامل</td></tr>
+            <tr><td>الموافقة قبل النشر</td><td>بشري إلزامي دائمًا</td></tr>
+            <tr><td>النشر والجدولة</td><td>أتمتة كاملة</td></tr>
+            <tr><td>جمع البيانات والتحليل</td><td>أتمتة كاملة (لوحة تحديث دورية)</td></tr>
+            <tr><td>رسائل واتساب الروتينية (تأكيد/تذكير)</td><td>أتمتة كاملة عبر WhatsApp API</td></tr>
+            <tr><td>الرد على استفسارات معقدة/شكاوى</td><td>بشري إلزامي دائمًا</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 28 -->
+    <section class="phase" id="s28">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">28</span><h2>لوحة التحليلات</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الفئة</th><th>مقاييس يومية</th><th>مقاييس أسبوعية</th><th>مقاييس شهرية</th></tr></thead>
+          <tbody>
+            <tr><td>الوعي</td><td>—</td><td>Reach, Watch time</td><td>اتجاه النمو الشهري</td></tr>
+            <tr><td>التفاعل</td><td>—</td><td>Shares, Saves, Comments</td><td>أفضل 5 قطع محتوى</td></tr>
+            <tr><td>الاكتساب</td><td>محادثات واتساب جديدة</td><td>Clicks, Leads</td><td>CAC حسب القناة</td></tr>
+            <tr><td>التحويل</td><td>حجوزات اليوم</td><td>معدل التحويل، CPA</td><td>CAC نهائي</td></tr>
+            <tr><td>الإيراد</td><td>—</td><td>الإيراد الأسبوعي</td><td>AOV, LTV, ROAS</td></tr>
+            <tr><td>الاحتفاظ</td><td>—</td><td>معدل إعادة الحجز</td><td>الإحالة، الـChurn</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">لا تُغرق الإدارة بكل رقم متاح — 6 أرقام أسبوعية فقط تكفي لاتخاذ قرار: محادثات واتساب جديدة، معدل التحويل، CPA، الإيراد، معدل إعادة الحجز، وعدد التقييمات الجديدة <span class="tag rec">RECOMMENDATION</span>.</p>
+    </section>
+
+    <!-- 29 -->
+    <section class="phase" id="s29">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">29</span><h2>نظام الإسناد</h2></div>
+      <p class="prose">كل عميل جديد يُسأل ضمن رسالة الترحيب: «كيف سمعت عنا؟» + حقل مصدر إلزامي في سجل الحجز (Google / Instagram / TikTok / إحالة / خرائط Google / إعلان). لكل قناة رقمية: UTM مخصص على أي رابط، وكود ترويجي فريد لكل صانع محتوى أو حملة إحالة، بحيث تُقارن التكلفة الفعلية للعميل حسب مصدره الحقيقي لا التقدير.</p>
+    </section>
+
+    <!-- 30 -->
+    <section class="phase" id="s30">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">30</span><h2>شجرة القرار</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الحالة</th><th>التشخيص المرجّح</th><th>الإجراء</th></tr></thead>
+          <tbody>
+            <tr><td>مشاهدات عالية + نسبة إكمال منخفضة</td><td>مشكلة في الخطاف أو أول 3 ثوانٍ</td><td>غيّر الخطاف فقط، أعد الاختبار</td></tr>
+            <tr><td>CTR منخفض</td><td>الرسالة أو الإبداع غير مقنع</td><td>اختبر زاوية رسالة جديدة</td></tr>
+            <tr><td>CTR مرتفع + تحويل صفحة الهبوط منخفض</td><td>مشكلة في العرض/الصفحة/الثقة لا الإبداع</td><td>راجع السعر الظاهر، وضوح CTA، شارات الثقة</td></tr>
+            <tr><td>Leads كثيرة + حجوزات فعلية قليلة</td><td>مشكلة في الرد على واتساب أو السعر أو التأهيل</td><td>راجع سرعة الرد ونص التسعير</td></tr>
+            <tr><td>CAC يرتفع باستمرار</td><td>إجهاد الإبداع، أو تغيّر الجمهور، أو دخول منافس جديد</td><td>حدّث الإبداع، راجع الاستهداف، افحص السوق</td></tr>
+            <tr><td>حجوزات جيدة + تكرار ضعيف</td><td>مشكلة في تجربة الخدمة الفعلية لا التسويق</td><td>راجع جودة التنفيذ الميداني قبل أي حل تسويقي</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 31 -->
+    <section class="phase" id="s31">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">31</span><h2>إدارة السمعة</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الموقف</th><th>الرد العلني</th><th>التصعيد الخاص</th></tr></thead>
+          <tbody>
+            <tr><td>تقييم سلبي حقيقي</td><td>اعتذار مختصر صادق + دعوة للتواصل خاص، بدون حذف</td><td>حل فعلي خلال 24 ساعة + متابعة لتحديث التقييم</td></tr>
+            <tr><td>تعليق سلبي على سوشيال ميديا</td><td>رد سريع غير دفاعي</td><td>نقل التفاصيل لواتساب فورًا</td></tr>
+            <tr><td>تقييم مزيّف مشتبه به</td><td>رد مهني بدون اتهام مباشر</td><td>الإبلاغ الرسمي لمنصة Google بالأدلة</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">لا تُحذف الانتقادات الحقيقية — التعامل العلني الناضج مع نقد صادق يبني ثقة أكبر من صفحة بلا أي تقييم سلبي على الإطلاق (تبدو غير واقعية).</p>
+    </section>
+
+    <!-- 32 -->
+    <section class="phase" id="s32">
+      <div class="phase-part">الأنظمة</div>
+      <div class="phase-head"><span class="phase-num">32</span><h2>خطة الأزمات</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الحالة</th><th>فوري</th><th>تواصل</th><th>حل</th><th>وقاية مستقبلية</th></tr></thead>
+          <tbody>
+            <tr><td>تلف ممتلكات</td><td>توثيق فوري بالصور من الفريق</td><td>اتصال شخصي من الإدارة خلال ساعة</td><td>تعويض/إصلاح متفق عليه كتابيًا</td><td>تأمين تشغيلي على كل مهمة</td></tr>
+            <tr><td>تأخر الفريق</td><td>إشعار استباقي فور توقع التأخير</td><td>تحديث دقيق بالوقت الجديد</td><td>خصم أو خدمة إضافية تعويضية عند التأخر الكبير</td><td>هامش وقت أكبر بين المواعيد المتتالية</td></tr>
+            <tr><td>تنظيف غير مُرضٍ</td><td>الاعتراف الفوري بدون تبرير</td><td>عرض إعادة التنظيف مجانًا</td><td>إعادة تنفيذ بفريق آخر إن لزم</td><td>مراجعة جودة الفريق المعني</td></tr>
+            <tr><td>محتوى سلبي منتشر</td><td>تقييم الموقف قبل أي رد علني</td><td>رد واحد رسمي هادئ، لا نقاش في التعليقات</td><td>تواصل مباشر مع صاحب الشكوى الأصلية</td><td>مراجعة داخلية للسبب الجذري</td></tr>
+            <tr><td>هجوم من منافس</td><td>عدم الرد الانفعالي إطلاقًا</td><td>تجاهل علني، توثيق داخلي فقط</td><td>لا شيء علنيًا غالبًا — الرد بالأداء لا الكلام</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 33 -->
+    <section class="phase" id="s33">
+      <div class="phase-part">التنفيذ</div>
+      <div class="phase-head"><span class="phase-num">33</span><h2>خطة 90 يوم</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>المرحلة</th><th>الهدف</th><th>التركيز</th></tr></thead>
+          <tbody>
+            <tr><td><b>أيام 1–30</b><br>التأسيس</td><td>بناء البنية الأساسية + أول بيانات حقيقية</td><td>GBP مكتمل، صفحة هبوط جاهزة، واتساب أعمال مفعّل، أول 20 قطعة محتوى، حملة Google محدودة (سيناريو Lean)</td></tr>
+            <tr><td><b>أيام 31–60</b><br>التحسين</td><td>تحسين ما أظهرت بياناته أداءً</td><td>مضاعفة الركيزة الأعلى أداءً، إيقاف ما لا يعمل، إطلاق نظام الإحالة، بدء اختبار إنستغرام/TikTok المدفوع بميزانية صغيرة</td></tr>
+            <tr><td><b>أيام 61–90</b><br>التوسع</td><td>زيادة الاستثمار فيما أثبت جدواه فقط</td><td>رفع ميزانية القناة الأفضل CAC، توسيع شراكات B2B (مضيفي مفروشات/عقارات)، إطلاق باقة الاشتراك الشهري رسميًا</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">لا تُعطى أرقام نتائج مضمونة هنا — كل هدف كمي فعلي يُحدَّد بعد أول 30 يومًا من بيانات حقيقية.</p>
+    </section>
+
+    <!-- 34 -->
+    <section class="phase" id="s34">
+      <div class="phase-part">التنفيذ</div>
+      <div class="phase-head"><span class="phase-num">34</span><h2>20 تجربة نمو</h2></div>
+      <p class="prose">مرتبة حسب <span class="mono">التأثير × الثقة ÷ الجهد</span> — الأعلى أولًا.</p>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>#</th><th>الفرضية</th><th>مقياس النجاح</th><th>الجهد</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>سعر ظاهر مسبقًا يرفع معدل التحويل من صفحة الهبوط</td><td>CVR الصفحة</td><td>منخفض</td></tr>
+            <tr><td class="num">2</td><td>الرد على واتساب خلال 5 دقائق يرفع معدل الحجز مقارنة بأكثر من 30 دقيقة</td><td>Booking rate</td><td>منخفض</td></tr>
+            <tr><td class="num">3</td><td>تثبيت نفس الفني للعميل يرفع معدل التكرار</td><td>Repeat rate</td><td>متوسط (تشغيلي)</td></tr>
+            <tr><td class="num">4</td><td>ذكر «فريق نسائي متاح» يرفع التحويل لدى شريحة نسائية محددة</td><td>CVR شريحة</td><td>منخفض</td></tr>
+            <tr><td class="num">5</td><td>إحالة بمكافأة للطرفين تفوق إحالة بمكافأة لطرف واحد</td><td>Referral rate</td><td>منخفض</td></tr>
+            <tr><td class="num">6</td><td>عرض «باقة الانتقال» بسعر ثابت يفوق التسعير بالساعة في التحويل</td><td>CVR العرض</td><td>منخفض</td></tr>
+            <tr><td class="num">7</td><td>محتوى «توثيق الهوية» يقلل معدل التخلي عند مرحلة الحجز</td><td>Booking abandonment</td><td>متوسط</td></tr>
+            <tr><td class="num">8</td><td>حملة Google Search تفوق TikTok Ads في CAC للحجز الأول</td><td>CAC مقارن</td><td>متوسط</td></tr>
+            <tr><td class="num">9</td><td>صانع محتوى محلي متوسط الحجم يفوق حساب ضخم في CVR</td><td>CVR بالكود</td><td>متوسط</td></tr>
+            <tr><td class="num">10</td><td>تذكير إعادة الحجز المبني على دورة الخدمة يفوق التذكير الموحّد</td><td>Repeat rate</td><td>منخفض</td></tr>
+            <tr><td class="num">11</td><td>باقة اشتراك شهرية تقلل الـChurn مقارنة بالحجز لمرة واحدة</td><td>Churn</td><td>متوسط</td></tr>
+            <tr><td class="num">12</td><td>صور قبل/بعد في الإعلان تفوق نص فقط في CTR</td><td>CTR</td><td>منخفض</td></tr>
+            <tr><td class="num">13</td><td>عرض موسمي (رمضان) يحتاج خصمًا أقل من العرض العادي ليحقق نفس الحجم</td><td>CVR مقارن بالخصم</td><td>منخفض</td></tr>
+            <tr><td class="num">14</td><td>شراكة مع مجموعة ملاك مفروشات تُنتج CAC أقل من الإعلانات المدفوعة</td><td>CAC القناة</td><td>مرتفع (مبيعات مباشرة)</td></tr>
+            <tr><td class="num">15</td><td>Carousel تعليمي يفوق فيديو في حفظ (Save) المحتوى على إنستغرام</td><td>Saves</td><td>منخفض</td></tr>
+            <tr><td class="num">16</td><td>ذكر وقت استجابة معلن (SLA) يرفع الثقة المُقاسة بالاستبيان</td><td>Trust survey</td><td>منخفض</td></tr>
+            <tr><td class="num">17</td><td>صفحة هبوط بلهجة سعودية محادثية تفوق نسخة فصحى رسمية</td><td>CVR</td><td>منخفض</td></tr>
+            <tr><td class="num">18</td><td>طلب التقييم عبر واتساب خلال ساعتين من الخدمة يفوق طلبه بعد يوم</td><td>Review rate</td><td>منخفض</td></tr>
+            <tr><td class="num">19</td><td>إعلان يستهدف نساء تحديدًا يفوق استهدافًا عامًا في CAC</td><td>CAC بالجمهور</td><td>منخفض</td></tr>
+            <tr><td class="num">20</td><td>خدمة الصيانة تفتح بابًا لبيع اشتراك تنظيف والعكس (Cross-sell فعلي)</td><td>Attach rate</td><td>متوسط</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 35 -->
+    <section class="phase" id="s35">
+      <div class="phase-part">التنفيذ</div>
+      <div class="phase-head"><span class="phase-num">35</span><h2>نظام التشغيل الأسبوعي</h2></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <thead><tr><th>الدورة</th><th>المهام</th></tr></thead>
+          <tbody>
+            <tr><td><b>يوميًا</b></td><td>مراقبة محادثات واتساب الجديدة، نشر المحتوى المجدول، الرد على التعليقات، متابعة أي شكوى فورًا</td></tr>
+            <tr><td><b>أسبوعيًا</b></td><td>مراجعة الـ6 أرقام الأساسية (قسم 28)، مراجعة أداء المحتوى وتحديد الفائز، مراجعة الإعلانات النشطة، فحص تحرّك المنافسين، إطلاق تجربة نمو جديدة من القائمة</td></tr>
+            <tr><td><b>شهريًا</b></td><td>مراجعة الإيراد وCAC وLTV، مراجعة الاحتفاظ والإحالة، إعادة توزيع الميزانية حسب الأداء، تحديث هذا المستند بالتغييرات الاستراتيجية</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 36 -->
+    <section class="phase" id="s36">
+      <div class="phase-part">التنفيذ</div>
+      <div class="phase-head"><span class="phase-num">36</span><h2>التقرير الشهري</h2></div>
+      <div class="prose">
+        <ol>
+          <li>ماذا حدث هذا الشهر؟</li>
+          <li>لماذا حدث؟</li>
+          <li>ما الذي نجح؟</li>
+          <li>ما الذي فشل؟</li>
+          <li>ما الذي تعلمناه؟</li>
+          <li>ما الذي يجب إيقافه؟</li>
+          <li>ما الذي يستحق التوسع فيه؟</li>
+          <li>ما الذي يجب اختباره التالي؟</li>
+          <li>أين ذهبت الميزانية بالضبط؟</li>
+          <li>ما خطة الشهر القادم؟</li>
+        </ol>
+      </div>
+      <div class="callout teal">
+        <h4>نظام التحديث المستمر</h4>
+        <p>مع كل بيانات جديدة (مبيعات، حجوزات، أداء إعلانات، تحليلات، تقييمات، معلومات منافس جديدة) تُقارن: <b>الأداء السابق → الأداء الحالي → التغيّر → السبب → الإجراء</b>، ثم يُصنَّف كل عنصر: <span class="tag fact">استمرار (KEEP)</span> <span class="tag rec">إيقاف (STOP)</span> <span class="tag assumption">تعديل (CHANGE)</span> <span class="tag hypothesis">توسع (SCALE)</span> واختبار جديد (TEST). لا تُبنى الاستراتيجية من الصفر في كل مرة.</p>
+      </div>
+    </section>
+
+    <!-- DO THIS FIRST -->
+    <section class="phase" id="sfirst" style="border-top:2px solid var(--sand)">
+      <div class="phase-part" style="color:var(--sand)">الأولوية القصوى</div>
+      <div class="phase-head"><span class="phase-num" style="color:var(--sand)">★</span><h2>ابدأ بهذا خلال أول 7 أيام</h2></div>
+      <p class="prose">عشر خطوات فقط، مرتبة حسب الأولوية — لا تنتقل للقناة التالية قبل إنجاز هذه.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>اجمع الحقائق الناقصة قبل أي تنفيذ</h4>
+            <p>حدد قائمة الخدمات الفعلية وأسعارها، المدينة/المدن المخدومة، وعدد الفرق المتاحة حاليًا.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>كل خطوة لاحقة تعتمد على هذه الحقائق</div>
+              <div><b>الأداة</b>اجتماع داخلي + جدول بيانات</div>
+              <div><b>المسؤول</b>المؤسس/الإدارة</div>
+              <div><b>الوقت</b>نصف يوم</div>
+              <div><b>KPI</b>وثيقة حقائق مكتملة</div>
+              <div><b>المخرج</b>مصدر حقيقة واحد للفريق</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>فعّل واتساب أعمال باحترافية</h4>
+            <p>رقم مخصص، رسالة ترحيب تلقائية، قائمة ردود سريعة للأسئلة المتكررة (السعر، المدة، التغطية الجغرافية).</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>نقطة التحويل الفعلية لكل قناة</div>
+              <div><b>الأداة</b>WhatsApp Business (مجاني للبداية)</div>
+              <div><b>المسؤول</b>مسؤول العمليات</div>
+              <div><b>الوقت</b>ساعتان</div>
+              <div><b>KPI</b>وقت استجابة أول رسالة</div>
+              <div><b>المخرج</b>قناة تحويل جاهزة</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>أكمل واضبط Google Business Profile</h4>
+            <p>الفئة الصحيحة، وصف بدون كلام عام، صور حقيقية، رقم واتساب ظاهر، وأول 5 طلبات تقييم من عملاء سابقين إن وُجدوا.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>أعلى نية شرائية متاحة مجانًا</div>
+              <div><b>الأداة</b>Google Business Profile</div>
+              <div><b>المسؤول</b>مسؤول التسويق</div>
+              <div><b>الوقت</b>يوم واحد</div>
+              <div><b>KPI</b>عدد المشاهدات، عدد التقييمات</div>
+              <div><b>المخرج</b>ملف جاهز للظهور في البحث المحلي</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>ابنِ صفحة هبوط بسيطة بسعر ظاهر</h4>
+            <p>صفحة واحدة: الخدمات، نطاق السعر، شارات ثقة، زر واتساب ثابت — لا حاجة لموقع معقد الآن.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>الشفافية تقلل تردد الحجز الأول</div>
+              <div><b>الأداة</b>أي منشئ صفحات بسيط</div>
+              <div><b>المسؤول</b>مسؤول التسويق</div>
+              <div><b>الوقت</b>يومان</div>
+              <div><b>KPI</b>Click-to-WhatsApp rate</div>
+              <div><b>المخرج</b>صفحة تحويل جاهزة لأي إعلان</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>صوّر أول 10 قطع محتوى إثبات ثقة</h4>
+            <p>قبل/بعد حقيقية، خلف كواليس توثيق الفريق — لا تنتظر إنتاجًا احترافيًا، الحقيقي أهم من المثالي.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>الثقة أهم من الوصول في هذه المرحلة</div>
+              <div><b>الأداة</b>جوال + CapCut</div>
+              <div><b>المسؤول</b>مسؤول المحتوى</div>
+              <div><b>الوقت</b>يومان</div>
+              <div><b>KPI</b>عدد القطع الجاهزة للنشر</div>
+              <div><b>المخرج</b>مخزون محتوى يكفي أسبوعين</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>أطلق حملة Google Search محدودة (سيناريو Lean)</h4>
+            <p>3–5 كلمات مفتاحية عالية النية فقط، مدينة واحدة، ميزانية يومية صغيرة قابلة للإيقاف الفوري.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>يلتقط طلبًا موجودًا فعلًا، أسرع دليل جدوى</div>
+              <div><b>الأداة</b>Google Ads</div>
+              <div><b>المسؤول</b>مسؤول الإعلانات</div>
+              <div><b>الوقت</b>نصف يوم إعداد</div>
+              <div><b>KPI</b>CPA أولي</div>
+              <div><b>المخرج</b>أول بيانات تحويل حقيقية</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>صمّم نظام طلب التقييمات</h4>
+            <p>رسالة واتساب تلقائية بعد كل خدمة برابط Google Review مباشر.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>حجم التقييمات يبني الثقة أسرع من أي إعلان</div>
+              <div><b>الأداة</b>WhatsApp + رابط مختصر</div>
+              <div><b>المسؤول</b>مسؤول العمليات</div>
+              <div><b>الوقت</b>ساعة واحدة</div>
+              <div><b>KPI</b>معدل الاستجابة للطلب</div>
+              <div><b>المخرج</b>تدفق تقييمات منتظم</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>ابدأ النشر بوتيرة 4 مرات أسبوعيًا على TikTok/Instagram</h4>
+            <p>استخدم المحتوى المصوَّر في الخطوة 5، بلا انتظار جدول تحرير كامل.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>الاتساق أهم من الكمال في بداية أي حساب</div>
+              <div><b>الأداة</b>TikTok, Instagram</div>
+              <div><b>المسؤول</b>مسؤول المحتوى</div>
+              <div><b>الوقت</b>مستمر</div>
+              <div><b>KPI</b>Watch time, Reach</div>
+              <div><b>المخرج</b>حضور رقمي نشط قابل للقياس</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>جهّز جدول بيانات تتبع بسيط (مصدر العميل + الحجوزات)</h4>
+            <p>عمود واحد إلزامي: «كيف سمعت عنا؟» — يُبنى عليه كل قرار قناة لاحقًا.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>بدون هذا، كل قرار ميزانية تخمين</div>
+              <div><b>الأداة</b>Google Sheets</div>
+              <div><b>المسؤول</b>مسؤول التسويق</div>
+              <div><b>الوقت</b>ساعة واحدة</div>
+              <div><b>KPI</b>اكتمال البيانات لكل حجز</div>
+              <div><b>المخرج</b>نظام إسناد أولي يعمل</div>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge"></div>
+          <div>
+            <h4>حدد نافذة إعادة الحجز لكل خدمة أساسية</h4>
+            <p>اتفق داخليًا على التوقيت المناسب لكل نوع خدمة قبل بناء أي رسالة تذكير آلية.</p>
+            <div class="step-grid">
+              <div><b>لماذا</b>يمنع رسائل تذكير عشوائية تبدو آلية ومزعجة</div>
+              <div><b>الأداة</b>اجتماع داخلي</div>
+              <div><b>المسؤول</b>الإدارة + العمليات</div>
+              <div><b>الوقت</b>ساعة واحدة</div>
+              <div><b>KPI</b>خطة نوافذ موثقة لكل خدمة</div>
+              <div><b>المخرج</b>أساس محرك الاحتفاظ (قسم 24)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INFO NEEDED -->
+    <section class="phase" id="sinfo" style="border-top:2px solid var(--rose)">
+      <div class="phase-part" style="color:var(--rose)">قبل التنفيذ الدقيق</div>
+      <div class="phase-head"><span class="phase-num" style="color:var(--rose)">؟</span><h2>معلومات مطلوبة</h2></div>
+      <div class="callout rose">
+        <p>هذا المستند نسخة أولى كاملة تعمل فورًا بالافتراضات المُوسومة أعلاه. لتحويلها إلى تنفيذ دقيق 100%، هذه المعلومات ضرورية:</p>
+      </div>
+      <ul class="prose">
+        <li>القائمة الكاملة والدقيقة للخدمات والأسعار الحالية.</li>
+        <li>المدينة أو المدن التي تعمل فيها زُهى فعليًا اليوم.</li>
+        <li>القنوات الحالية إن وُجدت (حسابات، عدد متابعين، أداء سابق للإعلانات).</li>
+        <li>حجم الحجوزات الشهري الحالي وعدد العملاء المتكررين.</li>
+        <li>عدد الفرق/الفنيين المتاحين وطاقتهم الاستيعابية.</li>
+        <li>الميزانية التسويقية الشهرية المتاحة فعليًا.</li>
+        <li>حالة توثيق/فحص خلفية العاملين حاليًا (موجودة أم تحتاج بناء).</li>
+        <li>هل يوجد رقم واتساب أعمال ونظام CRM حاليًا؟</li>
+        <li>أهم 3 منافسين تراهم الإدارة تهديدًا فعليًا محليًا (بالاسم).</li>
+        <li>أي أصول علامة تجارية جاهزة (شعار، ألوان، صور فريق) لتوحيد الهوية البصرية عبر القنوات.</li>
+      </ul>
+      <p class="prose">أرسل أيًا من هذه المعلومات في أي وقت، وسأُحدّث الأقسام المرتبطة مباشرة دون إعادة بناء الاستراتيجية من الصفر — تمامًا كما يعمل قسم تسويق حقيقي.</p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  var links = document.querySelectorAll('.toc a[href^="#"]');
+  var sections = [];
+  links.forEach(function(a){
+    var id = a.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if(el) sections.push({id:id, el:el, link:a});
+  });
+  if(!sections.length) return;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      var match = sections.find(function(s){ return s.el === entry.target; });
+      if(!match) return;
+      if(entry.isIntersecting){
+        links.forEach(function(l){ l.classList.remove('active'); });
+        match.link.classList.add('active');
+      }
+    });
+  }, {rootMargin: '-15% 0px -70% 0px', threshold: 0});
+  sections.forEach(function(s){ io.observe(s.el); });
+})();
+</script>
+
+</body></html>
