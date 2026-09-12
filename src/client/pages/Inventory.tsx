@@ -14,6 +14,7 @@ import {
   Printer,
   QrCode as QrCodeIcon,
   Paperclip,
+  Copy,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Asset, AssetCategory, AssetCondition, AssetStatus, AuditCycle, AuditItem, AssetScrappageLog } from '../../shared/types.js';
@@ -123,6 +124,10 @@ export function InventoryTab() {
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [showAssetForm, setShowAssetForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  // نسخ أصل قائم — يفتح نموذج "إضافة" مُعبَّأً مسبقاً بكل بيانات هذا
+  // الأصل (لسهولة إدخال أصناف متكررة عدة مرات) عدا كود الأصل نفسه (يبقى
+  // فارغاً، لأنه فريد إجبارياً) وفاتورة الشراء (لا تُنسَخ).
+  const [duplicateSource, setDuplicateSource] = useState<Asset | null>(null);
   const [scrappingAsset, setScrappingAsset] = useState<Asset | null>(null);
   const [printingAsset, setPrintingAsset] = useState<Asset | null>(null);
   const [showNewAudit, setShowNewAudit] = useState(false);
@@ -280,6 +285,7 @@ export function InventoryTab() {
               <button
                 onClick={() => {
                   setEditingAsset(null);
+                  setDuplicateSource(null);
                   setShowAssetForm(true);
                 }}
                 className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -343,6 +349,16 @@ export function InventoryTab() {
                                 className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                               >
                                 <Pencil className="h-3.5 w-3.5" /> {t('تعديل')}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingAsset(null);
+                                  setDuplicateSource(a);
+                                  setShowAssetForm(true);
+                                }}
+                                className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:underline"
+                              >
+                                <Copy className="h-3.5 w-3.5" /> {t('نسخ')}
                               </button>
                               {a.status !== 'scrapped' && (
                                 <button
@@ -487,13 +503,16 @@ export function InventoryTab() {
       {showAssetForm && (
         <AssetFormModal
           asset={editingAsset}
+          duplicateFrom={duplicateSource ?? undefined}
           onClose={() => {
             setShowAssetForm(false);
             setEditingAsset(null);
+            setDuplicateSource(null);
           }}
           onSaved={() => {
             setShowAssetForm(false);
             setEditingAsset(null);
+            setDuplicateSource(null);
             refresh();
           }}
         />
@@ -522,14 +541,28 @@ export function InventoryTab() {
 // ---------------------------------------------------------------------------
 // نموذج إضافة/تعديل أصل
 // ---------------------------------------------------------------------------
-function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onClose: () => void; onSaved: () => void }) {
+function AssetFormModal({
+  asset,
+  duplicateFrom,
+  onClose,
+  onSaved,
+}: {
+  asset: Asset | null;
+  duplicateFrom?: Asset;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { t, tt } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // مصدر القيم الافتراضية لكل الحقول عدا كود الأصل وفاتورة الشراء (انظر
+  // تعليق duplicateSource في InventoryTab): بيانات الأصل نفسه عند التعديل،
+  // أو الأصل المصدر عند النسخ، أو لا شيء عند الإضافة العادية.
+  const seed = asset ?? duplicateFrom;
   // مُتحكَّم بهما (لا defaultValue) لمعاينة مبلغ الضريبة حيّاً أثناء
   // الكتابة — نفس فكرة previewExpenseTax في Expenses.tsx بالضبط.
-  const [purchasePrice, setPurchasePrice] = useState(asset?.purchase_price != null ? String(asset.purchase_price) : '');
-  const [includesVat, setIncludesVat] = useState(asset?.purchase_price_includes_vat ?? true);
+  const [purchasePrice, setPurchasePrice] = useState(seed?.purchase_price != null ? String(seed.purchase_price) : '');
+  const [includesVat, setIncludesVat] = useState(seed?.purchase_price_includes_vat ?? true);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [removeInvoiceFile, setRemoveInvoiceFile] = useState(false);
 
@@ -578,18 +611,32 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
   }
 
   return (
-    <Modal title={asset ? tt(`تعديل أصل "${asset.name}"`, `Edit asset "${asset.name}"`) : t('إضافة أصل جديد')} onClose={onClose}>
+    <Modal
+      title={
+        asset
+          ? tt(`تعديل أصل "${asset.name}"`, `Edit asset "${asset.name}"`)
+          : duplicateFrom
+            ? tt(`نسخ من "${duplicateFrom.name}"`, `Duplicate "${duplicateFrom.name}"`)
+            : t('إضافة أصل جديد')
+      }
+      onClose={onClose}
+    >
+      {duplicateFrom && (
+        <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+          {t('عُبِّئت كل البيانات من الأصل المنسوخ عدا كود الأصل — أدخل كوداً جديداً فريداً وعدِّل ما يلزم.')}
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('كود الأصل')}>
             <input name="asset_code" defaultValue={asset?.asset_code} required className="input" dir="ltr" placeholder="EQ-001" />
           </Field>
           <Field label={t('اسم الأصل')}>
-            <input name="name" defaultValue={asset?.name} required className="input" />
+            <input name="name" defaultValue={seed?.name} required className="input" />
           </Field>
         </div>
         <Field label={t('الفئة')}>
-          <select name="category" defaultValue={asset?.category ?? 'cleaning_equipment'} required className="input">
+          <select name="category" defaultValue={seed?.category ?? 'cleaning_equipment'} required className="input">
             {(Object.keys(ASSET_CATEGORY_LABELS_AR) as AssetCategory[]).map((c) => (
               <option key={c} value={c}>
                 {t(ASSET_CATEGORY_LABELS_AR[c])}
@@ -610,7 +657,7 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
             />
           </Field>
           <Field label={t('تاريخ الشراء/التأسيس')}>
-            <input type="date" name="purchase_date" defaultValue={asset?.purchase_date} required className="input" />
+            <input type="date" name="purchase_date" defaultValue={seed?.purchase_date} required className="input" />
           </Field>
         </div>
         <label className="flex items-center gap-2 text-sm">
@@ -625,15 +672,15 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
         )}
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('العمر الإنتاجي (سنوات)')}>
-            <input type="number" name="useful_life_years" min={1} step="1" defaultValue={asset?.useful_life_years ?? 5} required className="input" />
+            <input type="number" name="useful_life_years" min={1} step="1" defaultValue={seed?.useful_life_years ?? 5} required className="input" />
           </Field>
           <Field label={t('القيمة التخريدية (ر.س)')}>
-            <input type="number" name="salvage_value" min={0} step="0.01" defaultValue={asset?.salvage_value ?? 0} className="input" />
+            <input type="number" name="salvage_value" min={0} step="0.01" defaultValue={seed?.salvage_value ?? 0} className="input" />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('الحالة التشغيلية')}>
-            <select name="current_condition" defaultValue={asset?.current_condition ?? 'excellent'} className="input">
+            <select name="current_condition" defaultValue={seed?.current_condition ?? 'excellent'} className="input">
               {(Object.keys(ASSET_CONDITION_LABELS_AR) as AssetCondition[]).map((c) => (
                 <option key={c} value={c}>
                   {t(ASSET_CONDITION_LABELS_AR[c])}
@@ -642,14 +689,16 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
             </select>
           </Field>
           <Field label={t('حالة النظام')}>
-            <select name="status" defaultValue={asset?.status ?? 'active'} className="input">
+            {/* عند النسخ من أصل مشطوب، لا معنى لاقتراح 'scrapped' هنا (غير
+                متاحة أصلاً كخيار في نموذج إنشاء) — الافتراضي 'active' حينها. */}
+            <select name="status" defaultValue={seed && seed.status !== 'scrapped' ? seed.status : 'active'} className="input">
               <option value="active">{t(ASSET_STATUS_LABELS_AR.active)}</option>
               <option value="maintenance">{t(ASSET_STATUS_LABELS_AR.maintenance)}</option>
             </select>
           </Field>
         </div>
         <Field label={t('موقع العهدة (اختياري)')}>
-          <input name="location" defaultValue={asset?.location} className="input" placeholder={t('سكن العمال / السيارة / الموقع الميداني')} />
+          <input name="location" defaultValue={seed?.location} className="input" placeholder={t('سكن العمال / السيارة / الموقع الميداني')} />
         </Field>
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-slate-600">{t('فاتورة الشراء (صورة أو PDF، اختياري)')}</span>
@@ -679,7 +728,7 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
           )}
         </label>
         <Field label={t('ملاحظات (اختياري)')}>
-          <textarea name="notes" defaultValue={asset?.notes} rows={2} className="input" />
+          <textarea name="notes" defaultValue={seed?.notes} rows={2} className="input" />
         </Field>
         {error && <p className="text-xs font-medium text-red-600">{error}</p>}
         <button
