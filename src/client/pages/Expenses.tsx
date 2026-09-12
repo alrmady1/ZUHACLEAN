@@ -20,6 +20,9 @@ import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
+  TRAVEL_TICKET_CATEGORY_NAME,
+  HOUSING_ALLOWANCE_CATEGORY_NAME,
+  TRANSPORT_ALLOWANCE_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
   FACILITY_CATEGORY_NAME,
   ELECTRICITY_CATEGORY_NAME,
@@ -423,7 +426,12 @@ function GeneralExpensesTab() {
   const canEditDelete = can('edit_delete_expenses');
   // السلفية والرواتب كلاهما يحتاج ربط الموظف (custody_holder_id) — انظر
   // تعليق هذا الحقل في shared/types.ts.
-  const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME;
+  const needsEmployeeLink =
+    category === ADVANCE_CATEGORY_NAME ||
+    category === SALARY_CATEGORY_NAME ||
+    category === TRAVEL_TICKET_CATEGORY_NAME ||
+    category === HOUSING_ALLOWANCE_CATEGORY_NAME ||
+    category === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
   // تصنيف "مركبات" يحتاج ربط المركبة (vehicle_id) بدل الموظف — انظر
   // Expense.vehicle_id في shared/types.ts وصفحة الإعدادات ← المركبات.
@@ -1104,7 +1112,13 @@ function ExpenseDetailModal({
   const [advancePeriodStart, setAdvancePeriodStart] = useState(expense.advance_period_start ?? '');
   const [advancePeriodEnd, setAdvancePeriodEnd] = useState(expense.advance_period_end ?? '');
 
-  const needsEmployeeLink = category === ADVANCE_CATEGORY_NAME || category === SALARY_CATEGORY_NAME || category === CUSTODY_CATEGORY_NAME;
+  const needsEmployeeLink =
+    category === ADVANCE_CATEGORY_NAME ||
+    category === SALARY_CATEGORY_NAME ||
+    category === CUSTODY_CATEGORY_NAME ||
+    category === TRAVEL_TICKET_CATEGORY_NAME ||
+    category === HOUSING_ALLOWANCE_CATEGORY_NAME ||
+    category === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
   const isAdvanceCategory = category === ADVANCE_CATEGORY_NAME;
   const needsVehicleLink = category === VEHICLE_CATEGORY_NAME;
   const needsFacilityLink = category === FACILITY_CATEGORY_NAME || category === ELECTRICITY_CATEGORY_NAME;

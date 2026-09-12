@@ -430,6 +430,9 @@ function seed(): DbShape {
     { id: 'ec-gas', name: 'غاز', is_active: true },
     { id: 'ec-misc', name: 'مشتريات متفرقة', is_active: true },
     { id: 'ec-setup', name: 'تأسيس', is_active: true },
+    { id: 'ec-travel-ticket', name: 'تذاكر سفر', is_active: true },
+    { id: 'ec-housing-allowance', name: 'بدل سكن', is_active: true },
+    { id: 'ec-transport-allowance', name: 'بدل مواصلات', is_active: true },
     { id: 'ec-veh-installment', name: 'قسط', parent_id: 'ec-vehicles', is_active: true },
     { id: 'ec-veh-fuel', name: 'بنزين', parent_id: 'ec-vehicles', is_active: true },
     { id: 'ec-veh-diesel', name: 'ديزل', parent_id: 'ec-vehicles', is_active: true },
@@ -611,6 +614,18 @@ async function load(): Promise<DbShape> {
     // الاعتماد فقط على seed() أعلاه.
     if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'إيجار مبنى')) {
       parsed.expenseCategories.push({ id: 'ec-facility-rent', name: 'إيجار مبنى', is_active: true });
+    }
+    // ثلاث فئات "مصروفات الموظفين" أُضيفت بعد أن كانت قواعد بيانات كثيرة
+    // قد زُرعت أصلاً — تُضاف هنا لمن لا يملكها بعد، بدل الاعتماد فقط على
+    // seed() أعلاه.
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'تذاكر سفر')) {
+      parsed.expenseCategories.push({ id: 'ec-travel-ticket', name: 'تذاكر سفر', is_active: true });
+    }
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'بدل سكن')) {
+      parsed.expenseCategories.push({ id: 'ec-housing-allowance', name: 'بدل سكن', is_active: true });
+    }
+    if (!parsed.expenseCategories.some((c) => !c.parent_id && c.name === 'بدل مواصلات')) {
+      parsed.expenseCategories.push({ id: 'ec-transport-allowance', name: 'بدل مواصلات', is_active: true });
     }
     if (!parsed.custodyInvoices) parsed.custodyInvoices = [];
     if (!parsed.employeeDeductions) parsed.employeeDeductions = [];

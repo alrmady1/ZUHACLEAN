@@ -21,6 +21,8 @@ import {
   Camera,
   LayoutGrid,
   Rows3,
+  FileText,
+  Paperclip,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
@@ -541,7 +543,11 @@ function EmployeeDetail({
   onChanged: () => void;
 }) {
   const { t, tt } = useI18n();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  // بيانات عقد الموظف (ملفه وتاريخا بدايته ونهايته) — حسّاسة بطلب صريح،
+  // تظهر فقط لمن يملك صلاحية view_employee_contract (افتراضياً المدير
+  // العام ومدير النظام، قابلة للتوسيع لاحقاً من صفحة الصلاحيات).
+  const canViewContract = can('view_employee_contract');
   // بيانات شخصية حسّاسة (الهوية، تاريخ الميلاد/العمر، الجنسية، لغة
   // الواجهة، صورة الهوية) تبقى مخفية عن الفني الميداني والمشرف الإداري
   // حتى لو مُنحا صلاحية الاطلاع على كشف حساب الموظفين (view_employee_
@@ -569,6 +575,18 @@ function EmployeeDetail({
   const [defaultLangInput, setDefaultLangInput] = useState<UserLanguage | ''>(summary.profile.default_lang ?? '');
   const [idPhotoFile, setIdPhotoFile] = useState<File | null>(null);
   const [savingPersonal, setSavingPersonal] = useState(false);
+  // بيانات العقد — تاريخ البداية، ثم إما "تاريخ نهاية محدَّد" من التقويم
+  // مباشرة أو "عدد أيام" تُحسَب منه تاريخ النهاية تلقائياً قبل الإرسال
+  // (contractDurationMode يتحكم بأيّهما الحقل الظاهر فقط — التاريخان
+  // نفسهما هما ما يُخزَّن دائماً، انظر تعليق Profile.contract_end_date).
+  const [editingContract, setEditingContract] = useState(false);
+  const [contractStartDateInput, setContractStartDateInput] = useState(summary.profile.contract_start_date ?? '');
+  const [contractDurationMode, setContractDurationMode] = useState<'date' | 'days'>('date');
+  const [contractEndDateInput, setContractEndDateInput] = useState(summary.profile.contract_end_date ?? '');
+  const [contractDurationDaysInput, setContractDurationDaysInput] = useState('');
+  const [contractFile, setContractFile] = useState<File | null>(null);
+  const [removeContractFile, setRemoveContractFile] = useState(false);
+  const [savingContract, setSavingContract] = useState(false);
   const [savingEligibility, setSavingEligibility] = useState(false);
   const [showTerminateForm, setShowTerminateForm] = useState(false);
   const [terminationDateInput, setTerminationDateInput] = useState(new Date().toISOString().slice(0, 10));
@@ -604,6 +622,54 @@ function EmployeeDetail({
     if (!window.confirm(t('حذف سجل الراتب هذا نهائياً؟'))) return;
     await api.del(`/expenses/${id}`);
     onChanged();
+  }
+
+  // يُضيف عدد أيام إلى تاريخ (YYYY-MM-DD) ويُعيد نفس الصيغة — يُستخدَم
+  // لاحتساب تاريخ نهاية العقد تلقائياً عند اختيار وضع "عدد الأيام".
+  function addDaysToDate(dateStr: string, days: number): string {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // عدد الأيام الصحيح بين تاريخين (YYYY-MM-DD) — لعرض "مدة العقد" في وضع
+  // القراءة فقط، تُشتَق دائماً من التاريخين المخزَّنين بدل رقم منفصل.
+  function daysBetweenDates(startStr: string, endStr: string): number {
+    const ms = new Date(endStr).getTime() - new Date(startStr).getTime();
+    return Math.round(ms / (1000 * 60 * 60 * 24));
+  }
+
+  function startEditingContract() {
+    setContractStartDateInput(summary.profile.contract_start_date ?? '');
+    setContractEndDateInput(summary.profile.contract_end_date ?? '');
+    setContractDurationMode('date');
+    setContractDurationDaysInput('');
+    setContractFile(null);
+    setRemoveContractFile(false);
+    setEditingContract(true);
+  }
+
+  async function saveContract() {
+    setSavingContract(true);
+    try {
+      const resolvedEndDate =
+        contractDurationMode === 'days' && contractStartDateInput && contractDurationDaysInput
+          ? addDaysToDate(contractStartDateInput, Number(contractDurationDaysInput))
+          : contractEndDateInput;
+      const contract_file_data_url = contractFile ? await compressImageToDataUrl(contractFile) : undefined;
+      await api.patch(`/profiles/${summary.profile.id}`, {
+        contract_start_date: contractStartDateInput || null,
+        contract_end_date: resolvedEndDate || null,
+        contract_file_data_url,
+        contract_file_name: contractFile?.name || undefined,
+        remove_contract_file: !contractFile && removeContractFile ? true : undefined,
+      });
+      setContractFile(null);
+      setEditingContract(false);
+      onChanged();
+    } finally {
+      setSavingContract(false);
+    }
   }
 
   function startEditingPersonal() {
@@ -928,6 +994,176 @@ function EmployeeDetail({
             </div>
           )}
         </Section>
+
+        {/* بيانات العقد — نسخة ملف العقد وتاريخا بدايته ونهايته. تظهر فقط
+            لمن يملك صلاحية view_employee_contract (افتراضياً المدير العام
+            ومدير النظام فقط)، بخلاف بقية "البيانات الشخصية" أعلاه التي
+            تخضع لقيد restrictedPersonalInfo المحلي فقط. */}
+        {canViewContract && (
+          <Section
+            icon={<FileText className="h-4 w-4 text-brand-600" />}
+            title={t('بيانات العقد')}
+            action={
+              canEdit &&
+              !editingContract && (
+                <button
+                  onClick={startEditingContract}
+                  className="flex items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                  title={t('تعديل بيانات العقد')}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )
+            }
+          >
+            {editingContract ? (
+              <div className="space-y-3 rounded-xl bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('تاريخ بداية العقد')}</span>
+                    <input
+                      type="date"
+                      value={contractStartDateInput}
+                      onChange={(e) => setContractStartDateInput(e.target.value)}
+                      className="input"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('طريقة تحديد نهاية العقد')}</span>
+                    <select
+                      value={contractDurationMode}
+                      onChange={(e) => setContractDurationMode(e.target.value as 'date' | 'days')}
+                      className="input"
+                    >
+                      <option value="date">{t('تاريخ نهاية محدَّد')}</option>
+                      <option value="days">{t('عدد أيام')}</option>
+                    </select>
+                  </label>
+                </div>
+                {contractDurationMode === 'days' ? (
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('مدة العقد (بالأيام)')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={contractDurationDaysInput}
+                      onChange={(e) => setContractDurationDaysInput(e.target.value)}
+                      className="input"
+                      placeholder={t('مثال: 365')}
+                    />
+                    {contractStartDateInput && contractDurationDaysInput && (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {tt(
+                          `تاريخ النهاية المحتسَب: ${addDaysToDate(contractStartDateInput, Number(contractDurationDaysInput))}`,
+                          `Computed end date: ${addDaysToDate(contractStartDateInput, Number(contractDurationDaysInput))}`,
+                        )}
+                      </span>
+                    )}
+                  </label>
+                ) : (
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('تاريخ نهاية العقد')}</span>
+                    <input
+                      type="date"
+                      value={contractEndDateInput}
+                      onChange={(e) => setContractEndDateInput(e.target.value)}
+                      className="input"
+                    />
+                  </label>
+                )}
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">{t('نسخة العقد (ملف)')}</span>
+                  {summary.profile.contract_file_url && !contractFile && !removeContractFile && (
+                    <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs">
+                      <a
+                        href={summary.profile.contract_file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex flex-1 items-center gap-2 font-medium text-brand-600"
+                      >
+                        <Paperclip className="h-3.5 w-3.5" /> {summary.profile.contract_file_name || t('عرض الملف الحالي')}
+                      </a>
+                      <button type="button" onClick={() => setRemoveContractFile(true)} className="text-slate-400 hover:text-red-600">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => {
+                      setContractFile(e.target.files?.[0] ?? null);
+                      setRemoveContractFile(false);
+                    }}
+                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                  />
+                  {contractFile && (
+                    <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                      <Paperclip className="h-3 w-3" /> {contractFile.name}
+                    </span>
+                  )}
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={saveContract}
+                    disabled={savingContract}
+                    className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    <Check className="h-3.5 w-3.5" /> {savingContract ? t('جارِ الحفظ…') : t('حفظ')}
+                  </button>
+                  <button onClick={() => setEditingContract(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+                    {t('إلغاء')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <div className="text-xs text-slate-400">{t('تاريخ بداية العقد')}</div>
+                    <div className="font-medium text-slate-700" dir="ltr">{summary.profile.contract_start_date || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">{t('تاريخ نهاية العقد')}</div>
+                    <div
+                      className={`font-medium ${
+                        summary.profile.contract_end_date && new Date(summary.profile.contract_end_date) < new Date()
+                          ? 'text-red-600'
+                          : 'text-slate-700'
+                      }`}
+                      dir="ltr"
+                    >
+                      {summary.profile.contract_end_date || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400">{t('مدة العقد')}</div>
+                    <div className="font-medium text-slate-700">
+                      {summary.profile.contract_start_date && summary.profile.contract_end_date
+                        ? tt(
+                            `${daysBetweenDates(summary.profile.contract_start_date, summary.profile.contract_end_date)} يوم`,
+                            `${daysBetweenDates(summary.profile.contract_start_date, summary.profile.contract_end_date)} days`,
+                          )
+                        : '—'}
+                    </div>
+                  </div>
+                </div>
+                {summary.profile.contract_file_url ? (
+                  <a
+                    href={summary.profile.contract_file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium text-brand-600"
+                  >
+                    <Paperclip className="h-3.5 w-3.5" /> {summary.profile.contract_file_name || t('عرض نسخة العقد')}
+                  </a>
+                ) : (
+                  <p className="text-sm text-slate-400">{t('لا يوجد ملف عقد مرفوع بعد')}</p>
+                )}
+              </div>
+            )}
+          </Section>
+        )}
 
         {/* الراتب الشهري — الراتب الثابت، الخصميات النشطة وقسط هذا الشهر
             منها، صافي الراتب المتوقع، تاريخ الاستحقاق، وتسجيل راتب الشهر. */}

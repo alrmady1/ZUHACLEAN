@@ -127,7 +127,8 @@ export type PermissionKey =
   | 'manage_riyadh_zones'
   | 'manage_sales_discount'
   | 'view_inventory_page'
-  | 'manage_inventory';
+  | 'manage_inventory'
+  | 'view_employee_contract';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -187,6 +188,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   manage_sales_discount: 'تعديل خصم المناسبات في المبيعات',
   view_inventory_page: 'الاطلاع على تبويب الجرد والأصول الثابتة (المحاسبة)',
   manage_inventory: 'إدارة الأصول الثابتة (إضافة/تعديل/شطب) وتنفيذ الجرد الدوري',
+  view_employee_contract: 'الاطلاع على بيانات عقد الموظف (تاريخ العقد وملفه)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -280,6 +282,10 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // بنفس درجة الضريبة، المدير العام ومدير النظام فقط افتراضياً.
   view_inventory_page: GM_ADMIN,
   manage_inventory: GM_ADMIN,
+  // بيانات عقد الموظف (تاريخا البداية والنهاية وملف العقد) — بطلب صريح،
+  // المدير العام ومدير النظام فقط افتراضياً، قابلة للتوسيع لاحقاً من صفحة
+  // الصلاحيات نفسها.
+  view_employee_contract: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -359,6 +365,14 @@ export const SALARY_CATEGORY_NAME = 'رواتب';
 // (بنزين، صيانة...) بمركبة بعينها من صفحة الإعدادات ← المركبات — انظر
 // Expense.vehicle_id أدناه وVehiclesTab في Settings.tsx.
 export const VEHICLE_CATEGORY_NAME = 'مركبات';
+// ثلاث فئات مصروفات موظفين إضافية — نفس مطابقة الاسم، وتُظهر منتقي
+// "الموظف" أيضاً (كالسلفية والراتب) لربط كل مصروف بموظف بعينه: تذاكر سفر،
+// بدل سكن، بدل مواصلات. التصنيف المحاسبي المقترح افتراضياً لها جميعاً
+// "أجور ومنافع الموظفين (OpEx)" — انظر DEFAULT_ACCOUNTING_CLASSIFICATION_
+// BY_CATEGORY أدناه.
+export const TRAVEL_TICKET_CATEGORY_NAME = 'تذاكر سفر';
+export const HOUSING_ALLOWANCE_CATEGORY_NAME = 'بدل سكن';
+export const TRANSPORT_ALLOWANCE_CATEGORY_NAME = 'بدل مواصلات';
 
 // لغة الواجهة الافتراضية عند تسجيل الدخول — نفس قيم Lang في
 // src/client/lib/date.ts حرفياً (لا يمكن استيراد ذاك النوع هنا، ملف خادم
@@ -443,6 +457,19 @@ export interface Profile {
   // صورة الهوية/الإقامة — رابط موقَّع طويل الأمد (10 سنوات) على Supabase
   // Storage، نفس نمط باقي صور النظام (انظر uploadEmployeeIdPhoto).
   id_photo_url?: string;
+  // بيانات العقد — نسخة الملف (صورة أو PDF) وتاريخا البداية والنهاية.
+  // حسّاسة مالياً/قانونياً بطلب صريح، تُعرض فقط لمن يملك صلاحية
+  // view_employee_contract (افتراضياً المدير العام ومدير النظام فقط —
+  // انظر PermissionKey أدناه)، بخلاف بقية "البيانات الشخصية" التي تخضع
+  // لقيد restrictedPersonalInfo المحلي في EmployeeAccounts.tsx فقط.
+  // contract_end_date يُضبَط دائماً صراحةً (سواء اختار المستخدم "تاريخ
+  // محدَّد" من التقويم مباشرة، أو "عدد أيام" فتُحتسَب منه تلقائياً في
+  // الواجهة قبل الإرسال) — لا تُخزَّن مدة العقد كرقم أيام منفصل، تُشتَق
+  // دائماً من الفرق بين التاريخين عند العرض لتفادي تعارض مصدرين للحقيقة.
+  contract_file_url?: string;
+  contract_file_name?: string;
+  contract_start_date?: string;
+  contract_end_date?: string;
   // الجنسية — نص حر (لا قائمة ثابتة، تجنّباً لحصر الجنسيات الممكنة).
   nationality?: string;
   // لغة الواجهة الافتراضية عند تسجيل الدخول — انظر UserLanguage أعلاه.
@@ -1783,6 +1810,9 @@ export const ELECTRICITY_CATEGORY_NAME = 'كهرباء';
 export const DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY: Partial<Record<string, ExpenseAccountingClassification>> = {
   [VEHICLE_CATEGORY_NAME]: 'operating',
   [SALARY_CATEGORY_NAME]: 'employee_wages',
+  [TRAVEL_TICKET_CATEGORY_NAME]: 'employee_wages',
+  [HOUSING_ALLOWANCE_CATEGORY_NAME]: 'employee_wages',
+  [TRANSPORT_ALLOWANCE_CATEGORY_NAME]: 'employee_wages',
   [ADVANCE_CATEGORY_NAME]: 'current_assets_advances',
   [ELECTRICITY_CATEGORY_NAME]: 'utilities',
   [FACILITY_CATEGORY_NAME]: 'general_admin',

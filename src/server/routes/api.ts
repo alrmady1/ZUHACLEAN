@@ -10,6 +10,7 @@ import {
   uploadEmployeeIdPhoto,
   uploadVehicleRegistrationPhoto,
   uploadAssetPurchaseInvoice,
+  uploadEmployeeContractFile,
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
@@ -74,6 +75,9 @@ import {
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
   SALARY_CATEGORY_NAME,
+  TRAVEL_TICKET_CATEGORY_NAME,
+  HOUSING_ALLOWANCE_CATEGORY_NAME,
+  TRANSPORT_ALLOWANCE_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
   FACILITY_CATEGORY_NAME,
   ELECTRICITY_CATEGORY_NAME,
@@ -879,6 +883,22 @@ api.patch('/profiles/:id', async (req, res) => {
     }
   } else if (body.remove_id_photo) {
     patch.id_photo_url = undefined;
+  }
+  if (body.contract_start_date !== undefined) patch.contract_start_date = body.contract_start_date || undefined;
+  if (body.contract_end_date !== undefined) patch.contract_end_date = body.contract_end_date || undefined;
+  // نسخة ملف العقد — نفس منطق صورة الهوية أعلاه بالضبط (رفع جديد يستبدل
+  // القديم، ملف قديم على Supabase Storage يبقى يتيماً بلا مشكلة).
+  if (body.contract_file_data_url) {
+    try {
+      patch.contract_file_url = await uploadEmployeeContractFile(req.params.id, body.contract_file_data_url);
+      patch.contract_file_name = body.contract_file_name || undefined;
+    } catch (err) {
+      console.error('❌ فشل رفع ملف العقد إلى Supabase Storage:', err);
+      return res.status(500).json({ error: 'فشل رفع ملف العقد' });
+    }
+  } else if (body.remove_contract_file) {
+    patch.contract_file_url = undefined;
+    patch.contract_file_name = undefined;
   }
 
   const updated = store.profiles.update(req.params.id, patch);
@@ -2035,6 +2055,12 @@ api.post('/expenses', async (req, res) => {
   const isCustody = body.category === CUSTODY_CATEGORY_NAME;
   const isAdvance = body.category === ADVANCE_CATEGORY_NAME;
   const isSalary = body.category === SALARY_CATEGORY_NAME;
+  // ثلاث فئات منافع موظفين إضافية (تذاكر سفر/بدل سكن/بدل مواصلات) — نفس
+  // منطق ربط "الموظف المعني" أدناه بالضبط.
+  const isEmployeeBenefit =
+    body.category === TRAVEL_TICKET_CATEGORY_NAME ||
+    body.category === HOUSING_ALLOWANCE_CATEGORY_NAME ||
+    body.category === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
   const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
   const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
   const isFacility = body.category === FACILITY_CATEGORY_NAME;
@@ -2045,9 +2071,10 @@ api.post('/expenses', async (req, res) => {
   const isElectricity = body.category === ELECTRICITY_CATEGORY_NAME;
   const needsFacilityLink = isFacility || isElectricity;
   const linkedFacility = needsFacilityLink && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
-  // الأصناف الثلاثة (عهدة، سلفية، رواتب) تحمل "موظفاً معنياً" بنفس
-  // الحقلين — انظر التعليق على custody_holder_id في shared/types.ts.
-  const linksEmployee = isCustody || isAdvance || isSalary;
+  // الأصناف (عهدة، سلفية، رواتب، تذاكر سفر، بدل سكن، بدل مواصلات) تحمل
+  // "موظفاً معنياً" بنفس الحقلين — انظر التعليق على custody_holder_id في
+  // shared/types.ts.
+  const linksEmployee = isCustody || isAdvance || isSalary || isEmployeeBenefit;
   const expenseId = store.id();
   // صورة أو PDF اختياري لسند الفاتورة — نفس منطق صورة الإجازة في POST
   // /leaves أعلاه بالضبط (نرفعه أولاً باستخدام المعرّف المولَّد سلفاً، ثم
@@ -2141,11 +2168,15 @@ api.patch('/expenses/:id', async (req, res) => {
   const isCustody = (body.category ?? target.category) === CUSTODY_CATEGORY_NAME;
   const isAdvance = (body.category ?? target.category) === ADVANCE_CATEGORY_NAME;
   const isSalary = (body.category ?? target.category) === SALARY_CATEGORY_NAME;
+  const isEmployeeBenefit =
+    (body.category ?? target.category) === TRAVEL_TICKET_CATEGORY_NAME ||
+    (body.category ?? target.category) === HOUSING_ALLOWANCE_CATEGORY_NAME ||
+    (body.category ?? target.category) === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
   const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
   const isFacility = (body.category ?? target.category) === FACILITY_CATEGORY_NAME;
   const isElectricity = (body.category ?? target.category) === ELECTRICITY_CATEGORY_NAME;
   const needsFacilityLink = isFacility || isElectricity;
-  const linksEmployee = isCustody || isAdvance || isSalary;
+  const linksEmployee = isCustody || isAdvance || isSalary || isEmployeeBenefit;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
   if (body.category !== undefined) patch.category = body.category;
