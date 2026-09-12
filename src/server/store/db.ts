@@ -24,6 +24,7 @@ import type {
   EmployeeDeduction,
   EmployeeViolation,
   EmployeeWarning,
+  EmployeeOvertimeRecord,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -96,6 +97,10 @@ interface DbShape {
   // إنذارات رسمية — كشف حساب الموظف. انظر EmployeeWarning في
   // src/shared/types.ts.
   employeeWarnings: EmployeeWarning[];
+  // تعويضات أوفر تايم العمل في العطل الرسمية — تُدار بالكامل آلياً عبر
+  // reconcileHolidayOvertimeForAppointment. انظر EmployeeOvertimeRecord في
+  // src/shared/types.ts.
+  employeeOvertimeRecords: EmployeeOvertimeRecord[];
   // صفحة الإعدادات ← الصلاحيات — من يملك كل صلاحية من PermissionKey.
   // مفتاح غائب من هذا الكائن (سجل قديم لم يُعدَّل بعد، أو صلاحية جديدة
   // أُضيفت للكود لاحقاً) يعني: استخدم DEFAULT_PERMISSIONS لتلك الصلاحية.
@@ -457,6 +462,7 @@ function seed(): DbShape {
     employeeDeductions: [],
     employeeViolations: [],
     employeeWarnings: [],
+    employeeOvertimeRecords: [],
     permissions: {},
     permissionsOrder: [],
     leaves: [],
@@ -631,6 +637,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.employeeDeductions) parsed.employeeDeductions = [];
     if (!parsed.employeeViolations) parsed.employeeViolations = [];
     if (!parsed.employeeWarnings) parsed.employeeWarnings = [];
+    if (!parsed.employeeOvertimeRecords) parsed.employeeOvertimeRecords = [];
     if (!parsed.permissions) parsed.permissions = {};
     if (!parsed.permissionsOrder) parsed.permissionsOrder = [];
     if (!parsed.leaves) parsed.leaves = [];
@@ -1311,6 +1318,25 @@ export const store = {
       const idx = db.employeeWarnings.findIndex((w) => w.id === id);
       if (idx === -1) return false;
       db.employeeWarnings.splice(idx, 1);
+      persist();
+      return true;
+    },
+  },
+  employeeOvertimeRecords: {
+    list: () => db.employeeOvertimeRecords,
+    get: (id: string) => db.employeeOvertimeRecords.find((r) => r.id === id),
+    insert: (r: EmployeeOvertimeRecord) => { db.employeeOvertimeRecords.push(r); persist(); return r; },
+    update: (id: string, patch: Partial<EmployeeOvertimeRecord>) => {
+      const idx = db.employeeOvertimeRecords.findIndex((r) => r.id === id);
+      if (idx === -1) return undefined;
+      db.employeeOvertimeRecords[idx] = { ...db.employeeOvertimeRecords[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.employeeOvertimeRecords[idx];
+    },
+    remove: (id: string) => {
+      const idx = db.employeeOvertimeRecords.findIndex((r) => r.id === id);
+      if (idx === -1) return false;
+      db.employeeOvertimeRecords.splice(idx, 1);
       persist();
       return true;
     },

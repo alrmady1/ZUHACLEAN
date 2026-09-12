@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome, Rating, CustomerRating } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR, SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
@@ -14,7 +14,7 @@ import { useI18n } from '../lib/i18n.js';
 import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import { findDayOffConflicts } from '../../shared/weekdays.js';
-import { findLeaveConflicts } from '../../shared/leaves.js';
+import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 
 // تحويل ISO إلى صيغة <input type="datetime-local"> (بالتوقيت المحلي —
 // datetime-local لا يفهم "Z"/UTC، فيجب بناء السلسلة يدوياً من مكوّنات
@@ -200,6 +200,18 @@ export default function AppointmentDetailModal({
   const endTime = new Date(new Date(appointment.scheduled_at).getTime() + appointment.expected_duration_minutes * 60000);
   const supervisorOptions = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
   const technicianOptions = allProfiles.filter((p) => p.role === 'technician');
+
+  // تنبيه استرشادي غير مانع — عمل خلال عطلة رسمية مسجَّلة للفريق المُختار
+  // حالياً في نموذج التعديل يُعوَّض تلقائياً بأوفر تايم عند الحفظ (لا يمنع
+  // الحفظ، بخلاف leaveConflicts في saveTeam أعلاه لبقية أنواع الإجازات).
+  const holidayWorkConflicts = findHolidayWorkConflicts(
+    appointment.scheduled_at,
+    [
+      { profile: supervisorOptions.find((s) => s.id === teamSupervisorId), roleLabel: t('المشرف') },
+      { profile: technicianOptions.find((tech) => tech.id === teamTechnicianId), roleLabel: t('الفني') },
+    ],
+    leaves,
+  );
 
   async function saveTeam() {
     // منع فعلي (وليس مجرد تنبيه) — إن كان المشرف أو الفني المختار في إجازة
@@ -999,6 +1011,15 @@ export default function AppointmentDetailModal({
                     )}
                   </label>
                 </div>
+                {holidayWorkConflicts.length > 0 && (
+                  <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      {holidayWorkConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ')}{' '}
+                      {t('لديه عطلة رسمية في هذا التاريخ — الإسناد مسموح، وسيُسجَّل له تعويض أوفر تايم تلقائياً عند الحفظ.')}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <button
                     disabled={busy}

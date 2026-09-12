@@ -28,6 +28,7 @@ import type {
   EmployeeDeduction,
   EmployeeViolation,
   EmployeeWarning,
+  EmployeeOvertimeRecord,
   PermissionKey,
   UserRole,
   LeaveRecord,
@@ -92,6 +93,7 @@ import {
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
 import { annualLeaveEntitlementDays } from '../../shared/leaves.js';
+import { reconcileHolidayOvertimeForAppointment } from '../lib/overtime.js';
 
 export const api = Router();
 
@@ -1555,6 +1557,9 @@ api.post('/appointments', (req, res) => {
     marketer_discount_amount: marketerCodeResult.marketer_discount_amount,
   };
   store.appointments.insert(appointment);
+  // موظف مُسنَد لهذا الموعد يعمل خلال عطلة رسمية مسجَّلة له → تعويض أوفر
+  // تايم تلقائي (المادة ١٠٧) — انظر تعليق reconcileHolidayOvertimeForAppointment.
+  reconcileHolidayOvertimeForAppointment(appointment.id);
   const marketerNote = appointment.marketer_id
     ? ` (كود مسوّق "${appointment.marketer_code}" — ${store.profiles.get(appointment.marketer_id)?.full_name ?? ''})`
     : '';
@@ -1658,6 +1663,9 @@ api.patch('/appointments/:id', (req, res) => {
   }
   const updated = store.appointments.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'not found' });
+  // يعيد مطابقة تعويضات أوفر تايم العطل الرسمية مع الحالة الجديدة للموعد
+  // (تغيّر الفريق، الوقت، أو الحالة إلى ملغاة) — انظر تعليق الدالة.
+  reconcileHolidayOvertimeForAppointment(updated.id);
   logActivity(req, describeAppointmentPatch(patch, updated.customer_name_snapshot ?? ''));
   res.json(updated);
 
@@ -1681,6 +1689,10 @@ api.delete('/appointments/:id', (req, res) => {
   const target = store.appointments.get(req.params.id);
   const removed = store.appointments.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'not found' });
+  // يُلغي أي تعويض أوفر تايم "بانتظار الدفع" كان مرتبطاً بهذا الموعد —
+  // انظر تعليق reconcileHolidayOvertimeForAppointment (appointment.get
+  // يعيد undefined بعد الحذف، فتُلغى كل السجلات السارية تلقائياً).
+  reconcileHolidayOvertimeForAppointment(req.params.id);
   logActivity(req, `تم حذف موعد العميل "${target?.customer_name_snapshot ?? ''}"`);
   res.status(204).end();
 });
@@ -2775,6 +2787,35 @@ api.delete('/employee-warnings/:id', (req, res) => {
   res.status(204).end();
 });
 
+// تعويضات أوفر تايم العمل في العطل الرسمية — إنشاء وإلغاء تلقائي بالكامل
+// عبر reconcileHolidayOvertimeForAppointment (لا نقطة نهاية POST يدوية
+// عمداً، انظر تعليق EmployeeOvertimeRecord في shared/types.ts). التعديل
+// اليدوي هنا مقصور على تسوية المبلغ (مثال: تعويض بيوم بديل بدل المال) أو
+// إلغاء سجل "بانتظار الدفع" يدوياً بدل انتظار الدفع التلقائي معه في الراتب.
+api.get('/employee-overtime', (req, res) => {
+  const { employee_id } = req.query;
+  let list = store.employeeOvertimeRecords.list();
+  if (employee_id && typeof employee_id === 'string') {
+    list = list.filter((r) => r.employee_id === employee_id);
+  }
+  res.json(list);
+});
+
+api.patch('/employee-overtime/:id', (req, res) => {
+  const body = req.body ?? {};
+  const target = store.employeeOvertimeRecords.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'not found' });
+  if (target.status === 'paid') return res.status(400).json({ error: 'سجل مدفوع بالفعل — لا يمكن تعديله' });
+  const patch: Partial<EmployeeOvertimeRecord> = {};
+  if (typeof body.amount === 'number') patch.amount = Math.max(0, body.amount);
+  if (typeof body.multiplier === 'number') patch.multiplier = Math.max(0, body.multiplier);
+  if (body.notes !== undefined) patch.notes = body.notes || undefined;
+  if (body.status === 'dismissed' || body.status === 'pending') patch.status = body.status;
+  const updated = store.employeeOvertimeRecords.update(req.params.id, patch);
+  logActivity(req, `تم تعديل سجل أوفر تايم "${target.employee_name ?? ''}" (${target.holiday_label})`);
+  res.json(updated);
+});
+
 // فرق الأشهر بين شهرين بصيغة YYYY-MM (شامل الطرفين) — 2026-01 إلى
 // 2026-01 = 1 شهر، 2026-01 إلى 2026-04 = 4 أشهر.
 function monthsBetweenInclusive(startMonth: string, endMonth: string): number {
@@ -2835,7 +2876,11 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     commissionReport.marketers.find((m) => m.profile_id === profile.id)?.commission_due ??
     commissionReport.supervisors.find((s) => s.profile_id === profile.id)?.commission_due ??
     0;
-  const gross = Math.round((baseSalary + commission) * 100) / 100;
+  // تعويضات أوفر تايم العطل الرسمية المستحقة (status: 'pending') — تُضاف
+  // كاملة لصافي هذا الراتب، ثم تُعلَّم "مدفوع" أدناه بعد تسجيله فعلياً.
+  const pendingOvertime = store.employeeOvertimeRecords.list().filter((r) => r.employee_id === profile.id && r.status === 'pending');
+  const totalOvertime = Math.round(pendingOvertime.reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
+  const gross = Math.round((baseSalary + commission + totalOvertime) * 100) / 100;
 
   const activeDeductions = store.employeeDeductions
     .list()
@@ -2871,6 +2916,7 @@ api.post('/employees/:id/pay-salary', (req, res) => {
 
   const noteParts: string[] = [`راتب أساسي ${baseSalary} ر.س`];
   if (commission > 0) noteParts.push(`+ عمولة ${commission} ر.س (${month})`);
+  if (totalOvertime > 0) noteParts.push(`+ أوفر تايم عطل رسمية ${totalOvertime} ر.س (${pendingOvertime.length} يوم)`);
   if (totalWithheld > 0) noteParts.push(`- خصميات ${totalWithheld} ر.س (${applied.length} خصم نشط)`);
   if (totalAdvanceWithheld > 0) noteParts.push(`- سلفيات ${totalAdvanceWithheld} ر.س (${appliedAdvances.length} سلفية مجدولة)`);
   noteParts.push(`= صافي ${net} ر.س`);
@@ -2893,7 +2939,7 @@ api.post('/employees/:id/pay-salary', (req, res) => {
     custody_holder_id: profile.id,
     custody_holder_name: profile.full_name,
     payment_method: body.payment_method ?? 'bank_transfer',
-    notes: commission > 0 || totalWithheldAll > 0 ? noteParts.join(' ') : undefined,
+    notes: commission > 0 || totalOvertime > 0 || totalWithheldAll > 0 ? noteParts.join(' ') : undefined,
     created_at: new Date().toISOString(),
   });
 
@@ -2903,12 +2949,19 @@ api.post('/employees/:id/pay-salary', (req, res) => {
   for (const { advance, installment } of appliedAdvances) {
     store.expenses.update(advance.id, { advance_settled_amount: (advance.advance_settled_amount ?? 0) + installment });
   }
+  for (const overtime of pendingOvertime) {
+    store.employeeOvertimeRecords.update(overtime.id, { status: 'paid', settled_expense_id: expense.id });
+  }
 
-  logActivity(req, `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س (منه عمولة ${commission} ر.س)، صافي ${net} ر.س بعد الخصميات والسلفيات`);
+  logActivity(
+    req,
+    `تم تسجيل راتب "${profile.full_name}" — إجمالي ${gross} ر.س (منه عمولة ${commission} ر.س، أوفر تايم ${totalOvertime} ر.س)، صافي ${net} ر.س بعد الخصميات والسلفيات`,
+  );
   res.status(201).json({
     expense,
     base_salary: baseSalary,
     commission,
+    overtime: totalOvertime,
     gross,
     withheld: totalWithheldAll,
     withheld_deductions: totalWithheld,

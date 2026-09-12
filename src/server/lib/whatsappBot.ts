@@ -9,6 +9,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { store } from '../store/db.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { pickAvailableSupervisor } from './scheduling.js';
+import { reconcileHolidayOvertimeForAppointment } from './overtime.js';
 import { sendWhatsappTextMessage } from './whatsappApi.js';
 import { sendPushToProfiles, leadNotifyProfileIds } from './push.js';
 import type { Service, WhatsappMessage, WhatsappThread } from '../../shared/types.js';
@@ -273,6 +274,10 @@ async function createPendingAppointmentFromWhatsapp(
     created_at: new Date().toISOString(),
     whatsapp_thread_id: thread.id,
   });
+
+  // مشرف اختير آلياً قد يعمل خلال عطلة رسمية مسجَّلة له → تعويض أوفر تايم
+  // تلقائي (المادة ١٠٧) — نفس منطق POST /appointments اليدوي في api.ts.
+  reconcileHolidayOvertimeForAppointment(appointment.id);
 
   store.whatsappThreads.update(thread.id, { status: 'booked', linked_appointment_id: appointment.id });
 

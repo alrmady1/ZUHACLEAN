@@ -7,7 +7,7 @@ import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { useAuth } from '../lib/auth.js';
 import { findDayOffConflicts, WEEKDAYS } from '../../shared/weekdays.js';
-import { findLeaveConflicts } from '../../shared/leaves.js';
+import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 import { findZoneForNeighborhood } from '../../shared/riyadhZones.js';
 
@@ -357,6 +357,18 @@ export default function NewAppointmentModal({
   // منع فعلي (وليس مجرد تنبيه) — إن كان المشرف أو الفني المختار في إجازة
   // سنوية سارية يوم هذا الموعد (Settings ← الإجازات)، لا يمكن الحجز إطلاقاً.
   const leaveConflicts = findLeaveConflicts(
+    date,
+    [
+      { profile: supervisors.find((s) => s.id === supervisorId), roleLabel: t('المشرف') },
+      { profile: technicians.find((tech) => tech.id === technicianId), roleLabel: t('الفني') },
+    ],
+    leaves,
+  );
+
+  // تنبيه استرشادي غير مانع — عمل خلال عطلة رسمية مسجَّلة لهذا الشخص
+  // يُعوَّض تلقائياً بأوفر تايم بدل منع الحجز (بخلاف leaveConflicts أعلاه
+  // التي تمنع فعلياً لبقية أنواع الإجازات). انظر findHolidayWorkConflicts.
+  const holidayWorkConflicts = findHolidayWorkConflicts(
     date,
     [
       { profile: supervisors.find((s) => s.id === supervisorId), roleLabel: t('المشرف') },
@@ -889,6 +901,16 @@ export default function NewAppointmentModal({
                   {formatTimeAr(conflict.start.toISOString())}{' '}
                   {t('إلى')} {formatTimeAr(conflict.end.toISOString())}
                   {t(')، فيرجى اختيار وقت آخر.')}
+                </span>
+              </div>
+            )}
+
+            {holidayWorkConflicts.length > 0 && (
+              <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {holidayWorkConflicts.map((c) => `${c.roleLabel} ${c.name}`).join('، ')}{' '}
+                  {t('لديه عطلة رسمية في هذا التاريخ — الحجز مسموح، وسيُسجَّل له تعويض أوفر تايم تلقائياً عند حفظ الموعد.')}
                 </span>
               </div>
             )}

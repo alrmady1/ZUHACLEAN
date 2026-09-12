@@ -67,8 +67,12 @@ export interface LeaveConflict {
 }
 
 // من بين الأشخاص المُختارين لموعد ما (المشرف والفني عادة)، من كانت لديه
-// إجازة سنوية سارية في تاريخ هذا الموعد؟ عند وجود نتيجة — يجب منع الحفظ
-// فعلياً (وليس مجرد تنبيه).
+// إجازة سارية في تاريخ هذا الموعد؟ عند وجود نتيجة — يجب منع الحفظ فعلياً
+// (وليس مجرد تنبيه). العطلة الرسمية (official_holiday) مُستثناة عمداً هنا
+// — العمل خلالها مسموح، ويُعوَّض عنه تلقائياً بأوفر تايم بدل منعه (انظر
+// findHolidayWorkConflicts أدناه وreconcileHolidayOvertimeForAppointment
+// في src/server/lib/overtime.ts)، بخلاف كل أنواع الإجازات الأخرى التي
+// تبقى مانعة فعلياً كما كانت.
 export function findLeaveConflicts(
   dateStr: string,
   people: { profile: Profile | undefined; roleLabel: string }[],
@@ -78,7 +82,27 @@ export function findLeaveConflicts(
   const conflicts: LeaveConflict[] = [];
   for (const { profile, roleLabel } of people) {
     if (!profile) continue;
-    const leave = leaves.find((l) => l.profile_id === profile.id && isWithinLeave(dateStr, l));
+    const leave = leaves.find((l) => l.profile_id === profile.id && l.leave_type !== 'official_holiday' && isWithinLeave(dateStr, l));
+    if (leave) conflicts.push({ name: profile.full_name, roleLabel, leave });
+  }
+  return conflicts;
+}
+
+// نفس فكرة findLeaveConflicts أعلاه، لكن للعطلة الرسمية تحديداً وبلا أي
+// منع — استرشادي بحت، يُستخدَم فقط لعرض تنبيه غير مانع في نموذج الحجز بأن
+// تعويض أوفر تايم سيُسجَّل تلقائياً لهذا الشخص (التسجيل الفعلي يحدث على
+// الخادم عبر reconcileHolidayOvertimeForAppointment بصرف النظر عن هذا
+// التنبيه — هذا للعرض فقط).
+export function findHolidayWorkConflicts(
+  dateStr: string,
+  people: { profile: Profile | undefined; roleLabel: string }[],
+  leaves: LeaveRecord[],
+): LeaveConflict[] {
+  if (!dateStr) return [];
+  const conflicts: LeaveConflict[] = [];
+  for (const { profile, roleLabel } of people) {
+    if (!profile) continue;
+    const leave = leaves.find((l) => l.profile_id === profile.id && l.leave_type === 'official_holiday' && isWithinLeave(dateStr, l));
     if (leave) conflicts.push({ name: profile.full_name, roleLabel, leave });
   }
   return conflicts;

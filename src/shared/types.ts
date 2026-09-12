@@ -608,6 +608,59 @@ export interface LeaveRecord {
   created_at: string;
 }
 
+// تعويض "أوفر تايم" لموظف عمل فعلياً (مُسنَد لموعد/مهمة) في يوم عطلة
+// رسمية مسجَّلة له (LeaveRecord بنوع official_holiday) — المادة ١٠٧ من
+// نظام العمل السعودي تُلزم بتعويض العمل في العطل الرسمية بأجر إضافي
+// (١٥٠٪ من الأجر اليومي على الأقل) بدل منع العمل فيها؛ لذلك استُثنيت
+// العطلة الرسمية تحديداً من findLeaveConflicts (لا تمنع الحجز، بخلاف كل
+// أنواع الإجازات الأخرى). يُنشأ ويُحدَّث تلقائياً بالكامل عبر
+// reconcileHolidayOvertimeForAppointment في src/server/lib/overtime.ts —
+// عند كل إنشاء/تعديل/إلغاء/حذف موعد (المسار اليدوي وحجز الرد الآلي على
+// واتساب كلاهما). لا نقطة نهاية لإنشائه يدوياً عمداً — الإنشاء آلي بالكامل
+// ليطابق الواقع الفعلي للموعد دائماً؛ التعديل اليدوي (تسوية المبلغ أو
+// إلغاؤه) فقط عبر PATCH /employee-overtime/:id.
+export type EmployeeOvertimeStatus = 'pending' | 'paid' | 'dismissed';
+
+export interface EmployeeOvertimeRecord {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  // الموعد الذي أدى للتعويض — يبقى مرتبطاً به حتى لو حُذف الموعد لاحقاً
+  // (السجل نفسه لا يُحذَف تلقائياً، فقط يُعلَّم "أُلغي" عبر reconcile).
+  appointment_id: string;
+  // اسم العطلة كما كُتب عند تسجيلها (مثال: "عيد الفطر") — من ملاحظات
+  // LeaveRecord الأصلية إن وُجدت، وإلا يُستخدَم التصنيف العام "عطلة رسمية".
+  holiday_label: string;
+  // تاريخ العمل الفعلي (تاريخ الموعد نفسه داخل فترة العطلة).
+  work_date: string;
+  // أجر اليوم الأساسي وقت الإنشاء/آخر تسوية (الراتب الشهري ÷ ٣٠) — لقطة
+  // ثابتة، صفر إن لم يكن الراتب الشهري مضبوطاً بعد (يُنبَّه في الواجهة).
+  daily_wage_snapshot: number;
+  // نسبة التعويض المطبَّقة — HOLIDAY_OVERTIME_MULTIPLIER افتراضياً (١٥٠٪،
+  // الحد الأدنى القانوني وفق المادة ١٠٧)، قابلة للتعديل يدوياً لكل سجل.
+  multiplier: number;
+  // daily_wage_snapshot × multiplier، مقرَّب — قابل للتعديل اليدوي المباشر
+  // أيضاً (مثال: تعويض بيوم بديل بدل المال، يُصفَّر هنا مع توضيح بالملاحظات).
+  amount: number;
+  status: EmployeeOvertimeStatus;
+  notes?: string;
+  // مصروف الراتب الذي أُضيف إليه هذا المبلغ، إن دُفع فعلياً عبر تسجيل
+  // راتب شهري (POST /employees/:id/pay-salary) — status يصبح 'paid' عندها.
+  settled_expense_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const EMPLOYEE_OVERTIME_STATUS_LABELS_AR: Record<EmployeeOvertimeStatus, string> = {
+  pending: 'بانتظار الدفع',
+  paid: 'مدفوع',
+  dismissed: 'أُلغي',
+};
+
+// نسبة تعويض العمل في العطلة الرسمية الافتراضية (١٥٠٪ من الأجر اليومي) —
+// المادة ١٠٧ من نظام العمل السعودي، الحد الأدنى القانوني.
+export const HOLIDAY_OVERTIME_MULTIPLIER = 1.5;
+
 // اشتراك دفع (Web Push) لجهاز واحد لمستخدم واحد — نفس المستخدم قد يملك
 // أكثر من اشتراك (جوال + حاسوب مثلاً)، فكل جهاز يشترك بشكل منفصل. تُرسَل
 // تنبيهات إلى كل اشتراكات صاحب الموعد (مشرف/فني) وإلى كل اشتراكات المدير

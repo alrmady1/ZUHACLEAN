@@ -23,6 +23,7 @@ import {
   Rows3,
   FileText,
   Paperclip,
+  Timer,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
@@ -34,6 +35,7 @@ import type {
   EmployeeDeductionCategory,
   EmployeeViolation,
   EmployeeWarning,
+  EmployeeOvertimeRecord,
   Profile,
   CommissionEligibility,
   TerminationReason,
@@ -49,6 +51,7 @@ import {
   TERMINATION_REASON_LABELS_AR,
   ADVANCE_DEDUCTION_MODE_LABELS_AR,
   USER_LANGUAGE_LABELS_AR,
+  EMPLOYEE_OVERTIME_STATUS_LABELS_AR,
 } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
@@ -181,9 +184,13 @@ interface EmployeeSummary {
   // عمولة هذا الشهر المستحقة له (مسوّق أو مشرف) — من تقرير العمولات، صفر
   // إن لم يكن مستحقاً لأي عمولة إطلاقاً.
   commissionDue: number;
-  // صافي الراتب المتوقَّع = الراتب الثابت زائد عمولة هذا الشهر ناقص قسط
-  // هذا الشهر من الخصميات النشطة وقسط السلفيات المجدولة — null إن لم
-  // يُحدَّد راتب ثابت لهذا الموظف بعد.
+  // تعويضات أوفر تايم العطل الرسمية — كل سجلاته (كل الحالات)، وإجمالي
+  // "بانتظار الدفع" فقط (يُضاف لصافي الراتب القادم تلقائياً عند تسجيله).
+  overtime: EmployeeOvertimeRecord[];
+  pendingOvertimeTotal: number;
+  // صافي الراتب المتوقَّع = الراتب الثابت زائد عمولة هذا الشهر زائد أوفر
+  // تايم العطل الرسمية المستحق ناقص قسط هذا الشهر من الخصميات النشطة وقسط
+  // السلفيات المجدولة — null إن لم يُحدَّد راتب ثابت لهذا الموظف بعد.
   netSalary: number | null;
 }
 
@@ -206,6 +213,7 @@ export function EmployeeAccountsTab() {
   const [deductions, setDeductions] = useState<EmployeeDeduction[]>([]);
   const [violations, setViolations] = useState<EmployeeViolation[]>([]);
   const [warnings, setWarnings] = useState<EmployeeWarning[]>([]);
+  const [overtimeRecords, setOvertimeRecords] = useState<EmployeeOvertimeRecord[]>([]);
   const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
   const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -226,6 +234,7 @@ export function EmployeeAccountsTab() {
     api.get<EmployeeDeduction[]>('/employee-deductions').then(setDeductions);
     api.get<EmployeeViolation[]>('/employee-violations').then(setViolations);
     api.get<EmployeeWarning[]>('/employee-warnings').then(setWarnings);
+    api.get<EmployeeOvertimeRecord[]>('/employee-overtime').then(setOvertimeRecords);
     api.get<CommissionReportLite>(`/commission-report?month=${currentMonth()}`).then(setCommissionReport);
     api.get<CommissionEligibility[]>('/commission-eligibility').then(setEligibility);
   }
@@ -262,8 +271,12 @@ export function EmployeeAccountsTab() {
           commissionReport?.marketers.find((m) => m.profile_id === p.id)?.commission_due ??
           commissionReport?.supervisors.find((s) => s.profile_id === p.id)?.commission_due ??
           0;
+        const empOvertime = overtimeRecords.filter((r) => r.employee_id === p.id);
+        const pendingOvertimeTotal = empOvertime
+          .filter((r) => r.status === 'pending')
+          .reduce((sum, r) => sum + r.amount, 0);
         const netSalary = p.monthly_salary
-          ? Math.max(p.monthly_salary + commissionDue - thisMonthDeductionTotal - thisMonthAdvanceTotal, 0)
+          ? Math.max(p.monthly_salary + commissionDue + pendingOvertimeTotal - thisMonthDeductionTotal - thisMonthAdvanceTotal, 0)
           : null;
         return {
           profile: p,
@@ -286,11 +299,13 @@ export function EmployeeAccountsTab() {
           warnings: empWarnings,
           violationsTotal: empViolations.reduce((sum, v) => sum + (v.amount ?? 0), 0),
           commissionDue,
+          overtime: empOvertime,
+          pendingOvertimeTotal,
           netSalary,
         };
       })
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name, 'ar'));
-  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations, warnings, commissionReport]);
+  }, [allProfiles, expenses, custodyInvoices, invoices, deductions, violations, warnings, overtimeRecords, commissionReport]);
 
   const openSummary = summaries.find((s) => s.profile.id === openId) ?? null;
   const canEdit = can('edit_custody_expenses');
@@ -398,8 +413,14 @@ export function EmployeeAccountsTab() {
                     <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.commissionDue)}</div>
                   </div>
                 )}
+                {s.pendingOvertimeTotal > 0 && (
+                  <div className="rounded-xl bg-emerald-50 px-2 py-2">
+                    <div className="text-[11px] text-slate-400">{t('أوفر تايم عطل رسمية')}</div>
+                    <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.pendingOvertimeTotal)}</div>
+                  </div>
+                )}
                 <div
-                  className={`${s.commissionDue > 0 ? '' : 'col-span-2'} rounded-xl px-2 py-2 ${
+                  className={`${s.commissionDue > 0 || s.pendingOvertimeTotal > 0 ? '' : 'col-span-2'} rounded-xl px-2 py-2 ${
                     s.thisMonthDeductionTotal + s.thisMonthAdvanceTotal > 0 ? 'bg-red-50' : 'bg-slate-50'
                   }`}
                 >
@@ -490,6 +511,12 @@ export function EmployeeAccountsTab() {
                   <div className="w-28 shrink-0">
                     <div className="text-[11px] text-slate-400">{t('عمولة هذا الشهر')}</div>
                     <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.commissionDue)}</div>
+                  </div>
+                )}
+                {s.pendingOvertimeTotal > 0 && (
+                  <div className="w-28 shrink-0">
+                    <div className="text-[11px] text-slate-400">{t('أوفر تايم عطل رسمية')}</div>
+                    <div className="text-sm font-semibold text-emerald-700">+{formatMoney(s.pendingOvertimeTotal)}</div>
                   </div>
                 )}
                 {s.netSalary !== null && (
@@ -593,6 +620,21 @@ function EmployeeDetail({
   const [terminationReasonInput, setTerminationReasonInput] = useState<TerminationReason>('employer_termination');
   const [terminating, setTerminating] = useState(false);
   const [editingSalaryEntry, setEditingSalaryEntry] = useState<Expense | null>(null);
+  const [dismissingOvertimeId, setDismissingOvertimeId] = useState<string | null>(null);
+
+  // إلغاء سجل أوفر تايم "بانتظار الدفع" يدوياً — بدل انتظار دفعه تلقائياً
+  // ضمن الراتب الشهري (مثال: تقرَّر تعويضه بيوم إجازة بديل بدل المال).
+  // سجل "بانتظار الدفع" وحده قابل للإلغاء اليدوي (انظر PATCH /employee-overtime/:id).
+  async function dismissOvertime(id: string) {
+    if (!window.confirm(t('إلغاء تعويض الأوفر تايم هذا؟ لن يُضاف لصافي الراتب القادم.'))) return;
+    setDismissingOvertimeId(id);
+    try {
+      await api.patch(`/employee-overtime/${id}`, { status: 'dismissed' });
+      onChanged();
+    } finally {
+      setDismissingOvertimeId(null);
+    }
+  }
 
   async function handleDeleteDeduction(id: string) {
     if (!window.confirm(t('حذف هذا الخصم؟'))) return;
@@ -1228,7 +1270,7 @@ function EmployeeDetail({
             </p>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-5">
                 <div className="rounded-xl bg-slate-50 p-2.5">
                   <div className="text-[11px] text-slate-400">{t('الراتب الأساسي')}</div>
                   <div className="text-sm font-semibold text-slate-700">{formatMoney(summary.profile.monthly_salary)}</div>
@@ -1237,6 +1279,12 @@ function EmployeeDetail({
                   <div className="text-[11px] text-slate-400">{t('عمولة هذا الشهر')}</div>
                   <div className={`text-sm font-semibold ${summary.commissionDue > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
                     {summary.commissionDue > 0 ? `+${formatMoney(summary.commissionDue)}` : formatMoney(0)}
+                  </div>
+                </div>
+                <div className={`rounded-xl p-2.5 ${summary.pendingOvertimeTotal > 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+                  <div className="text-[11px] text-slate-400">{t('أوفر تايم عطل رسمية')}</div>
+                  <div className={`text-sm font-semibold ${summary.pendingOvertimeTotal > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {summary.pendingOvertimeTotal > 0 ? `+${formatMoney(summary.pendingOvertimeTotal)}` : formatMoney(0)}
                   </div>
                 </div>
                 <div className={`rounded-xl p-2.5 ${summary.thisMonthDeductionTotal + summary.thisMonthAdvanceTotal > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
@@ -1323,6 +1371,55 @@ function EmployeeDetail({
             </div>
           )}
         </Section>
+
+        {/* أوفر تايم العطل الرسمية — تُنشأ وتُلغى آلياً بالكامل عند إسناد
+            موعد/إلغائه خلال عطلة رسمية مسجَّلة للموظف (المادة ١٠٧ من نظام
+            العمل السعودي، انظر reconcileHolidayOvertimeForAppointment في
+            server/lib/overtime.ts) — لا زر "إضافة" هنا عمداً، فقط إلغاء
+            يدوي لسجل "بانتظار الدفع" (مثال: تعويضه بيوم بديل بدل المال).
+            سجلات "مدفوع" تُدفع تلقائياً ضمن صافي الراتب عند تسجيله أعلاه. */}
+        {summary.overtime.length > 0 && (
+          <Section
+            icon={<Timer className="h-4 w-4 text-emerald-600" />}
+            title={t('أوفر تايم عطل رسمية')}
+            total={formatMoney(summary.pendingOvertimeTotal)}
+          >
+            <SimpleTable
+              emptyLabel={t('لا توجد سجلات أوفر تايم')}
+              headers={[t('التاريخ'), t('العطلة'), t('المبلغ'), t('الحالة'), '']}
+              rows={summary.overtime.map((r) => [
+                formatDateAr(r.work_date),
+                r.holiday_label,
+                formatMoney(r.amount),
+                <span
+                  key={`${r.id}-status`}
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    r.status === 'paid'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : r.status === 'dismissed'
+                        ? 'bg-slate-100 text-slate-500'
+                        : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  {t(EMPLOYEE_OVERTIME_STATUS_LABELS_AR[r.status])}
+                </span>,
+                canEdit && r.status === 'pending' ? (
+                  <button
+                    key={`${r.id}-dismiss`}
+                    onClick={() => dismissOvertime(r.id)}
+                    disabled={dismissingOvertimeId === r.id}
+                    title={t('إلغاء')}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  ''
+                ),
+              ])}
+            />
+          </Section>
+        )}
 
         {/* استحقاق العمولات — تفعيل/إيقاف هذا الموظف كمسوّق و/أو مشرف مستحق
             للعمولة الشهرية (يشترك في نفس مجمّع العمولة النسبي المُدار من
