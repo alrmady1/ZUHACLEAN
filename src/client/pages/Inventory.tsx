@@ -22,8 +22,16 @@ import {
   ASSET_STATUS_LABELS_AR,
   AUDIT_PERIOD_TYPE_LABELS_AR,
   AUDIT_CYCLE_STATUS_LABELS_AR,
+  VAT_RATE,
 } from '../../shared/types.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
+
+// معاينة حيّة لمبلغ الضريبة على سعر شراء أصل قبل الحفظ — نفس منطق
+// computeAssetPurchaseVat في api.ts بالضبط؛ القيمة الفعلية المحفوظة
+// تُحتسَب من جديد على الخادم دائماً.
+function previewAssetVat(includesVat: boolean, price: number): number {
+  return includesVat ? Math.round((price - price / (1 + VAT_RATE)) * 100) / 100 : Math.round(price * VAT_RATE * 100) / 100;
+}
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -506,6 +514,10 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
   const { t, tt } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // مُتحكَّم بهما (لا defaultValue) لمعاينة مبلغ الضريبة حيّاً أثناء
+  // الكتابة — نفس فكرة previewExpenseTax في Expenses.tsx بالضبط.
+  const [purchasePrice, setPurchasePrice] = useState(asset?.purchase_price != null ? String(asset.purchase_price) : '');
+  const [includesVat, setIncludesVat] = useState(asset?.purchase_price_includes_vat ?? true);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -516,7 +528,8 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
       asset_code: form.get('asset_code'),
       name: form.get('name'),
       category: form.get('category'),
-      purchase_price: form.get('purchase_price'),
+      purchase_price: purchasePrice,
+      purchase_price_includes_vat: includesVat,
       purchase_date: form.get('purchase_date'),
       useful_life_years: form.get('useful_life_years'),
       salvage_value: form.get('salvage_value'),
@@ -568,12 +581,30 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset: Asset | null; onCl
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('سعر الشراء (ر.س)')}>
-            <input type="number" name="purchase_price" min={0} step="0.01" defaultValue={asset?.purchase_price} required className="input" />
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={purchasePrice}
+              onChange={(e) => setPurchasePrice(e.target.value)}
+              required
+              className="input"
+            />
           </Field>
           <Field label={t('تاريخ الشراء/التأسيس')}>
             <input type="date" name="purchase_date" defaultValue={asset?.purchase_date} required className="input" />
           </Field>
         </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={includesVat} onChange={(e) => setIncludesVat(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+          <span className="font-medium text-slate-600">{t('سعر الشراء شامل ضريبة القيمة المضافة')}</span>
+        </label>
+        {Number(purchasePrice) > 0 && (
+          <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
+            {t('قيمة الضريبة المحتسبة')}: {formatMoney(previewAssetVat(includesVat, Number(purchasePrice)))}
+            {!includesVat && ` (${t('إضافية فوق سعر الشراء')})`}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('العمر الإنتاجي (سنوات)')}>
             <input type="number" name="useful_life_years" min={1} step="1" defaultValue={asset?.useful_life_years ?? 5} required className="input" />

@@ -539,6 +539,13 @@ api.delete('/facilities/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 api.get('/assets', (_req, res) => res.json(store.assets.list()));
 
+// مبلغ ضريبة سعر شراء أصل — includesVat=true يستخرجها من سعر شامل
+// الضريبة (نفس منطق computeExpenseTax تماماً)، false يحتسبها إضافية فوق
+// السعر (السعر إذن غير شامل الضريبة).
+function computeAssetPurchaseVat(includesVat: boolean, price: number): number {
+  return includesVat ? Math.round((price - price / (1 + VAT_RATE)) * 100) / 100 : Math.round(price * VAT_RATE * 100) / 100;
+}
+
 api.post('/assets', (req, res) => {
   const body = req.body ?? {};
   if (!body.asset_code || !body.name || !body.category) {
@@ -548,12 +555,16 @@ api.post('/assets', (req, res) => {
     return res.status(400).json({ error: 'كود الأصل مستخدَم مسبقاً' });
   }
   const now = new Date().toISOString();
+  const purchasePrice = numOrUndef(body.purchase_price) ?? 0;
+  const includesVat = body.purchase_price_includes_vat !== undefined ? Boolean(body.purchase_price_includes_vat) : true;
   const asset: Asset = {
     id: store.id(),
     asset_code: body.asset_code,
     name: body.name,
     category: body.category,
-    purchase_price: numOrUndef(body.purchase_price) ?? 0,
+    purchase_price: purchasePrice,
+    purchase_price_includes_vat: includesVat,
+    purchase_price_vat_amount: computeAssetPurchaseVat(includesVat, purchasePrice),
     purchase_date: body.purchase_date ?? now.slice(0, 10),
     useful_life_years: numOrUndef(body.useful_life_years) ?? 1,
     salvage_value: numOrUndef(body.salvage_value) ?? 0,
@@ -580,7 +591,17 @@ api.patch('/assets/:id', (req, res) => {
   if (body.asset_code !== undefined) patch.asset_code = body.asset_code;
   if (body.name !== undefined) patch.name = body.name;
   if (body.category !== undefined) patch.category = body.category;
-  if (body.purchase_price !== undefined) patch.purchase_price = numOrUndef(body.purchase_price) ?? 0;
+  // إعادة احتساب ضريبة سعر الشراء كلما تغيّر أحد مدخليها (المبلغ أو
+  // شمول الضريبة) — نفس منطق تعديل ضريبة فاتورة مصروف في PATCH
+  // /expenses/:id بالضبط.
+  if (body.purchase_price !== undefined || body.purchase_price_includes_vat !== undefined) {
+    const includesVat =
+      body.purchase_price_includes_vat !== undefined ? Boolean(body.purchase_price_includes_vat) : (target.purchase_price_includes_vat ?? true);
+    const price = body.purchase_price !== undefined ? numOrUndef(body.purchase_price) ?? 0 : target.purchase_price;
+    patch.purchase_price = price;
+    patch.purchase_price_includes_vat = includesVat;
+    patch.purchase_price_vat_amount = computeAssetPurchaseVat(includesVat, price);
+  }
   if (body.purchase_date !== undefined) patch.purchase_date = body.purchase_date;
   if (body.useful_life_years !== undefined) patch.useful_life_years = numOrUndef(body.useful_life_years) ?? 1;
   if (body.salvage_value !== undefined) patch.salvage_value = numOrUndef(body.salvage_value) ?? 0;

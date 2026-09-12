@@ -1893,6 +1893,15 @@ export interface Asset {
   name: string;
   category: AssetCategory;
   purchase_price: number;
+  // هل purchase_price شامل ضريبة القيمة المضافة؟ نفس اصطلاح Expense.
+  // is_tax_invoice/tax_amount بالضبط — افتراضي true (كل تسعير في هذا
+  // النظام شامل الضريبة ما لم يُنصَّ خلاف ذلك، انظر VAT_RATE)؛
+  // purchase_price_vat_amount مبلغ الضريبة المُحتسَب (استخراج من مبلغ شامل
+  // الضريبة إن كانت الحالة true، أو 15% إضافية فوق السعر إن كانت false)،
+  // إعلامي بحت — لا يُغيِّر purchase_price نفسه ولا أساس احتساب الإهلاك
+  // (computeAssetDepreciation يستخدم purchase_price كما هو دائماً).
+  purchase_price_includes_vat?: boolean;
+  purchase_price_vat_amount?: number;
   purchase_date: string;
   useful_life_years: number;
   salvage_value: number;
