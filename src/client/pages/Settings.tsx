@@ -2680,6 +2680,7 @@ function LandingPageTab() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const [uploadingPopupAd, setUploadingPopupAd] = useState(false);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
 
   function refreshSettings() {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings);
@@ -2695,6 +2696,24 @@ function LandingPageTab() {
       setSettings((s) => ({ ...s, popup_ad_image_url: url }));
     } finally {
       setUploadingPopupAd(false);
+      e.target.value = '';
+    }
+  }
+
+  // صورة خلفية لوحة الثقة في الهيرو — نفس آلية رفع الإعلان المنبثق تماماً
+  // (ضغط ثم /landing-images)، فقط تُخزَّن في hero_image_url بدل
+  // popup_ad_image_url. غائبة = تبقى الصورة الافتراضية public/hero-worker.jpeg
+  // كما هي (انظر OrderPage.tsx).
+  async function handleHeroImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingHeroImage(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const { url } = await api.post<{ url: string }>('/landing-images', { data_url: dataUrl });
+      setSettings((s) => ({ ...s, hero_image_url: url }));
+    } finally {
+      setUploadingHeroImage(false);
       e.target.value = '';
     }
   }
@@ -2829,6 +2848,26 @@ function LandingPageTab() {
               className="input resize-none"
             />
           </Field>
+          {/* صورة لوحة الثقة في الهيرو (الفني أثناء العمل) — بديل رفع مباشر
+              بدل تعديل public/hero-worker.jpeg في الكود لكل تغيير. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span className="block text-sm font-medium text-slate-700">{t('صورة الهيرو (لوحة الثقة بجانب بطاقة الحجز)')}</span>
+            <span className="mb-3 block text-xs text-slate-400">{t('غائبة = تبقى صورة الفني الافتراضية كما هي')}</span>
+            <div className="flex items-center gap-3">
+              {settings.hero_image_url && (
+                <img src={settings.hero_image_url} alt={t('صورة الهيرو')} className="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              )}
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleHeroImageChange}
+                  className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                />
+                {uploadingHeroImage && <span className="mt-1 block text-xs text-slate-400">{t('جارِ رفع الصورة…')}</span>}
+              </div>
+            </div>
+          </div>
           <Field label={t('الشعار المختصر (يظهر أعلى الصفحة بجانب الاسم)')}>
             <input
               value={settings.tagline}

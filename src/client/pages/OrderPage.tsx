@@ -228,7 +228,7 @@ export default function OrderPage() {
           {/* لوحة الصورة/الثقة — صورة فعلية واضحة (لا شفافية خافتة كالتصميم
               القديم) مع تدرّج داكن أسفلها لوضوح النص الأبيض فوقها. */}
           <div className="relative min-h-[360px] w-full overflow-hidden rounded-3xl shadow-2xl lg:flex-1">
-            <img src="/hero-worker.jpeg" alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <img src={settings.hero_image_url || '/hero-worker.jpeg'} alt="" className="absolute inset-0 h-full w-full object-cover" />
             <div
               className="absolute inset-0"
               style={{ background: `linear-gradient(180deg, ${NAVY}05 0%, ${NAVY}B3 60%, ${NAVY}F0 100%)` }}

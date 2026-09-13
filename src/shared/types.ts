@@ -942,6 +942,12 @@ export interface LandingPageSettings {
   // منع — إعلان بحت، لا تسجيل دخول ولا نموذج داخله.
   popup_ad_enabled?: boolean;
   popup_ad_image_url?: string;
+  // صورة خلفية لوحة الثقة في الهيرو (الفني أثناء العمل، بجانب بطاقة "احجز
+  // خدمتك") — غائبة = تُستخدَم الصورة الافتراضية الثابتة في الكود
+  // (public/hero-worker.jpeg)، فحسابات قديمة بلا هذا الحقل تستمر تعمل
+  // بلا أي تغيير مرئي. تُرفَع من هنا بدل تعديل الكود مباشرة في كل مرة
+  // يتغيّر فيها الفني/المشهد بالصورة.
+  hero_image_url?: string;
 }
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {

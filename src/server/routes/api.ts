@@ -3958,6 +3958,7 @@ api.patch('/landing-settings', (req, res) => {
       typeof body.show_installments_banner === 'boolean' ? body.show_installments_banner : current.show_installments_banner ?? true,
     popup_ad_enabled: typeof body.popup_ad_enabled === 'boolean' ? body.popup_ad_enabled : current.popup_ad_enabled ?? false,
     popup_ad_image_url: body.popup_ad_image_url !== undefined ? body.popup_ad_image_url || undefined : current.popup_ad_image_url,
+    hero_image_url: body.hero_image_url !== undefined ? body.hero_image_url || undefined : current.hero_image_url,
   };
   store.landingSettings.set(next);
   logActivity(req, 'تم تعديل إعدادات صفحة الطلبات الخارجية (الألوان/النصوص)');
