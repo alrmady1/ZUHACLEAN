@@ -334,6 +334,7 @@ export default function OrderPage() {
                             <span className="mt-2.5 block text-sm font-bold leading-tight" style={{ color: NAVY }}>
                               {s.title}
                             </span>
+                            {s.short_tag && <span className="mt-0.5 block text-xs text-slate-400">{s.short_tag}</span>}
                           </button>
                         );
                       })}

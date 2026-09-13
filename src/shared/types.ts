@@ -988,6 +988,13 @@ export interface LandingService {
   id: string;
   title: string;
   description?: string;
+  // وسم قصير (كلمتان-ثلاث، مثل "شقق وفلل" أو "تنظيف بالبخار") يظهر تحت
+  // اسم الخدمة في بطاقات اختيار الخدمة بخطوة "احجز خدمتك" أعلى صفحة
+  // "اطلب الخدمة" (OrderPage.tsx) — منفصل عمداً عن description الأطول
+  // (جملة كاملة تُعرض في قسم "خدماتنا" الأوسع أسفل الصفحة)، لأن بطاقات
+  // الاختيار الصغيرة لا تتسع لوصف كامل. غائب = لا يظهر أي سطر ثانٍ تحت
+  // الاسم في تلك البطاقات تحديداً.
+  short_tag?: string;
   image_url?: string;
   is_active: boolean;
   created_at: string;

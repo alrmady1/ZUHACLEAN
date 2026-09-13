@@ -4004,6 +4004,7 @@ api.post('/landing-services', (req, res) => {
     id: store.id(),
     title: title.slice(0, 200),
     description: typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 500) : undefined,
+    short_tag: typeof body.short_tag === 'string' && body.short_tag.trim() ? body.short_tag.trim().slice(0, 40) : undefined,
     image_url: typeof body.image_url === 'string' && body.image_url ? body.image_url : undefined,
     is_active: body.is_active !== false,
     created_at: new Date().toISOString(),
@@ -4018,6 +4019,7 @@ api.patch('/landing-services/:id', (req, res) => {
   const patch: Partial<LandingService> = {};
   if (typeof body.title === 'string' && body.title.trim()) patch.title = body.title.trim().slice(0, 200);
   if ('description' in body) patch.description = typeof body.description === 'string' && body.description.trim() ? body.description.trim().slice(0, 500) : undefined;
+  if ('short_tag' in body) patch.short_tag = typeof body.short_tag === 'string' && body.short_tag.trim() ? body.short_tag.trim().slice(0, 40) : undefined;
   if ('image_url' in body) patch.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : undefined;
   if (typeof body.is_active === 'boolean') patch.is_active = body.is_active;
   const updated = store.landingServices.update(req.params.id, patch);
