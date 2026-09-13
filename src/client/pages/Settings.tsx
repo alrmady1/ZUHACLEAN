@@ -2680,6 +2680,7 @@ function LandingPageTab() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const [uploadingPopupAd, setUploadingPopupAd] = useState(false);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
 
   function refreshSettings() {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings);
@@ -2695,6 +2696,24 @@ function LandingPageTab() {
       setSettings((s) => ({ ...s, popup_ad_image_url: url }));
     } finally {
       setUploadingPopupAd(false);
+      e.target.value = '';
+    }
+  }
+
+  // صورة خلفية لوحة الثقة في الهيرو — نفس آلية رفع الإعلان المنبثق تماماً
+  // (ضغط ثم /landing-images)، فقط تُخزَّن في hero_image_url بدل
+  // popup_ad_image_url. غائبة = تبقى الصورة الافتراضية public/hero-worker.jpeg
+  // كما هي (انظر OrderPage.tsx).
+  async function handleHeroImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingHeroImage(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      const { url } = await api.post<{ url: string }>('/landing-images', { data_url: dataUrl });
+      setSettings((s) => ({ ...s, hero_image_url: url }));
+    } finally {
+      setUploadingHeroImage(false);
       e.target.value = '';
     }
   }
@@ -2829,6 +2848,26 @@ function LandingPageTab() {
               className="input resize-none"
             />
           </Field>
+          {/* صورة لوحة الثقة في الهيرو (الفني أثناء العمل) — بديل رفع مباشر
+              بدل تعديل public/hero-worker.jpeg في الكود لكل تغيير. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span className="block text-sm font-medium text-slate-700">{t('صورة الهيرو (لوحة الثقة بجانب بطاقة الحجز)')}</span>
+            <span className="mb-3 block text-xs text-slate-400">{t('غائبة = تبقى صورة الفني الافتراضية كما هي')}</span>
+            <div className="flex items-center gap-3">
+              {settings.hero_image_url && (
+                <img src={settings.hero_image_url} alt={t('صورة الهيرو')} className="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              )}
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleHeroImageChange}
+                  className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+                />
+                {uploadingHeroImage && <span className="mt-1 block text-xs text-slate-400">{t('جارِ رفع الصورة…')}</span>}
+              </div>
+            </div>
+          </div>
           <Field label={t('الشعار المختصر (يظهر أعلى الصفحة بجانب الاسم)')}>
             <input
               value={settings.tagline}
@@ -2959,6 +2998,7 @@ function LandingPageTab() {
                   </div>
                 </div>
                 <div className="text-sm font-semibold text-slate-800">{s.title}</div>
+                {s.short_tag && <div className="mt-0.5 text-xs font-medium text-brand-500">{s.short_tag}</div>}
                 {s.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{s.description}</p>}
                 <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-2.5">
                   <button onClick={() => handleDelete(s)} title={t('حذف')} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
@@ -3020,6 +3060,7 @@ function LandingServiceForm({
   const { t } = useI18n();
   const [title, setTitle] = useState(editing?.title ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
+  const [shortTag, setShortTag] = useState(editing?.short_tag ?? '');
   const [imageUrl, setImageUrl] = useState(editing?.image_url ?? '');
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -3043,7 +3084,12 @@ function LandingServiceForm({
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      const payload = { title: title.trim(), description: description.trim() || undefined, image_url: imageUrl || undefined };
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        short_tag: shortTag.trim() || undefined,
+        image_url: imageUrl || undefined,
+      };
       if (editing) {
         await api.patch(`/landing-services/${editing.id}`, payload);
       } else {
@@ -3064,6 +3110,9 @@ function LandingServiceForm({
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label={t('اسم الخدمة *')}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder={t('مثال: تنظيف شقق وفلل شامل')} className="input" />
+        </Field>
+        <Field label={t('وسم قصير (يظهر تحت الاسم في بطاقة "احجز خدمتك")')}>
+          <input value={shortTag} onChange={(e) => setShortTag(e.target.value)} maxLength={40} placeholder={t('مثال: شقق وفلل')} className="input" />
         </Field>
         <Field label={t('وصف مختصر للخدمة')}>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="input resize-none" />

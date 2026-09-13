@@ -942,6 +942,12 @@ export interface LandingPageSettings {
   // منع — إعلان بحت، لا تسجيل دخول ولا نموذج داخله.
   popup_ad_enabled?: boolean;
   popup_ad_image_url?: string;
+  // صورة خلفية لوحة الثقة في الهيرو (الفني أثناء العمل، بجانب بطاقة "احجز
+  // خدمتك") — غائبة = تُستخدَم الصورة الافتراضية الثابتة في الكود
+  // (public/hero-worker.jpeg)، فحسابات قديمة بلا هذا الحقل تستمر تعمل
+  // بلا أي تغيير مرئي. تُرفَع من هنا بدل تعديل الكود مباشرة في كل مرة
+  // يتغيّر فيها الفني/المشهد بالصورة.
+  hero_image_url?: string;
 }
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
@@ -988,6 +994,13 @@ export interface LandingService {
   id: string;
   title: string;
   description?: string;
+  // وسم قصير (كلمتان-ثلاث، مثل "شقق وفلل" أو "تنظيف بالبخار") يظهر تحت
+  // اسم الخدمة في بطاقات اختيار الخدمة بخطوة "احجز خدمتك" أعلى صفحة
+  // "اطلب الخدمة" (OrderPage.tsx) — منفصل عمداً عن description الأطول
+  // (جملة كاملة تُعرض في قسم "خدماتنا" الأوسع أسفل الصفحة)، لأن بطاقات
+  // الاختيار الصغيرة لا تتسع لوصف كامل. غائب = لا يظهر أي سطر ثانٍ تحت
+  // الاسم في تلك البطاقات تحديداً.
+  short_tag?: string;
   image_url?: string;
   is_active: boolean;
   created_at: string;
@@ -1488,6 +1501,33 @@ export interface Appointment {
   marketer_code?: string;
   marketer_id?: string;
   marketer_discount_amount?: number;
+  // طلب دفع عبر تمارا (Pay by Instalments) — بديل عن التحصيل اليدوي
+  // (POST /appointments/:id/payments) لعميل يريد التقسيط: نُنشئ طلباً لدى
+  // تمارا عبر POST /appointments/:id/tamara-request (انظر
+  // src/server/lib/tamara.ts) فيرجع رابط دفع نُرسله للعميل (واتساب/نسخ)،
+  // ثم يصل تأكيد الدفع لاحقاً بشكل غير متزامن عبر ويب هوك
+  // POST /tamara/webhook الذي يسجّل الدفعة فعلياً في payments أدناه فور
+  // اكتمالها — تماماً كما لو حُصِّلت يدوياً، فقط بطريقة الدفع 'تمارا'.
+  // كل الحقول غائبة يعني: لم يُطلب دفع عبر تمارا لهذا الموعد إطلاقاً.
+  tamara_order_id?: string;
+  tamara_checkout_url?: string;
+  // 'created' فور إنشاء الطلب (بانتظار العميل) — 'approved' وافقت تمارا
+  // على تمويل العميل (لسنا مدفوعين بعد فعلياً حتى capture) — 'paid' تم
+  // تحصيل المبلغ فعلياً وسُجِّلت الدفعة — 'declined'/'expired'/'canceled'
+  // لن يُدفع هذا الطلب، يمكن إنشاء طلب جديد للموعد نفسه عند الحاجة.
+  tamara_status?: 'created' | 'approved' | 'paid' | 'declined' | 'expired' | 'canceled';
+  // طلب دفع عبر تابي — نفس فكرة حقول تمارا أعلاه بالضبط، لكن آلية التأكيد
+  // مختلفة: تابي لا تُرسل ويب هوك بشكل مضمون، بل تُعيد توجيه متصفح العميل
+  // لرابط النجاح الذي نزوّدها به عند إنشاء الطلب ومعه payment_id — خادمنا
+  // يستقبل تلك العودة (GET /tabby/return)، يتحقق من حالة الدفعة لدى تابي،
+  // ثم "يلتقطها" (capture) فعلياً قبل تسجيلها. انظر src/server/lib/tabby.ts.
+  tabby_payment_id?: string;
+  tabby_checkout_url?: string;
+  // 'created' فور الإنشاء — 'authorized' وافقت تابي لكن لم تُلتقَط الدفعة
+  // بعد (نادراً ما يبقى بهذه الحالة، capture يحدث فور عودة العميل) —
+  // 'paid' التُقطت الدفعة فعلياً وسُجِّلت — 'declined'/'expired'/'canceled'
+  // كما في تمارا تماماً.
+  tabby_status?: 'created' | 'authorized' | 'paid' | 'declined' | 'expired' | 'canceled';
 }
 
 export const VAT_RATE = 0.15;
@@ -1803,6 +1843,12 @@ export const COMPANY_PHONE = '0582464181';
 // يُضاف هنا لاحقاً، وتُخفي مستندات العقد وعرض السعر هذا السطر تلقائياً
 // طالما فارغ (انظر DocumentHeader.tsx) بدل طباعة رقم غير صحيح.
 export const COMPANY_CR_NUMBER = '';
+// نطاق الموقع العام المنشور — يُستخدَم لبناء روابط مطلقة يجب أن تصل لجهات
+// خارجية لا تعرف شيئاً عن بيئة التشغيل الحالية (مثل رابط الإشعار
+// notification الذي نرسله لتمارا عند إنشاء طلب دفع، انظر
+// src/server/lib/tamara.ts). ثابت هنا بدل متغير بيئة لأنه ليس سرّاً ولا
+// يختلف بين النشرات — نفس منطق COMPANY_PHONE أعلاه.
+export const PUBLIC_SITE_URL = 'https://zuhaclean.vercel.app';
 
 // بيانات الحساب البنكي للشركة — سجل واحد فقط (وليس قائمة)، يُقرأ/يُعدَّل عبر
 // GET/PATCH /company-bank-account. تُدخَل من الإعدادات ← طرق الدفع (خلف
