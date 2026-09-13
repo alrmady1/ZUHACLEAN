@@ -1,5 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   Home,
   Building2,
@@ -20,6 +19,10 @@ import {
   Landmark,
   Apple,
   X,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  UserPlus,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
@@ -54,9 +57,17 @@ function scrollToForm() {
   document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// خطوات بطاقة "احجز خدمتك" في الهيرو — الخدمة أولاً (أهم قرار للعميل
+// وأول ما يراه)، ثم بياناته، ثم تأكيد سريع قبل الإرسال. نسخة مُصغَّرة
+// عمداً من معالج الحجز الكامل (BookingWizardPage.tsx، 5 خطوات بموقع على
+// خريطة وتاريخ/وقت مفضَّل) — هذي هنا مجرد "طلب أولي" خفيف داخل الصفحة
+// الرئيسية نفسها، بلا أي تنقّل لصفحة منفصلة.
+const HERO_STEP_TITLES = ['الخدمة', 'بياناتك', 'التأكيد'];
+
 export default function OrderPage() {
   const [settings, setSettings] = useState<LandingPageSettings>(DEFAULT_LANDING_SETTINGS);
   const [services, setServices] = useState<LandingService[]>([]);
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [serviceName, setServiceName] = useState('');
@@ -108,13 +119,25 @@ export default function OrderPage() {
 
   const { primary: NAVY, secondary: CREAM, background: OFFWHITE, accent: GREEN } = settings.colors;
 
+  // يُختار من بطاقات قسم "خدماتنا" الأدنى في الصفحة — الخدمة معروفة
+  // بالفعل حينها، فيُقفز مباشرة لخطوة "بياناتك" بدل تكرار خطوة الاختيار.
   function pickService(n: string) {
     setServiceName(n);
+    setStep(2);
     scrollToForm();
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  const canGoNext = step === 1 ? Boolean(serviceName) : step === 2 ? name.trim().length > 1 && phone.trim().length >= 9 : true;
+
+  function goNext() {
+    if (!canGoNext) return;
+    setStep((s) => Math.min(s + 1, HERO_STEP_TITLES.length));
+  }
+  function goBack() {
+    setStep((s) => Math.max(s - 1, 1));
+  }
+
+  async function submit() {
     if (!name.trim() || !phone.trim() || submitting) return;
     setSubmitting(true);
     setSubmitError('');
@@ -176,94 +199,68 @@ export default function OrderPage() {
           <a href="#why" className="transition hover:text-white">لماذا زهى</a>
           <a href="#contact" className="transition hover:text-white">تواصل معنا</a>
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 sm:gap-4">
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
             target="_blank"
             rel="noreferrer"
-            title="تواصل عبر واتساب"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:opacity-90"
-            style={{ backgroundColor: '#25D366' }}
+            className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition hover:opacity-90 sm:px-4 sm:text-sm"
+            style={{ backgroundColor: '#25D366', color: '#fff' }}
           >
-            <MessageCircle className="h-4 w-4" />
+            <MessageCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> تواصل معنا
           </a>
           <a
             href={`tel:${COMPANY_PHONE}`}
-            title="اتصال"
-            className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-90"
-            style={{ backgroundColor: GREEN, color: NAVY }}
+            dir="ltr"
+            className="hidden items-center gap-1.5 text-sm font-bold text-white/90 transition hover:text-white sm:flex"
           >
-            <Phone className="h-4 w-4" />
+            {COMPANY_PHONE} <Phone className="h-4 w-4" />
           </a>
         </div>
       </header>
 
-      {/* ================== الهيرو + استمارة الطلب السريع ================== */}
-      {/* النص أولاً في DOM ثم بطاقة الاستمارة ثانياً — داخل flex-row عادي
-          مع اتجاه الصفحة rtl، فأول عنصر في الشجرة (النص) يظهر يميناً
-          وثانيها (الاستمارة) يساراً، مطابقةً للتصميم المرجعي المطلوب. */}
-      <section
-        className="relative overflow-hidden px-5 py-16 sm:px-10 sm:py-20"
-        style={{ backgroundColor: NAVY }}
-      >
-        {/* صورة خلفية خفيفة جداً (شفافية منخفضة) لأحد فنيي الميدان أثناء
-            العمل — خلف الدوائر الزخرفية والمحتوى بالكامل، بلا أي تأثير على
-            وضوح النص الأبيض فوقها. */}
-        <img
-          src="/hero-worker.jpeg"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-10"
-        />
-        <div
-          className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full opacity-20"
-          style={{ backgroundColor: GREEN }}
-        />
-        <div
-          className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full opacity-10"
-          style={{ backgroundColor: CREAM }}
-        />
-        <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-10 lg:flex-row lg:items-center lg:gap-14">
-          <div className="flex-1 text-center lg:text-right">
-            <div className="mb-6 flex justify-center lg:justify-start">
-              <img
-                src="/icon-inverted-512.png"
-                alt={COMPANY_NAME}
-                className="h-40 w-40 rounded-2xl shadow-lg sm:h-48 sm:w-48"
-              />
-            </div>
-            <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-5xl">{settings.hero_title}</h1>
-            <p className="mt-5 text-sm leading-relaxed text-white/70 sm:text-base lg:max-w-lg">{settings.hero_subtitle}</p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-              <button
-                type="button"
-                onClick={scrollToForm}
-                className="rounded-xl px-6 py-3 text-sm font-bold transition hover:opacity-90 lg:hidden"
-                style={{ backgroundColor: GREEN, color: NAVY }}
+      {/* ================== الهيرو: لوحة الثقة + بطاقة حجز بثلاث خطوات ==================
+          لوحة الصورة/العنوان أولاً في DOM ثم بطاقة الحجز ثانياً — في RTL
+          أول عنصر يظهر يميناً، مطابقةً للتصميم المرجعي (الصورة يميناً،
+          بطاقة الحجز يساراً). على الجوال تُكدَّس الصورة أعلى وبطاقة الحجز
+          أسفلها بنفس ترتيب الشجرة (flex-col عادي، بلا reverse). */}
+      <section className="px-5 py-10 sm:px-10 sm:py-14">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:flex-row lg:items-stretch">
+          {/* لوحة الصورة/الثقة — صورة فعلية واضحة (لا شفافية خافتة كالتصميم
+              القديم) مع تدرّج داكن أسفلها لوضوح النص الأبيض فوقها. */}
+          <div className="relative min-h-[360px] w-full overflow-hidden rounded-3xl shadow-2xl lg:flex-1">
+            <img src="/hero-worker.jpeg" alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <div
+              className="absolute inset-0"
+              style={{ background: `linear-gradient(180deg, ${NAVY}05 0%, ${NAVY}B3 60%, ${NAVY}F0 100%)` }}
+            />
+            <div className="relative flex h-full flex-col justify-end p-6 sm:p-9">
+              <span
+                className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-bold shadow-sm"
+                style={{ color: NAVY }}
               >
-                اطلب الخدمة الآن
-              </button>
-              <Link
-                to="/order/book"
-                className="rounded-xl px-6 py-3 text-sm font-bold transition hover:opacity-90"
-                style={{ backgroundColor: CREAM, color: NAVY }}
-              >
-                اطلب خدمتك الآن
-              </Link>
-              <a
-                href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 rounded-xl border border-white/30 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10"
-              >
-                <MessageCircle className="h-4 w-4" /> تواصل عبر واتساب
-              </a>
+                <CheckCircle2 className="h-3.5 w-3.5" style={{ color: GREEN }} /> خدمة واضحة من أول طلب
+              </span>
+              <h1 className="text-3xl font-extrabold leading-tight text-white sm:text-4xl">{settings.hero_title}</h1>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-white/75 sm:text-base">{settings.hero_subtitle}</p>
+              <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-white/90 sm:gap-x-8">
+                <span className="flex items-center gap-1.5">
+                  <UserPlus className="h-4 w-4" style={{ color: GREEN }} /> فريق مدرّب
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4" style={{ color: GREEN }} /> مواد آمنة
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-4 w-4" style={{ color: GREEN }} /> الالتزام بالموعد
+                </span>
+              </div>
             </div>
           </div>
 
-          <div id="order-form" className="w-full shrink-0 rounded-2xl bg-white p-6 shadow-2xl sm:p-8 lg:w-[420px]">
+          {/* بطاقة "احجز خدمتك" — ثلاث خطوات: الخدمة ← بياناتك ← التأكيد. */}
+          <div id="order-form" className="w-full rounded-3xl bg-white p-6 shadow-2xl sm:p-7 lg:w-[440px] lg:shrink-0">
             {done ? (
-              <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <div className="flex h-full flex-col items-center justify-center gap-3 py-8 text-center">
                 <CheckCircle2 className="h-14 w-14" style={{ color: GREEN }} />
                 <h2 className="text-xl font-bold" style={{ color: NAVY }}>
                   تم استلام طلبك بنجاح!
@@ -283,110 +280,203 @@ export default function OrderPage() {
                 </a>
               </div>
             ) : (
-              <form onSubmit={submit} className="space-y-4">
-                <div className="text-center">
-                  <h2 className="text-lg font-bold" style={{ color: NAVY }}>
-                    اطلب الخدمة الآن
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-400">عبّئ بياناتك وسنتواصل معك خلال دقائق</p>
-                </div>
-                <div className="flex flex-col gap-2 text-slate-500 sm:flex-row">
-                  <label className="flex-1 text-sm">
-                    <span className="sr-only">الاسم</span>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                      placeholder="الاسم"
-                      className="input text-slate-500 placeholder:text-slate-500"
-                    />
-                  </label>
-                  <label className="flex-1 text-sm">
-                    <span className="sr-only">رقم الجوال</span>
-                    <input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                      dir="ltr"
-                      placeholder="رقم الجوال"
-                      className="input text-slate-500 placeholder:text-slate-500"
-                    />
-                  </label>
-                  <label className="flex-1 text-sm">
-                    <span className="sr-only">الخدمة المطلوبة</span>
-                    <select
-                      value={serviceName}
-                      onChange={(e) => setServiceName(e.target.value)}
-                      className="input text-slate-500"
-                    >
-                      <option value="">الخدمة المطلوبة</option>
-                      {services.map((s) => (
-                        <option key={s.id} value={s.title}>
-                          {s.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold" style={{ color: NAVY }}>
+                      احجز خدمتك
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-400">ثلاث خطوات بسيطة ونرجع لك بالتأكيد.</p>
+                  </div>
+                  <span className="shrink-0 rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: CREAM, color: NAVY }}>
+                    {step} من {HERO_STEP_TITLES.length}
+                  </span>
                 </div>
 
-                {submitError && (
-                  <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                    <AlertCircle className="h-4 w-4 shrink-0" /> {submitError}
+                <div className="mb-6 mt-4 flex gap-1.5">
+                  {HERO_STEP_TITLES.map((_, i) => (
+                    <div key={i} className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: i < step ? '100%' : '0%', backgroundColor: GREEN }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {step === 1 && (
+                  <div>
+                    <p className="mb-3 text-sm font-bold" style={{ color: NAVY }}>
+                      وش الخدمة اللي تحتاجها؟
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {services.map((s) => {
+                        const Icon = serviceIcon(s.title);
+                        const active = serviceName === s.title;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setServiceName(s.title)}
+                            className="flex flex-col items-start rounded-2xl border p-3.5 text-start transition"
+                            style={{ borderColor: active ? GREEN : '#ECE8DE', backgroundColor: active ? `${GREEN}1A` : '#fff' }}
+                          >
+                            <div className="flex w-full items-center justify-between">
+                              <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: CREAM, color: NAVY }}>
+                                <Icon className="h-4 w-4" />
+                              </span>
+                              {active && (
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full text-white" style={{ backgroundColor: NAVY }}>
+                                  <Check className="h-3 w-3" />
+                                </span>
+                              )}
+                            </div>
+                            <span className="mt-2.5 block text-sm font-bold leading-tight" style={{ color: NAVY }}>
+                              {s.title}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {services.length === 0 && (
+                        <div className="col-span-2 py-6 text-center text-xs text-slate-400">جارِ تحميل الخدمات…</div>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={submitting || !name.trim() || !phone.trim()}
-                  className="w-full rounded-xl py-3 text-sm font-bold text-white transition disabled:opacity-50"
-                  style={{ backgroundColor: NAVY }}
+                {step === 2 && (
+                  <div className="space-y-3">
+                    <label className="block text-sm">
+                      <span className="mb-1.5 block font-medium text-slate-600">الاسم</span>
+                      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: محمد العتيبي" className="input" />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1.5 block font-medium text-slate-600">رقم الجوال</span>
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" placeholder="05XXXXXXXX" className="input" />
+                    </label>
+                    <p className="text-xs text-slate-400">سيتم استخدام هذه البيانات للتواصل معك بخصوص طلبك</p>
+                  </div>
+                )}
+
+                {step === 3 && (
+                  <div className="space-y-4">
+                    <div className="space-y-2.5 rounded-xl bg-slate-50 p-4 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">الخدمة</span>
+                        <span className="font-semibold" style={{ color: NAVY }}>
+                          {serviceName || '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">الاسم</span>
+                        <span className="font-semibold" style={{ color: NAVY }}>
+                          {name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">الجوال</span>
+                        <span dir="ltr" className="font-semibold" style={{ color: NAVY }}>
+                          {phone}
+                        </span>
+                      </div>
+                    </div>
+                    {submitError && (
+                      <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                        <AlertCircle className="h-4 w-4 shrink-0" /> {submitError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-6 flex items-center gap-2">
+                  {step > 1 && (
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      className="flex items-center gap-1 rounded-xl px-3 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+                    >
+                      <ChevronRight className="h-4 w-4" /> رجوع
+                    </button>
+                  )}
+                  {step < HERO_STEP_TITLES.length ? (
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      disabled={!canGoNext}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-bold text-white transition disabled:opacity-40"
+                      style={{ backgroundColor: NAVY }}
+                    >
+                      التالي: {HERO_STEP_TITLES[step]} <ChevronLeft className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void submit()}
+                      disabled={submitting}
+                      className="flex-1 rounded-xl py-3 text-sm font-bold text-white transition disabled:opacity-50"
+                      style={{ backgroundColor: NAVY }}
+                    >
+                      {submitting ? 'جارِ الإرسال…' : 'إرسال الطلب'}
+                    </button>
+                  )}
+                </div>
+                <a
+                  href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600"
                 >
-                  {submitting ? 'جارِ الإرسال…' : 'إرسال الطلب'}
-                </button>
-              </form>
+                  <MessageCircle className="h-3.5 w-3.5" /> أو تواصل معنا مباشرة عبر واتساب
+                </a>
+              </div>
             )}
           </div>
         </div>
       </section>
 
-      {/* =================== لا تشيل هم الدفع (تابي وتمارا) ===================
+      {/* =================== دفع مرن وآمن (تابي وتمارا ومدى وApple Pay) ===================
           يظهر افتراضياً (undefined = true، للسجلات المحفوظة قبل إضافة هذا
           الخيار) ويُخفى بالكامل فقط لو عطّله المدير صراحةً من الإعدادات ←
           الطلبات الخارجية. */}
       {settings.show_installments_banner !== false && (
-      <section className="mx-auto max-w-3xl px-5 pb-2 pt-8 sm:px-10">
-        <div
-          className="flex flex-col items-center gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row-reverse sm:justify-between"
-          style={{ borderColor: CREAM }}
-        >
-          <div className="text-center sm:text-right">
-            <p className="text-base font-extrabold sm:text-lg" style={{ color: NAVY }}>
-              لا تشيل هم الدفع!
-            </p>
-            <p className="mt-1 text-sm text-slate-500 sm:text-base">
-              يمكنك التقسيط عن طريق <span className="font-bold" style={{ color: '#5433a7' }}>تمارا</span> و{' '}
-              <span className="font-bold" style={{ color: '#0f8a72' }}>تابي</span>
-            </p>
+        <section className="px-5 pb-2 pt-2 sm:px-10">
+          <div
+            className="mx-auto flex max-w-6xl flex-col items-center gap-5 rounded-2xl px-6 py-5 shadow-sm sm:flex-row-reverse sm:justify-between sm:px-8"
+            style={{ backgroundColor: NAVY }}
+          >
+            <div className="text-center sm:text-right">
+              <p className="text-base font-extrabold text-white sm:text-lg">دفع مرن وآمن</p>
+              <p className="mt-1 text-sm text-white/60">خيارات متعددة بعد تأكيد تفاصيل الخدمة والسعر.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {/* مدى */}
+              <div className="flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5">
+                <div className="h-5 w-8 overflow-hidden rounded-sm">
+                  <div className="h-1/2" style={{ backgroundColor: '#1D9BD8' }} />
+                  <div className="h-1/2" style={{ backgroundColor: '#84B440' }} />
+                </div>
+                <span className="text-sm font-bold text-slate-800">مدى</span>
+              </div>
+              {/* Apple Pay */}
+              <div className="flex items-center gap-1 rounded-full bg-white px-4 py-2.5 text-slate-900">
+                <Apple className="h-4 w-4" fill="currentColor" />
+                <span className="text-sm font-semibold">Pay</span>
+              </div>
+              {/* تابي — الشعار الرسمي كما هو. */}
+              <img src="/tabby-logo.png" alt="Tabby" className="h-9 w-auto rounded-full shadow-sm" />
+              {/* تمارا — نفس كبسولة التدرّج الرسمية. */}
+              <span
+                className="flex items-center justify-center rounded-full px-4 py-2.5 shadow-sm"
+                style={{
+                  background:
+                    'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
+                }}
+              >
+                <img src="/tamara-logo.svg" alt="Tamara" className="h-3.5 w-auto" />
+              </span>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {/* شعار تمارا الرسمي — ملف SVG بالأسود بلا خلفية (وحده)، فوق
-                كبسولة بتدرّج الألوان الرسمي (أصفر/وردي/أزرق/بنفسجي)
-                المطابق لشعار تمارا الملوّن الكامل. */}
-            <span
-              className="flex items-center justify-center rounded-full px-6 py-3 shadow-sm"
-              style={{
-                background:
-                  'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
-              }}
-            >
-              <img src="/tamara-logo.svg" alt="Tamara" className="h-4 w-auto sm:h-5" />
-            </span>
-            {/* شعار تابي الرسمي — ملف PNG كاملاً مع خلفيته (التدرّج الأخضر
-                النعناعي) كما هو، بلا أي تعديل. */}
-            <img src="/tabby-logo.png" alt="Tabby" className="h-10 w-auto rounded-2xl shadow-sm sm:h-11" />
-          </div>
-        </div>
-      </section>
+        </section>
       )}
 
       {/* ============================== الخدمات ============================== */}
