@@ -553,9 +553,9 @@ function GeneralExpensesTab() {
         recorded_by_name: user?.full_name,
         notes: form.get('notes') || undefined,
         custody_holder_id: needsEmployeeLink ? advanceEmployeeId || undefined : undefined,
-        vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
-        facility_id: needsFacilityLink ? facilityId || undefined : undefined,
-        facility_schedule_item_id: needsFacilityLink ? facilityScheduleItemId || undefined : undefined,
+        vehicle_id: vehicleId || undefined,
+        facility_id: facilityId || undefined,
+        facility_schedule_item_id: facilityScheduleItemId || undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -795,7 +795,6 @@ function GeneralExpensesTab() {
                     setCategory(e.target.value);
                     setSubCategory('');
                     setAdvanceEmployeeId('');
-                    setVehicleId('');
                     setAccountingClassification(DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY[e.target.value] ?? '');
                   }}
                 >
@@ -853,72 +852,72 @@ function GeneralExpensesTab() {
                   </select>
                 </label>
               )}
-              {needsVehicleLink && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">
+                  {t('ربط بمركبة')} {!needsVehicleLink && <span className="font-normal text-slate-400">({t('اختياري')})</span>}
+                </span>
+                <select required={needsVehicleLink} className="input" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                  <option value="">{needsVehicleLink ? t('اختر مركبة') : t('بدون ربط')}</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.type} — {v.plate_number}
+                    </option>
+                  ))}
+                </select>
+                {vehicles.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-600">{t('لا توجد مركبات مسجَّلة — أضِفها من الإعدادات ← المركبات')}</p>
+                )}
+              </label>
+              <div className="space-y-2">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">{t('المركبة')}</span>
-                  <select required className="input" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                    <option value="">{t('اختر مركبة')}</option>
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.type} — {v.plate_number}
+                  <span className="mb-1 block font-medium text-slate-600">
+                    {t('ربط بمرفق')} {!needsFacilityLink && <span className="font-normal text-slate-400">({t('اختياري')})</span>}
+                  </span>
+                  <select
+                    required={needsFacilityLink}
+                    className="input"
+                    value={facilityId}
+                    onChange={(e) => {
+                      setFacilityId(e.target.value);
+                      setFacilityScheduleItemId('');
+                    }}
+                  >
+                    <option value="">{needsFacilityLink ? t('اختر مرفقاً') : t('بدون ربط')}</option>
+                    {facilities.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
                       </option>
                     ))}
                   </select>
-                  {vehicles.length === 0 && (
-                    <p className="mt-1 text-xs text-amber-600">{t('لا توجد مركبات مسجَّلة — أضِفها من الإعدادات ← المركبات')}</p>
+                  {facilities.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">{t('لا توجد مرافق مسجَّلة — أضِفها من الإعدادات ← المرافق')}</p>
                   )}
                 </label>
-              )}
-              {needsFacilityLink && (
-                <div className="space-y-2">
+                {facilityId && dueFacilityScheduleItems.length > 0 && (
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">{t('المرفق')}</span>
+                    <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
                     <select
-                      required
                       className="input"
-                      value={facilityId}
+                      value={facilityScheduleItemId}
                       onChange={(e) => {
-                        setFacilityId(e.target.value);
-                        setFacilityScheduleItemId('');
+                        const id = e.target.value;
+                        setFacilityScheduleItemId(id);
+                        const item = dueFacilityScheduleItems.find((s) => s.id === id);
+                        if (item) setAmount(String(Math.max(item.amount - item.paid_amount, 0)));
                       }}
                     >
-                      <option value="">{t('اختر مرفقاً')}</option>
-                      {facilities.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
+                      <option value="">{t('بدون ربط ببند محدَّد')}</option>
+                      {dueFacilityScheduleItems.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {(s.label ? `${s.label} — ` : '') +
+                            tt(`متبقٍ ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`, `${formatMoney(Math.max(s.amount - s.paid_amount, 0))} remaining`)}
+                          {s.due_date ? ` (${s.due_date})` : ''}
                         </option>
                       ))}
                     </select>
-                    {facilities.length === 0 && (
-                      <p className="mt-1 text-xs text-amber-600">{t('لا توجد مرافق مسجَّلة — أضِفها من الإعدادات ← المرافق')}</p>
-                    )}
                   </label>
-                  {dueFacilityScheduleItems.length > 0 && (
-                    <label className="block text-sm">
-                      <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
-                      <select
-                        className="input"
-                        value={facilityScheduleItemId}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          setFacilityScheduleItemId(id);
-                          const item = dueFacilityScheduleItems.find((s) => s.id === id);
-                          if (item) setAmount(String(Math.max(item.amount - item.paid_amount, 0)));
-                        }}
-                      >
-                        <option value="">{t('بدون ربط ببند محدَّد')}</option>
-                        {dueFacilityScheduleItems.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {(s.label ? `${s.label} — ` : '') +
-                              tt(`متبقٍ ${formatMoney(Math.max(s.amount - s.paid_amount, 0))}`, `${formatMoney(Math.max(s.amount - s.paid_amount, 0))} remaining`)}
-                            {s.due_date ? ` (${s.due_date})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
               {isAdvanceCategory && (
                 <div className="space-y-2 rounded-xl bg-slate-50 p-3">
                   <label className="block text-sm">
@@ -1146,9 +1145,9 @@ function ExpenseDetailModal({
         payment_method: paymentMethod,
         notes: notes || undefined,
         custody_holder_id: needsEmployeeLink ? holderId || undefined : undefined,
-        vehicle_id: needsVehicleLink ? vehicleId || undefined : undefined,
-        facility_id: needsFacilityLink ? facilityId || undefined : undefined,
-        facility_schedule_item_id: needsFacilityLink ? facilityScheduleItemId || undefined : undefined,
+        vehicle_id: vehicleId || undefined,
+        facility_id: facilityId || undefined,
+        facility_schedule_item_id: facilityScheduleItemId || undefined,
         advance_deduction_mode: isAdvanceCategory ? advanceMode : undefined,
         advance_installment_months: isAdvanceCategory && advanceMode === 'installments' ? Number(advanceInstallmentMonths) : undefined,
         advance_period_start: isAdvanceCategory && advanceMode === 'period' ? advancePeriodStart || undefined : undefined,
@@ -1347,55 +1346,55 @@ function ExpenseDetailModal({
                 </select>
               </label>
             )}
-            {needsVehicleLink && (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">
+                {t('ربط بمركبة')} {!needsVehicleLink && <span className="font-normal text-slate-400">({t('اختياري')})</span>}
+              </span>
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="input">
+                <option value="">{t('بدون ربط')}</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.type} — {v.plate_number}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="space-y-2">
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">{t('المركبة')}</span>
-                <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="input">
-                  <option value="">{t('اختر مركبة')}</option>
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.type} — {v.plate_number}
+                <span className="mb-1 block font-medium text-slate-600">
+                  {t('ربط بمرفق')} {!needsFacilityLink && <span className="font-normal text-slate-400">({t('اختياري')})</span>}
+                </span>
+                <select
+                  value={facilityId}
+                  onChange={(e) => {
+                    setFacilityId(e.target.value);
+                    setFacilityScheduleItemId('');
+                  }}
+                  className="input"
+                >
+                  <option value="">{t('بدون ربط')}</option>
+                  {facilities.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
-            {needsFacilityLink && (
-              <div className="space-y-2">
+              {facilityId && dueFacilityScheduleItems.length > 0 && (
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-600">{t('المرفق')}</span>
-                  <select
-                    value={facilityId}
-                    onChange={(e) => {
-                      setFacilityId(e.target.value);
-                      setFacilityScheduleItemId('');
-                    }}
-                    className="input"
-                  >
-                    <option value="">{t('اختر مرفقاً')}</option>
-                    {facilities.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
+                  <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
+                  <select value={facilityScheduleItemId} onChange={(e) => setFacilityScheduleItemId(e.target.value)} className="input">
+                    <option value="">{t('بدون ربط ببند محدَّد')}</option>
+                    {dueFacilityScheduleItems.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {(s.label ? `${s.label} — ` : '') + formatMoney(s.amount)}
+                        {s.due_date ? ` (${s.due_date})` : ''}
                       </option>
                     ))}
                   </select>
                 </label>
-                {dueFacilityScheduleItems.length > 0 && (
-                  <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-600">{t('مقابل أي دفعة من جدول إيجار المرفق؟')}</span>
-                    <select value={facilityScheduleItemId} onChange={(e) => setFacilityScheduleItemId(e.target.value)} className="input">
-                      <option value="">{t('بدون ربط ببند محدَّد')}</option>
-                      {dueFacilityScheduleItems.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {(s.label ? `${s.label} — ` : '') + formatMoney(s.amount)}
-                          {s.due_date ? ` (${s.due_date})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-            )}
+              )}
+            </div>
             {isAdvanceCategory && (
               <div className="space-y-2 rounded-xl bg-slate-50 p-3">
                 <label className="block text-sm">

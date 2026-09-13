@@ -2305,17 +2305,12 @@ api.post('/expenses', async (req, res) => {
     body.category === TRAVEL_TICKET_CATEGORY_NAME ||
     body.category === HOUSING_ALLOWANCE_CATEGORY_NAME ||
     body.category === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
-  const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
-  const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
-  const isFacility = body.category === FACILITY_CATEGORY_NAME;
-  // فئتا "كهرباء" و"غاز" العامّتان تُظهران نفس منتقي المرفق أيضاً — فقط
-  // لربط الفاتورة بمرفق مسجَّل، دون افتراض أنها بالضرورة تسدّد بنداً من
-  // جدول ذلك المرفق (قد تكون فاتورة مستقلة تماماً). انظر
-  // ELECTRICITY_CATEGORY_NAME/GAS_CATEGORY_NAME في shared/types.ts.
-  const isElectricity = body.category === ELECTRICITY_CATEGORY_NAME;
-  const isGas = body.category === GAS_CATEGORY_NAME;
-  const needsFacilityLink = isFacility || isElectricity || isGas;
-  const linkedFacility = needsFacilityLink && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
+  // ربط بمرفق أو مركبة صار اختيارياً على أي مصروف بصرف النظر عن فئته —
+  // ليس فقط الفئات المخصَّصة (مركبات/إيجار مبنى/كهرباء/غاز) التي تُظهر
+  // منتقيه تلقائياً في الواجهة؛ أي مصروف آخر يستطيع اختيار الربط يدوياً
+  // أيضاً من نفس الحقلين إن رغب المستخدم (انظر Expenses.tsx).
+  const linkedVehicle = body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
+  const linkedFacility = body.facility_id ? store.facilities.get(body.facility_id) : undefined;
   // الأصناف (عهدة، سلفية، رواتب، تذاكر سفر، بدل سكن، بدل مواصلات) تحمل
   // "موظفاً معنياً" بنفس الحقلين — انظر التعليق على custody_holder_id في
   // shared/types.ts.
@@ -2359,11 +2354,11 @@ api.post('/expenses', async (req, res) => {
     supervisor_name: body.supervisor_name,
     custody_holder_id: linksEmployee ? body.custody_holder_id || undefined : undefined,
     custody_holder_name: linksEmployee && body.custody_holder_id ? store.profiles.get(body.custody_holder_id)?.full_name : undefined,
-    vehicle_id: isVehicle ? body.vehicle_id || undefined : undefined,
+    vehicle_id: body.vehicle_id || undefined,
     vehicle_label: linkedVehicle ? `${linkedVehicle.type} — ${linkedVehicle.plate_number}` : undefined,
-    facility_id: needsFacilityLink ? body.facility_id || undefined : undefined,
+    facility_id: body.facility_id || undefined,
     facility_label: linkedFacility ? linkedFacility.name : undefined,
-    facility_schedule_item_id: needsFacilityLink ? body.facility_schedule_item_id || undefined : undefined,
+    facility_schedule_item_id: body.facility_schedule_item_id || undefined,
     // جدولة استقطاع السلفية من الراتب — ذات معنى فقط عندما isAdvance، تبقى
     // 'none' (بلا استقطاع تلقائي) افتراضياً حتى يُختار وضع صراحةً.
     advance_deduction_mode: isAdvance && body.advance_deduction_mode ? body.advance_deduction_mode : 'none',
@@ -2382,7 +2377,7 @@ api.post('/expenses', async (req, res) => {
   // item_id الخاصة 'office_fee'/'water'/'electricity')، يتراكم عليه مبلغه
   // وحده (لا كامل مبلغ المصروف بالضرورة لو تجاوز المتبقي) — نفس منطق POST
   // /contracts/:id/payments بالضبط، لكن للمرافق لا العقود.
-  if (needsFacilityLink && body.facility_schedule_item_id && linkedFacility) {
+  if (body.facility_schedule_item_id && linkedFacility) {
     applyFacilityScheduleDelta(linkedFacility.id, body.facility_schedule_item_id, amount);
   }
   logActivity(
@@ -2395,9 +2390,9 @@ api.post('/expenses', async (req, res) => {
           ? `تم إضافة راتب "${expense.amount} ر.س" لـ "${expense.custody_holder_name ?? ''}"`
           : entryType === 'income'
             ? `تم تسجيل إيراد (${EXPENSE_INCOME_TYPE_LABELS_AR[incomeType ?? 'return']}) "${expense.title}" بقيمة ${expense.amount} ر.س`
-            : isVehicle && expense.vehicle_label
+            : expense.vehicle_label
               ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمركبة "${expense.vehicle_label}"`
-              : needsFacilityLink && expense.facility_label
+              : expense.facility_label
                 ? `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س للمرفق "${expense.facility_label}"`
                 : `تم إضافة مصروف "${expense.title}" بقيمة ${expense.amount} ر.س`,
   );
@@ -2417,11 +2412,6 @@ api.patch('/expenses/:id', async (req, res) => {
     (body.category ?? target.category) === TRAVEL_TICKET_CATEGORY_NAME ||
     (body.category ?? target.category) === HOUSING_ALLOWANCE_CATEGORY_NAME ||
     (body.category ?? target.category) === TRANSPORT_ALLOWANCE_CATEGORY_NAME;
-  const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
-  const isFacility = (body.category ?? target.category) === FACILITY_CATEGORY_NAME;
-  const isElectricity = (body.category ?? target.category) === ELECTRICITY_CATEGORY_NAME;
-  const isGas = (body.category ?? target.category) === GAS_CATEGORY_NAME;
-  const needsFacilityLink = isFacility || isElectricity || isGas;
   const linksEmployee = isCustody || isAdvance || isSalary || isEmployeeBenefit;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;
@@ -2440,22 +2430,26 @@ api.patch('/expenses/:id', async (req, res) => {
     patch.custody_holder_id = holderId || undefined;
     patch.custody_holder_name = holderId ? store.profiles.get(holderId)?.full_name : undefined;
   }
-  if (body.vehicle_id !== undefined || body.category !== undefined) {
-    const vehicleId = isVehicle ? body.vehicle_id ?? target.vehicle_id : undefined;
+  // ربط بمرفق أو مركبة اختياري على أي مصروف بصرف النظر عن فئته (انظر
+  // تعليق POST /expenses أعلاه) — يُمَس فقط حين يُرسَل صراحةً في الطلب،
+  // بخلاف السلوك القديم الذي كان يُصفِّره تلقائياً كلما تغيّرت الفئة بعيداً
+  // عن "مركبات"/"إيجار مبنى"/"كهرباء"/"غاز".
+  if (body.vehicle_id !== undefined) {
+    const vehicleId = body.vehicle_id || undefined;
     const vehicle = vehicleId ? store.vehicles.get(vehicleId) : undefined;
-    patch.vehicle_id = vehicleId || undefined;
+    patch.vehicle_id = vehicleId;
     patch.vehicle_label = vehicle ? `${vehicle.type} — ${vehicle.plate_number}` : undefined;
   }
-  // نفس نمط vehicle_id أعلاه — إعادة ضبط الربط بالمرفق/البند حسب الفئة
-  // الحالية. التسوية الفعلية لـ paid_amount عند تغيّر الربط أو المبلغ تجري
-  // أدناه بعد الحفظ (applyFacilityScheduleDelta) — عكس دفعات العقود التي
-  // ما زالت بلا تسوية عند التعديل.
-  if (body.facility_id !== undefined || body.facility_schedule_item_id !== undefined || body.category !== undefined) {
-    const facilityId = needsFacilityLink ? body.facility_id ?? target.facility_id : undefined;
+  // نفس نمط vehicle_id أعلاه. التسوية الفعلية لـ paid_amount عند تغيّر
+  // الربط أو المبلغ تجري أدناه بعد الحفظ (applyFacilityScheduleDelta) —
+  // عكس دفعات العقود التي ما زالت بلا تسوية عند التعديل.
+  if (body.facility_id !== undefined || body.facility_schedule_item_id !== undefined) {
+    const facilityId = body.facility_id !== undefined ? body.facility_id || undefined : target.facility_id;
     const facility = facilityId ? store.facilities.get(facilityId) : undefined;
-    patch.facility_id = facilityId || undefined;
+    patch.facility_id = facilityId;
     patch.facility_label = facility ? facility.name : undefined;
-    patch.facility_schedule_item_id = needsFacilityLink ? body.facility_schedule_item_id ?? target.facility_schedule_item_id : undefined;
+    patch.facility_schedule_item_id =
+      body.facility_schedule_item_id !== undefined ? body.facility_schedule_item_id || undefined : target.facility_schedule_item_id;
   }
   // جدولة استقطاع السلفية — قابلة للتعديل لاحقاً (مثلاً تحويلها من "بلا
   // استقطاع" إلى مُقسَّطة)، لا تُلمَس إن لم تُرسَل في الطلب.
