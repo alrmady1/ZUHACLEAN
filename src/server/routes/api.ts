@@ -90,6 +90,7 @@ import {
   LEAVE_TYPE_LABELS_AR,
   LEAD_STATUS_LABELS_AR,
   VISIT_OUTCOME_LABELS_AR,
+  COMPANY_NAME,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
@@ -1780,14 +1781,20 @@ api.post('/appointments/:id/tamara-request', async (req, res) => {
     return res.status(409).json({ error: 'يوجد طلب دفع عبر تمارا قائم بالفعل لهذا الموعد', appointment: appt });
   }
   const customer = store.customers.get(appt.customer_id);
-  if (!customer?.phone) return res.status(400).json({ error: 'رقم جوال العميل مطلوب لإنشاء طلب دفع تمارا' });
+  // العميل يُخيَّر قبل الإرسال بين رقمه المسجَّل أو رقم آخر (انظر خطوة
+  // "استكمال بهذا الرقم / إضافة رقم آخر" في PayAppointmentModal.tsx) —
+  // phone هنا اختياري ويتفوّق على رقم العميل المسجَّل إن أُرسل، دون أن
+  // يُعدِّل سجل العميل نفسه (مقصود: تغيير لمرة واحدة لهذا الطلب فقط).
+  const overridePhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const phone = overridePhone || customer?.phone;
+  if (!phone) return res.status(400).json({ error: 'رقم جوال لإرسال رابط الدفع مطلوب' });
 
   const result = await createTamaraCheckoutSession({
     orderReferenceId: appt.id,
     amount: appt.remaining_amount,
     description: appt.service_name_snapshot,
-    customerName: customer.name,
-    customerPhone: customer.phone,
+    customerName: customer?.name ?? appt.customer_name_snapshot ?? COMPANY_NAME,
+    customerPhone: phone,
   });
   if (!result) {
     return res.status(502).json({ error: 'تعذّر إنشاء طلب الدفع لدى تمارا — تحقق من إعداد TAMARA_API_TOKEN وسجلّ الخادم' });

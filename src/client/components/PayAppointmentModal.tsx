@@ -52,14 +52,28 @@ export default function PayAppointmentModal({
   const [tamaraSending, setTamaraSending] = useState(false);
   const [tamaraError, setTamaraError] = useState('');
   const [tamaraCopied, setTamaraCopied] = useState(false);
+  // قبل إنشاء أي طلب: نسأل دائماً هل نُكمل برقم العميل المسجَّل أم برقم
+  // آخر (بعض العملاء يحجزون برقم ويفضّلون استلام رابط الدفع على رقم
+  // آخر) — 'ask' يعرض الخيارين، 'custom-phone' يعرض حقل إدخال الرقم
+  // البديل. بلا رقم مسجَّل أصلاً نقفز لـ'custom-phone' مباشرة، إذ لا معنى
+  // لخيار "استكمال بهذا الرقم" عندها.
+  const [tamaraStep, setTamaraStep] = useState<'idle' | 'ask' | 'custom-phone'>('idle');
+  const [tamaraCustomPhone, setTamaraCustomPhone] = useState('');
 
-  async function handleTamaraRequest() {
+  function startTamaraFlow() {
+    setTamaraError('');
+    setTamaraStep(customer?.phone ? 'ask' : 'custom-phone');
+  }
+
+  async function handleTamaraRequest(phone: string) {
+    if (!phone.trim()) return;
     setTamaraSending(true);
     setTamaraError('');
     try {
-      const updated = await api.post<Appointment>(`/appointments/${appointment.id}/tamara-request`);
+      const updated = await api.post<Appointment>(`/appointments/${appointment.id}/tamara-request`, { phone: phone.trim() });
       setTamaraStatus(updated.tamara_status);
       setTamaraUrl(updated.tamara_checkout_url);
+      setTamaraStep('idle');
     } catch (err) {
       setTamaraError(err instanceof Error ? err.message : 'تعذّر إنشاء طلب الدفع عبر تمارا');
     } finally {
@@ -245,20 +259,72 @@ export default function PayAppointmentModal({
         {appointment.remaining_amount > 0 && (
           <div className="mt-4 border-t border-slate-100 pt-4">
             <p className="mb-2 text-center text-xs text-slate-400">{t('أو')}</p>
-            {!tamaraUrl || tamaraStatus === 'declined' || tamaraStatus === 'expired' || tamaraStatus === 'canceled' ? (
+            {(!tamaraUrl || tamaraStatus === 'declined' || tamaraStatus === 'expired' || tamaraStatus === 'canceled') &&
+            tamaraStep === 'idle' ? (
               <button
                 type="button"
-                onClick={handleTamaraRequest}
-                disabled={tamaraSending}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={startTamaraFlow}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <Link2 className="h-3.5 w-3.5" style={{ color: '#5433a7' }} />
-                {tamaraSending
-                  ? t('جارِ إنشاء طلب الدفع…')
-                  : tamaraStatus
-                  ? t('إنشاء طلب دفع جديد عبر تمارا')
-                  : t('أرسل طلب دفع عبر تمارا (تقسيط)')}
+                {tamaraStatus ? t('إنشاء طلب دفع جديد عبر تمارا') : t('أرسل طلب دفع عبر تمارا (تقسيط)')}
               </button>
+            ) : tamaraStep === 'ask' ? (
+              <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-center">
+                <p className="text-xs font-semibold text-slate-600">
+                  {t('إرسال رابط الدفع لرقم العميل المسجَّل')} <span dir="ltr">({customer!.phone})</span>؟
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTamaraRequest(customer!.phone)}
+                    disabled={tamaraSending}
+                    className="flex-1 rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {tamaraSending ? t('جارِ الإرسال…') : t('استكمال بهذا الرقم')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTamaraStep('custom-phone')}
+                    disabled={tamaraSending}
+                    className="flex-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    {t('إضافة رقم آخر')}
+                  </button>
+                </div>
+              </div>
+            ) : tamaraStep === 'custom-phone' ? (
+              <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                <label className="block text-xs">
+                  <span className="mb-1 block font-medium text-slate-600">{t('رقم الجوال لإرسال رابط الدفع إليه')}</span>
+                  <input
+                    value={tamaraCustomPhone}
+                    onChange={(e) => setTamaraCustomPhone(e.target.value)}
+                    dir="ltr"
+                    placeholder="05XXXXXXXX"
+                    autoFocus
+                    className="input text-xs"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTamaraRequest(tamaraCustomPhone)}
+                    disabled={!tamaraCustomPhone.trim() || tamaraSending}
+                    className="flex-1 rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {tamaraSending ? t('جارِ الإرسال…') : t('إرسال لهذا الرقم')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTamaraStep(customer?.phone ? 'ask' : 'idle')}
+                    disabled={tamaraSending}
+                    className="flex-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    {t('رجوع')}
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="space-y-2 rounded-xl bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-600">
