@@ -1503,6 +1503,18 @@ export interface Appointment {
   // تحصيل المبلغ فعلياً وسُجِّلت الدفعة — 'declined'/'expired'/'canceled'
   // لن يُدفع هذا الطلب، يمكن إنشاء طلب جديد للموعد نفسه عند الحاجة.
   tamara_status?: 'created' | 'approved' | 'paid' | 'declined' | 'expired' | 'canceled';
+  // طلب دفع عبر تابي — نفس فكرة حقول تمارا أعلاه بالضبط، لكن آلية التأكيد
+  // مختلفة: تابي لا تُرسل ويب هوك بشكل مضمون، بل تُعيد توجيه متصفح العميل
+  // لرابط النجاح الذي نزوّدها به عند إنشاء الطلب ومعه payment_id — خادمنا
+  // يستقبل تلك العودة (GET /tabby/return)، يتحقق من حالة الدفعة لدى تابي،
+  // ثم "يلتقطها" (capture) فعلياً قبل تسجيلها. انظر src/server/lib/tabby.ts.
+  tabby_payment_id?: string;
+  tabby_checkout_url?: string;
+  // 'created' فور الإنشاء — 'authorized' وافقت تابي لكن لم تُلتقَط الدفعة
+  // بعد (نادراً ما يبقى بهذه الحالة، capture يحدث فور عودة العميل) —
+  // 'paid' التُقطت الدفعة فعلياً وسُجِّلت — 'declined'/'expired'/'canceled'
+  // كما في تمارا تماماً.
+  tabby_status?: 'created' | 'authorized' | 'paid' | 'declined' | 'expired' | 'canceled';
 }
 
 export const VAT_RATE = 0.15;

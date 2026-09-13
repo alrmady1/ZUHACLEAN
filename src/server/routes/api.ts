@@ -15,6 +15,7 @@ import {
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
 import { createTamaraCheckoutSession, isValidTamaraWebhookAuth } from '../lib/tamara.js';
+import { createTabbyCheckoutSession, getTabbyPayment, captureTabbyPayment } from '../lib/tabby.js';
 import type {
   Appointment,
   Contract,
@@ -91,6 +92,7 @@ import {
   LEAD_STATUS_LABELS_AR,
   VISIT_OUTCOME_LABELS_AR,
   COMPANY_NAME,
+  COMPANY_PHONE,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
@@ -1809,16 +1811,26 @@ api.post('/appointments/:id/tamara-request', async (req, res) => {
   res.status(201).json(updated);
 });
 
-// يرجع/يُنشئ (أول مرة فقط) طريقة الدفع "تمارا" في قائمة طرق الدفع
+// يرجع/يُنشئ (أول مرة فقط) طريقة دفع بالاسم المعطى في قائمة طرق الدفع
 // (الإعدادات ← طرق الدفع) — نفس القائمة التي يديرها المدير يدوياً، فتظهر
-// الدفعات المسجَّلة تلقائياً من الويب هوك بنفس مكان بقية طرق الدفع
+// الدفعات المسجَّلة تلقائياً من تمارا/تابي بنفس مكان بقية طرق الدفع
 // (كاش/شبكة/تحويل) في كل التقارير، لا كسلسلة نصية معزولة عنها.
-function ensureTamaraPaymentMethodId(): string {
-  const existing = store.paymentMethods.list().find((m) => m.name === 'تمارا');
+function ensurePaymentMethodByName(name: string): string {
+  const existing = store.paymentMethods.list().find((m) => m.name === name);
   if (existing) return existing.id;
-  const created: PaymentMethodOption = { id: store.id(), name: 'تمارا', is_active: true };
+  const created: PaymentMethodOption = { id: store.id(), name, is_active: true };
   store.paymentMethods.insert(created);
   return created.id;
+}
+
+// رابط واتساب مباشر لرقم عميل — نفس منطق waLink في src/client/lib/
+// whatsapp.ts بالضبط، لكن مكرَّر هنا محلياً بدل استيراده عبر حدود
+// client/server (الخادم لا يستورد من src/client إطلاقاً في هذا المشروع،
+// انظر src/shared للأدوات المشتركة الفعلية).
+function waRedirectUrl(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const withCountryCode = digits.startsWith('0') ? `966${digits.slice(1)}` : digits;
+  return `https://wa.me/${withCountryCode}`;
 }
 
 // ويب هوك تمارا — نقطة عامة بالضرورة (تمارا لا تملك جلسة دخول لدينا، نفس
@@ -1852,7 +1864,7 @@ api.post('/tamara/webhook', async (req, res) => {
 
   if (isCaptured) {
     if (appt.tamara_status === 'paid') return res.sendStatus(200); // مُسجَّلة مسبقاً — لا تكرار
-    const methodId = ensureTamaraPaymentMethodId();
+    const methodId = ensurePaymentMethodByName('تمارا');
     const amount = appt.remaining_amount;
     appt.payments.push({ id: store.id(), amount, method: methodId, recorded_at: new Date().toISOString() });
     const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
@@ -1878,6 +1890,107 @@ api.post('/tamara/webhook', async (req, res) => {
     console.warn('⚠️ ويب هوك تمارا بحدث غير معروف:', event_type || status);
   }
   res.sendStatus(200);
+});
+
+// ---------------------------------------------------------------------------
+// طلب دفع عبر تابي (Pay in Instalments) — نفس فكرة تمارا أعلاه ونفس واجهة
+// الطلب (POST .../tabby-request يرجع رابطاً)، لكن التأكيد يمر عبر إعادة
+// توجيه المتصفح (GET /tabby/return) بدل ويب هوك — انظر التعليق أعلى
+// src/server/lib/tabby.ts لتفصيل الفرق.
+// ---------------------------------------------------------------------------
+api.post('/appointments/:id/tabby-request', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  if (appt.remaining_amount <= 0) return res.status(400).json({ error: 'لا يوجد مبلغ متبقٍ على هذا الموعد' });
+  if (appt.tabby_status === 'created' || appt.tabby_status === 'authorized') {
+    return res.status(409).json({ error: 'يوجد طلب دفع عبر تابي قائم بالفعل لهذا الموعد', appointment: appt });
+  }
+  const customer = store.customers.get(appt.customer_id);
+  const overridePhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const phone = overridePhone || customer?.phone;
+  if (!phone) return res.status(400).json({ error: 'رقم جوال لإرسال رابط الدفع مطلوب' });
+
+  const result = await createTabbyCheckoutSession({
+    orderReferenceId: appt.id,
+    amount: appt.remaining_amount,
+    description: appt.service_name_snapshot,
+    customerName: customer?.name ?? appt.customer_name_snapshot ?? COMPANY_NAME,
+    customerPhone: phone,
+  });
+  if (!result) {
+    return res.status(502).json({ error: 'تعذّر إنشاء طلب الدفع لدى تابي — تحقق من إعداد TABBY_SECRET_KEY/TABBY_MERCHANT_CODE وسجلّ الخادم' });
+  }
+
+  const updated = store.appointments.update(appt.id, {
+    tabby_payment_id: result.paymentId,
+    tabby_checkout_url: result.checkoutUrl,
+    tabby_status: 'created',
+  });
+  logActivity(req, `تم إنشاء طلب دفع عبر تابي بقيمة ${appt.remaining_amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}"`);
+  res.status(201).json(updated);
+});
+
+// نقطة عودة تابي — رابط "success/cancel/failure" الذي زوَّدناها به عند
+// الإنشاء (merchant_urls في tabby.ts)، تُعيد تابي توجيه متصفح العميل إليه
+// ومعه payment_id في الاستعلام. عامة بالضرورة (العميل نفسه من يصل إليها،
+// بلا أي جلسة دخول لدينا). GET لا POST لأنها إعادة توجيه متصفح فعلية.
+api.get('/tabby/return', async (req, res) => {
+  const appointmentId = typeof req.query.appointment_id === 'string' ? req.query.appointment_id : undefined;
+  const paymentId = typeof req.query.payment_id === 'string' ? req.query.payment_id : undefined;
+  const outcome = typeof req.query.outcome === 'string' ? req.query.outcome : undefined; // 'cancel' | 'failure' | undefined(success)
+
+  const appt = appointmentId ? store.appointments.get(appointmentId) : undefined;
+  if (!appt) {
+    console.warn('⚠️ عودة تابي بمرجع موعد غير معروف:', appointmentId, paymentId);
+    return res.redirect(302, waRedirectUrl(COMPANY_PHONE));
+  }
+
+  // العميل يُعاد توجيهه لواتساب الشركة دائماً بغض النظر عن النتيجة —
+  // نفس المنطق في tabby.ts: لا "رحلة تسوّق" حقيقية يعود إليها هنا.
+  const redirectTo = waRedirectUrl(COMPANY_PHONE);
+
+  if (outcome === 'cancel' || outcome === 'failure') {
+    store.appointments.update(appt.id, { tabby_status: outcome === 'cancel' ? 'canceled' : 'declined' });
+    return res.redirect(302, redirectTo);
+  }
+  if (!paymentId) {
+    console.warn('⚠️ عودة تابي ناجحة ظاهرياً لكن بلا payment_id:', appointmentId);
+    return res.redirect(302, redirectTo);
+  }
+  if (appt.tabby_status === 'paid' && appt.tabby_payment_id === paymentId) {
+    return res.redirect(302, redirectTo); // مُسجَّلة مسبقاً — لا تكرار (عودة متكررة لنفس الرابط)
+  }
+
+  try {
+    const payment = await getTabbyPayment(paymentId);
+    if (payment?.status === 'authorized') {
+      const captured = await captureTabbyPayment(paymentId, appt.remaining_amount);
+      if (captured) {
+        const methodId = ensurePaymentMethodByName('تابي');
+        const amount = appt.remaining_amount;
+        appt.payments.push({ id: store.id(), amount, method: methodId, recorded_at: new Date().toISOString() });
+        const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
+        const remaining_amount = Math.max(appt.amount - total_paid, 0);
+        const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
+        store.appointments.update(appt.id, {
+          payments: appt.payments,
+          total_paid,
+          remaining_amount,
+          payment_status,
+          tabby_payment_id: paymentId,
+          tabby_status: 'paid',
+        });
+        console.log(`✅ تابي: تم تحصيل ${amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}" (payment ${paymentId})`);
+      } else {
+        store.appointments.update(appt.id, { tabby_status: 'authorized' });
+      }
+    } else if (payment?.status) {
+      console.warn('⚠️ عودة تابي بحالة دفعة غير "authorized":', payment.status, paymentId);
+    }
+  } catch (err) {
+    console.error('❌ فشل تأكيد/التقاط دفعة تابي عند العودة:', err);
+  }
+  res.redirect(302, redirectTo);
 });
 
 // ---------------------------------------------------------------------------
