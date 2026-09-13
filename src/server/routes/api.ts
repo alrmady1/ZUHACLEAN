@@ -82,6 +82,7 @@ import {
   VEHICLE_CATEGORY_NAME,
   FACILITY_CATEGORY_NAME,
   ELECTRICITY_CATEGORY_NAME,
+  GAS_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
@@ -2077,12 +2078,13 @@ api.post('/expenses', async (req, res) => {
   const isVehicle = body.category === VEHICLE_CATEGORY_NAME;
   const linkedVehicle = isVehicle && body.vehicle_id ? store.vehicles.get(body.vehicle_id) : undefined;
   const isFacility = body.category === FACILITY_CATEGORY_NAME;
-  // فئة "كهرباء" العامة تُظهر نفس منتقي المرفق أيضاً — فقط لربط الفاتورة
-  // بمرفق مسجَّل، دون افتراض أنها بالضرورة تسدّد بند "فاتورة الكهرباء" من
-  // جدول ذلك المرفق (قد تكون فاتورة كهرباء مستقلة تماماً). انظر
-  // ELECTRICITY_CATEGORY_NAME في shared/types.ts.
+  // فئتا "كهرباء" و"غاز" العامّتان تُظهران نفس منتقي المرفق أيضاً — فقط
+  // لربط الفاتورة بمرفق مسجَّل، دون افتراض أنها بالضرورة تسدّد بنداً من
+  // جدول ذلك المرفق (قد تكون فاتورة مستقلة تماماً). انظر
+  // ELECTRICITY_CATEGORY_NAME/GAS_CATEGORY_NAME في shared/types.ts.
   const isElectricity = body.category === ELECTRICITY_CATEGORY_NAME;
-  const needsFacilityLink = isFacility || isElectricity;
+  const isGas = body.category === GAS_CATEGORY_NAME;
+  const needsFacilityLink = isFacility || isElectricity || isGas;
   const linkedFacility = needsFacilityLink && body.facility_id ? store.facilities.get(body.facility_id) : undefined;
   // الأصناف (عهدة، سلفية، رواتب، تذاكر سفر، بدل سكن، بدل مواصلات) تحمل
   // "موظفاً معنياً" بنفس الحقلين — انظر التعليق على custody_holder_id في
@@ -2188,7 +2190,8 @@ api.patch('/expenses/:id', async (req, res) => {
   const isVehicle = (body.category ?? target.category) === VEHICLE_CATEGORY_NAME;
   const isFacility = (body.category ?? target.category) === FACILITY_CATEGORY_NAME;
   const isElectricity = (body.category ?? target.category) === ELECTRICITY_CATEGORY_NAME;
-  const needsFacilityLink = isFacility || isElectricity;
+  const isGas = (body.category ?? target.category) === GAS_CATEGORY_NAME;
+  const needsFacilityLink = isFacility || isElectricity || isGas;
   const linksEmployee = isCustody || isAdvance || isSalary || isEmployeeBenefit;
   const patch: Partial<Expense> = {};
   if (body.title !== undefined) patch.title = body.title;

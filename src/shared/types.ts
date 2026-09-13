@@ -1932,6 +1932,9 @@ export const FACILITY_CATEGORY_NAME = 'إيجار مبنى';
 // اختيارياً بحتاً هنا، بخلاف فئة FACILITY_CATEGORY_NAME حيث هو المسار
 // المعتاد). انظر ELECTRICITY_CATEGORY_NAME أدناه.
 export const ELECTRICITY_CATEGORY_NAME = 'كهرباء';
+// فئة "غاز" العامة — نفس منطق ELECTRICITY_CATEGORY_NAME أعلاه بالضبط
+// (منتقي "المرفق" اختيارياً، لا تسوية بند جدول دفعات).
+export const GAS_CATEGORY_NAME = 'غاز';
 
 // تصنيف محاسبي افتراضي مقترح تلقائياً حسب فئة المصروف الرئيسية — يُطبَّق
 // فقط عند اختيار الفئة لأول مرة في نموذج إضافة مصروف (Expenses.tsx)؛
@@ -1950,7 +1953,7 @@ export const DEFAULT_ACCOUNTING_CLASSIFICATION_BY_CATEGORY: Partial<Record<strin
   'مواد التشغيل والنظافة': 'raw_materials',
   'إقامات': 'general_admin',
   'إيجار': 'general_admin',
-  'غاز': 'utilities',
+  [GAS_CATEGORY_NAME]: 'utilities',
   'تأسيس': 'setup_short_lived_assets',
 };
 
