@@ -1488,6 +1488,21 @@ export interface Appointment {
   marketer_code?: string;
   marketer_id?: string;
   marketer_discount_amount?: number;
+  // طلب دفع عبر تمارا (Pay by Instalments) — بديل عن التحصيل اليدوي
+  // (POST /appointments/:id/payments) لعميل يريد التقسيط: نُنشئ طلباً لدى
+  // تمارا عبر POST /appointments/:id/tamara-request (انظر
+  // src/server/lib/tamara.ts) فيرجع رابط دفع نُرسله للعميل (واتساب/نسخ)،
+  // ثم يصل تأكيد الدفع لاحقاً بشكل غير متزامن عبر ويب هوك
+  // POST /tamara/webhook الذي يسجّل الدفعة فعلياً في payments أدناه فور
+  // اكتمالها — تماماً كما لو حُصِّلت يدوياً، فقط بطريقة الدفع 'تمارا'.
+  // كل الحقول غائبة يعني: لم يُطلب دفع عبر تمارا لهذا الموعد إطلاقاً.
+  tamara_order_id?: string;
+  tamara_checkout_url?: string;
+  // 'created' فور إنشاء الطلب (بانتظار العميل) — 'approved' وافقت تمارا
+  // على تمويل العميل (لسنا مدفوعين بعد فعلياً حتى capture) — 'paid' تم
+  // تحصيل المبلغ فعلياً وسُجِّلت الدفعة — 'declined'/'expired'/'canceled'
+  // لن يُدفع هذا الطلب، يمكن إنشاء طلب جديد للموعد نفسه عند الحاجة.
+  tamara_status?: 'created' | 'approved' | 'paid' | 'declined' | 'expired' | 'canceled';
 }
 
 export const VAT_RATE = 0.15;
@@ -1803,6 +1818,12 @@ export const COMPANY_PHONE = '0582464181';
 // يُضاف هنا لاحقاً، وتُخفي مستندات العقد وعرض السعر هذا السطر تلقائياً
 // طالما فارغ (انظر DocumentHeader.tsx) بدل طباعة رقم غير صحيح.
 export const COMPANY_CR_NUMBER = '';
+// نطاق الموقع العام المنشور — يُستخدَم لبناء روابط مطلقة يجب أن تصل لجهات
+// خارجية لا تعرف شيئاً عن بيئة التشغيل الحالية (مثل رابط الإشعار
+// notification الذي نرسله لتمارا عند إنشاء طلب دفع، انظر
+// src/server/lib/tamara.ts). ثابت هنا بدل متغير بيئة لأنه ليس سرّاً ولا
+// يختلف بين النشرات — نفس منطق COMPANY_PHONE أعلاه.
+export const PUBLIC_SITE_URL = 'https://zuhaclean.vercel.app';
 
 // بيانات الحساب البنكي للشركة — سجل واحد فقط (وليس قائمة)، يُقرأ/يُعدَّل عبر
 // GET/PATCH /company-bank-account. تُدخَل من الإعدادات ← طرق الدفع (خلف

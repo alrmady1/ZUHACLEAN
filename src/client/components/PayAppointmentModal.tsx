@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { X, Wallet, Share2, Landmark } from 'lucide-react';
+import { X, Wallet, Share2, Landmark, Link2, Copy, Check, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Invoice, PaymentMethodOption, CompanyBankAccount } from '../../shared/types.js';
 import { VAT_RATE, COMPANY_LEGAL_NAME } from '../../shared/types.js';
@@ -8,6 +8,18 @@ import InvoiceDocument from './InvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { generateBankAccountImage, shareOrDownloadImage } from '../lib/bankAccountShare.js';
+import { waLink } from '../lib/whatsapp.js';
+
+// تسمية عرض مختصرة لكل حالة تمارا — TAMARA_STATUS_LABELS[undefined] غير
+// مستخدَم عمداً (لا قسم تمارا يظهر أصلاً بلا tamara_status، انظر الأسفل).
+const TAMARA_STATUS_LABELS: Record<NonNullable<Appointment['tamara_status']>, string> = {
+  created: 'بانتظار العميل',
+  approved: 'وافقت تمارا — بانتظار التحصيل النهائي',
+  paid: 'تم الدفع عبر تمارا',
+  declined: 'رفضت تمارا الطلب',
+  expired: 'انتهت صلاحية رابط الدفع',
+  canceled: 'أُلغي الطلب',
+};
 
 export default function PayAppointmentModal({
   appointment,
@@ -31,6 +43,40 @@ export default function PayAppointmentModal({
   const [issuedInvoice, setIssuedInvoice] = useState<Invoice | null>(null);
   const [bankAccount, setBankAccount] = useState<CompanyBankAccount | null>(null);
   const [sharingBankAccount, setSharingBankAccount] = useState(false);
+
+  // حالة طلب الدفع عبر تمارا — تبدأ من قيم الموعد نفسه (طلب سابق قد يكون
+  // قائماً بالفعل من فتحة سابقة لهذه النافذة)، وتُحدَّث محلياً فور إنشاء
+  // طلب جديد بدون حاجة لإغلاق النافذة أو إعادة تحميل الصفحة.
+  const [tamaraStatus, setTamaraStatus] = useState(appointment.tamara_status);
+  const [tamaraUrl, setTamaraUrl] = useState(appointment.tamara_checkout_url);
+  const [tamaraSending, setTamaraSending] = useState(false);
+  const [tamaraError, setTamaraError] = useState('');
+  const [tamaraCopied, setTamaraCopied] = useState(false);
+
+  async function handleTamaraRequest() {
+    setTamaraSending(true);
+    setTamaraError('');
+    try {
+      const updated = await api.post<Appointment>(`/appointments/${appointment.id}/tamara-request`);
+      setTamaraStatus(updated.tamara_status);
+      setTamaraUrl(updated.tamara_checkout_url);
+    } catch (err) {
+      setTamaraError(err instanceof Error ? err.message : 'تعذّر إنشاء طلب الدفع عبر تمارا');
+    } finally {
+      setTamaraSending(false);
+    }
+  }
+
+  async function handleCopyTamaraLink() {
+    if (!tamaraUrl) return;
+    try {
+      await navigator.clipboard.writeText(tamaraUrl);
+      setTamaraCopied(true);
+      setTimeout(() => setTamaraCopied(false), 2000);
+    } catch {
+      /* المتصفح يمنع الوصول للحافظة (نادر) — الرابط يبقى ظاهراً للنسخ يدوياً */
+    }
+  }
 
   // تُجلَب بيانات الحساب البنكي فقط عند اختيار "حوالة بنكية" — لا داعي
   // لطلبها إن لم يحتَجها المستخدم إطلاقاً.
@@ -189,6 +235,70 @@ export default function PayAppointmentModal({
         >
           {submitting ? t('جارِ التحصيل…') : t('تأكيد الدفع وإصدار الفاتورة')}
         </button>
+
+        {/* =================== طلب دفع عبر تمارا (تقسيط) ===================
+            مسار منفصل تماماً عن زر "تأكيد الدفع" أعلاه: لا يُحصِّل شيئاً
+            الآن، فقط ينشئ رابط دفع يُرسَل للعميل — التحصيل الفعلي وإصدار
+            الفاتورة يحدثان تلقائياً لاحقاً عند وصول تأكيد تمارا (ويب هوك)،
+            فتظهر الدفعة حينها في سجل هذا الموعد بطريقة الدفع "تمارا" تماماً
+            كأي دفعة أخرى. */}
+        {appointment.remaining_amount > 0 && (
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <p className="mb-2 text-center text-xs text-slate-400">{t('أو')}</p>
+            {!tamaraUrl || tamaraStatus === 'declined' || tamaraStatus === 'expired' || tamaraStatus === 'canceled' ? (
+              <button
+                type="button"
+                onClick={handleTamaraRequest}
+                disabled={tamaraSending}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Link2 className="h-3.5 w-3.5" style={{ color: '#5433a7' }} />
+                {tamaraSending
+                  ? t('جارِ إنشاء طلب الدفع…')
+                  : tamaraStatus
+                  ? t('إنشاء طلب دفع جديد عبر تمارا')
+                  : t('أرسل طلب دفع عبر تمارا (تقسيط)')}
+              </button>
+            ) : (
+              <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-600">
+                  {tamaraStatus ? TAMARA_STATUS_LABELS[tamaraStatus] : ''}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    readOnly
+                    dir="ltr"
+                    value={tamaraUrl}
+                    onClick={(e) => e.currentTarget.select()}
+                    className="input flex-1 text-[11px] text-slate-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyTamaraLink}
+                    title={t('نسخ الرابط')}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                  >
+                    {tamaraCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+                {customer?.phone && (
+                  <a
+                    href={waLink(
+                      customer.phone,
+                      `مرحباً ${customer.name}، تقدر تكمل دفع مبلغ ${formatMoney(appointment.remaining_amount)} عبر تمارا (تقسيط) من الرابط:\n${tamaraUrl}`,
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#25D366] py-2 text-xs font-semibold text-white hover:opacity-90"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> {t('إرسال الرابط عبر واتساب')}
+                  </a>
+                )}
+              </div>
+            )}
+            {tamaraError && <p className="mt-2 text-center text-xs text-red-600">{tamaraError}</p>}
+          </div>
+        )}
       </form>
     </div>
   );
