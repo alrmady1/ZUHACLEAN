@@ -14,6 +14,8 @@ import {
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
+import { createTamaraCheckoutSession, isValidTamaraWebhookAuth } from '../lib/tamara.js';
+import { createTabbyCheckoutSession, getTabbyPayment, captureTabbyPayment } from '../lib/tabby.js';
 import type {
   Appointment,
   Contract,
@@ -89,6 +91,8 @@ import {
   LEAVE_TYPE_LABELS_AR,
   LEAD_STATUS_LABELS_AR,
   VISIT_OUTCOME_LABELS_AR,
+  COMPANY_NAME,
+  COMPANY_PHONE,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
@@ -1761,6 +1765,232 @@ api.patch('/appointments/:id/payments/:paymentId', (req, res) => {
   const updated = store.appointments.update(appt.id, { payments: appt.payments, total_paid, remaining_amount, payment_status });
   logActivity(req, `تم تعديل دفعة لموعد "${appt.customer_name_snapshot ?? ''}"`);
   res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
+// طلب دفع عبر تمارا (Pay by Instalments) — بديل غير متزامن عن التحصيل
+// اليدوي أعلاه: ينشئ جلسة دفع لدى تمارا لباقي مبلغ الموعد ويرجع رابطاً
+// يُرسله الموظف للعميل (واتساب/نسخ من PayAppointmentModal.tsx)، ثم تصل
+// موافقة العميل الفعلية لاحقاً عبر POST /tamara/webhook أدناه الذي يسجّل
+// الدفعة تلقائياً بنفس منطق POST /appointments/:id/payments تماماً. انظر
+// src/server/lib/tamara.ts لتفاصيل التكامل والمتغيرات المطلوبة.
+// ---------------------------------------------------------------------------
+api.post('/appointments/:id/tamara-request', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  if (appt.remaining_amount <= 0) return res.status(400).json({ error: 'لا يوجد مبلغ متبقٍ على هذا الموعد' });
+  if (appt.tamara_status === 'created' || appt.tamara_status === 'approved') {
+    return res.status(409).json({ error: 'يوجد طلب دفع عبر تمارا قائم بالفعل لهذا الموعد', appointment: appt });
+  }
+  const customer = store.customers.get(appt.customer_id);
+  // العميل يُخيَّر قبل الإرسال بين رقمه المسجَّل أو رقم آخر (انظر خطوة
+  // "استكمال بهذا الرقم / إضافة رقم آخر" في PayAppointmentModal.tsx) —
+  // phone هنا اختياري ويتفوّق على رقم العميل المسجَّل إن أُرسل، دون أن
+  // يُعدِّل سجل العميل نفسه (مقصود: تغيير لمرة واحدة لهذا الطلب فقط).
+  const overridePhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const phone = overridePhone || customer?.phone;
+  if (!phone) return res.status(400).json({ error: 'رقم جوال لإرسال رابط الدفع مطلوب' });
+
+  const result = await createTamaraCheckoutSession({
+    orderReferenceId: appt.id,
+    amount: appt.remaining_amount,
+    description: appt.service_name_snapshot,
+    customerName: customer?.name ?? appt.customer_name_snapshot ?? COMPANY_NAME,
+    customerPhone: phone,
+  });
+  if (!result) {
+    return res.status(502).json({ error: 'تعذّر إنشاء طلب الدفع لدى تمارا — تحقق من إعداد TAMARA_API_TOKEN وسجلّ الخادم' });
+  }
+
+  const updated = store.appointments.update(appt.id, {
+    tamara_order_id: result.orderId,
+    tamara_checkout_url: result.checkoutUrl,
+    tamara_status: 'created',
+  });
+  logActivity(req, `تم إنشاء طلب دفع عبر تمارا بقيمة ${appt.remaining_amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}"`);
+  res.status(201).json(updated);
+});
+
+// يرجع/يُنشئ (أول مرة فقط) طريقة دفع بالاسم المعطى في قائمة طرق الدفع
+// (الإعدادات ← طرق الدفع) — نفس القائمة التي يديرها المدير يدوياً، فتظهر
+// الدفعات المسجَّلة تلقائياً من تمارا/تابي بنفس مكان بقية طرق الدفع
+// (كاش/شبكة/تحويل) في كل التقارير، لا كسلسلة نصية معزولة عنها.
+function ensurePaymentMethodByName(name: string): string {
+  const existing = store.paymentMethods.list().find((m) => m.name === name);
+  if (existing) return existing.id;
+  const created: PaymentMethodOption = { id: store.id(), name, is_active: true };
+  store.paymentMethods.insert(created);
+  return created.id;
+}
+
+// رابط واتساب مباشر لرقم عميل — نفس منطق waLink في src/client/lib/
+// whatsapp.ts بالضبط، لكن مكرَّر هنا محلياً بدل استيراده عبر حدود
+// client/server (الخادم لا يستورد من src/client إطلاقاً في هذا المشروع،
+// انظر src/shared للأدوات المشتركة الفعلية).
+function waRedirectUrl(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const withCountryCode = digits.startsWith('0') ? `966${digits.slice(1)}` : digits;
+  return `https://wa.me/${withCountryCode}`;
+}
+
+// ويب هوك تمارا — نقطة عامة بالضرورة (تمارا لا تملك جلسة دخول لدينا، نفس
+// مستوى حماية /whatsapp/webhook أعلاه)، محمية بدلاً من ذلك بمقارنة
+// Authorization مقابل TAMARA_NOTIFICATION_TOKEN (انظر
+// isValidTamaraWebhookAuth في tamara.ts). idempotent عمداً: يتجاهل أي
+// إشعار وصل لموعد تحمل بالفعل tamara_status === 'paid' لنفس الطلب، حتى
+// لو أرسلت تمارا نفس الحدث أكثر من مرة (سلوك متوقَّع من أي ويب هوك خارجي).
+api.post('/tamara/webhook', async (req, res) => {
+  if (!isValidTamaraWebhookAuth(req.headers.authorization)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const { order_id, order_reference_id, event_type, status } = req.body ?? {};
+  const appt = order_reference_id ? store.appointments.get(order_reference_id) : undefined;
+  if (!appt) {
+    console.warn('⚠️ ويب هوك تمارا وصل بمرجع طلب غير معروف:', order_reference_id, order_id);
+    return res.sendStatus(200); // 200 دائماً — رفض 404 يجعل تمارا تُعيد المحاولة بلا فائدة
+  }
+  if (appt.tamara_order_id && appt.tamara_order_id !== order_id) {
+    // إشعار لطلب تمارا أقدم غير الطلب الحالي المرتبط بالموعد (مثلاً بعد
+    // إنشاء طلب جديد لاحقاً) — يُتجاهَل بدل الكتابة فوق الحالة الحالية.
+    return res.sendStatus(200);
+  }
+
+  const outcome = String(event_type || status || '').toLowerCase();
+  const isCaptured = outcome.includes('captured') || outcome.includes('paid');
+  const isApproved = !isCaptured && outcome.includes('approved');
+  const isDeclined = outcome.includes('declined') || outcome.includes('failed');
+  const isExpired = outcome.includes('expired');
+  const isCanceled = outcome.includes('cancel');
+
+  if (isCaptured) {
+    if (appt.tamara_status === 'paid') return res.sendStatus(200); // مُسجَّلة مسبقاً — لا تكرار
+    const methodId = ensurePaymentMethodByName('تمارا');
+    const amount = appt.remaining_amount;
+    appt.payments.push({ id: store.id(), amount, method: methodId, recorded_at: new Date().toISOString() });
+    const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
+    const remaining_amount = Math.max(appt.amount - total_paid, 0);
+    const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
+    store.appointments.update(appt.id, {
+      payments: appt.payments,
+      total_paid,
+      remaining_amount,
+      payment_status,
+      tamara_status: 'paid',
+    });
+    console.log(`✅ تمارا: تم تحصيل ${amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}" (order ${order_id})`);
+  } else if (isApproved) {
+    store.appointments.update(appt.id, { tamara_status: 'approved' });
+  } else if (isDeclined) {
+    store.appointments.update(appt.id, { tamara_status: 'declined' });
+  } else if (isExpired) {
+    store.appointments.update(appt.id, { tamara_status: 'expired' });
+  } else if (isCanceled) {
+    store.appointments.update(appt.id, { tamara_status: 'canceled' });
+  } else {
+    console.warn('⚠️ ويب هوك تمارا بحدث غير معروف:', event_type || status);
+  }
+  res.sendStatus(200);
+});
+
+// ---------------------------------------------------------------------------
+// طلب دفع عبر تابي (Pay in Instalments) — نفس فكرة تمارا أعلاه ونفس واجهة
+// الطلب (POST .../tabby-request يرجع رابطاً)، لكن التأكيد يمر عبر إعادة
+// توجيه المتصفح (GET /tabby/return) بدل ويب هوك — انظر التعليق أعلى
+// src/server/lib/tabby.ts لتفصيل الفرق.
+// ---------------------------------------------------------------------------
+api.post('/appointments/:id/tabby-request', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  if (appt.remaining_amount <= 0) return res.status(400).json({ error: 'لا يوجد مبلغ متبقٍ على هذا الموعد' });
+  if (appt.tabby_status === 'created' || appt.tabby_status === 'authorized') {
+    return res.status(409).json({ error: 'يوجد طلب دفع عبر تابي قائم بالفعل لهذا الموعد', appointment: appt });
+  }
+  const customer = store.customers.get(appt.customer_id);
+  const overridePhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const phone = overridePhone || customer?.phone;
+  if (!phone) return res.status(400).json({ error: 'رقم جوال لإرسال رابط الدفع مطلوب' });
+
+  const result = await createTabbyCheckoutSession({
+    orderReferenceId: appt.id,
+    amount: appt.remaining_amount,
+    description: appt.service_name_snapshot,
+    customerName: customer?.name ?? appt.customer_name_snapshot ?? COMPANY_NAME,
+    customerPhone: phone,
+  });
+  if (!result) {
+    return res.status(502).json({ error: 'تعذّر إنشاء طلب الدفع لدى تابي — تحقق من إعداد TABBY_SECRET_KEY/TABBY_MERCHANT_CODE وسجلّ الخادم' });
+  }
+
+  const updated = store.appointments.update(appt.id, {
+    tabby_payment_id: result.paymentId,
+    tabby_checkout_url: result.checkoutUrl,
+    tabby_status: 'created',
+  });
+  logActivity(req, `تم إنشاء طلب دفع عبر تابي بقيمة ${appt.remaining_amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}"`);
+  res.status(201).json(updated);
+});
+
+// نقطة عودة تابي — رابط "success/cancel/failure" الذي زوَّدناها به عند
+// الإنشاء (merchant_urls في tabby.ts)، تُعيد تابي توجيه متصفح العميل إليه
+// ومعه payment_id في الاستعلام. عامة بالضرورة (العميل نفسه من يصل إليها،
+// بلا أي جلسة دخول لدينا). GET لا POST لأنها إعادة توجيه متصفح فعلية.
+api.get('/tabby/return', async (req, res) => {
+  const appointmentId = typeof req.query.appointment_id === 'string' ? req.query.appointment_id : undefined;
+  const paymentId = typeof req.query.payment_id === 'string' ? req.query.payment_id : undefined;
+  const outcome = typeof req.query.outcome === 'string' ? req.query.outcome : undefined; // 'cancel' | 'failure' | undefined(success)
+
+  const appt = appointmentId ? store.appointments.get(appointmentId) : undefined;
+  if (!appt) {
+    console.warn('⚠️ عودة تابي بمرجع موعد غير معروف:', appointmentId, paymentId);
+    return res.redirect(302, waRedirectUrl(COMPANY_PHONE));
+  }
+
+  // العميل يُعاد توجيهه لواتساب الشركة دائماً بغض النظر عن النتيجة —
+  // نفس المنطق في tabby.ts: لا "رحلة تسوّق" حقيقية يعود إليها هنا.
+  const redirectTo = waRedirectUrl(COMPANY_PHONE);
+
+  if (outcome === 'cancel' || outcome === 'failure') {
+    store.appointments.update(appt.id, { tabby_status: outcome === 'cancel' ? 'canceled' : 'declined' });
+    return res.redirect(302, redirectTo);
+  }
+  if (!paymentId) {
+    console.warn('⚠️ عودة تابي ناجحة ظاهرياً لكن بلا payment_id:', appointmentId);
+    return res.redirect(302, redirectTo);
+  }
+  if (appt.tabby_status === 'paid' && appt.tabby_payment_id === paymentId) {
+    return res.redirect(302, redirectTo); // مُسجَّلة مسبقاً — لا تكرار (عودة متكررة لنفس الرابط)
+  }
+
+  try {
+    const payment = await getTabbyPayment(paymentId);
+    if (payment?.status === 'authorized') {
+      const captured = await captureTabbyPayment(paymentId, appt.remaining_amount);
+      if (captured) {
+        const methodId = ensurePaymentMethodByName('تابي');
+        const amount = appt.remaining_amount;
+        appt.payments.push({ id: store.id(), amount, method: methodId, recorded_at: new Date().toISOString() });
+        const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
+        const remaining_amount = Math.max(appt.amount - total_paid, 0);
+        const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';
+        store.appointments.update(appt.id, {
+          payments: appt.payments,
+          total_paid,
+          remaining_amount,
+          payment_status,
+          tabby_payment_id: paymentId,
+          tabby_status: 'paid',
+        });
+        console.log(`✅ تابي: تم تحصيل ${amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}" (payment ${paymentId})`);
+      } else {
+        store.appointments.update(appt.id, { tabby_status: 'authorized' });
+      }
+    } else if (payment?.status) {
+      console.warn('⚠️ عودة تابي بحالة دفعة غير "authorized":', payment.status, paymentId);
+    }
+  } catch (err) {
+    console.error('❌ فشل تأكيد/التقاط دفعة تابي عند العودة:', err);
+  }
+  res.redirect(302, redirectTo);
 });
 
 // ---------------------------------------------------------------------------
