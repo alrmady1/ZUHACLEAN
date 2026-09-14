@@ -8,6 +8,7 @@ import {
   Landmark as TaxIcon,
   FileSignature as ContractsIcon,
   Boxes as InventoryIcon,
+  FileBarChart as FinancialStatementsIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -18,8 +19,9 @@ import { CommissionsDashboardTab } from './Commissions.js';
 import { TaxTab } from './Tax.js';
 import Contracts from './Contracts.js';
 import { InventoryTab } from './Inventory.js';
+import { FinancialStatementsTab } from './FinancialStatements.js';
 
-type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory';
+type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory' | 'financial_statements';
 
 // صفحة "المحاسبة" — تجمع "المبيعات والفواتير" و"المصروفات" (كانتا
 // صفحتين مستقلتين في القائمة الجانبية) وتبويبي "الموظفين" (كانت "كشف حساب
@@ -42,8 +44,11 @@ export default function Accounting() {
   const canTax = can('view_tax_page');
   const canContracts = can('view_contracts_page');
   const canInventory = can('view_inventory_page');
+  const canFinancialStatements = can('view_financial_statements');
   const canSalesTab = canSales || canManageDiscount;
-  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts, canInventory].filter(Boolean).length;
+  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts, canInventory, canFinancialStatements].filter(
+    Boolean,
+  ).length;
   // رابط ملصق أصل مطبوع (?tab=inventory، انظر AssetLabelModal في
   // Inventory.tsx) يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له —
   // وإلا يُتبَع نفس ترتيب الأولوية المعتاد.
@@ -64,7 +69,9 @@ export default function Accounting() {
                 ? 'tax'
                 : canContracts
                   ? 'contracts'
-                  : 'inventory',
+                  : canInventory
+                    ? 'inventory'
+                    : 'financial_statements',
   );
 
   return (
@@ -132,6 +139,14 @@ export default function Accounting() {
               <InventoryIcon className="h-4 w-4" /> {t('الجرد والأصول الثابتة')}
             </button>
           )}
+          {canFinancialStatements && (
+            <button
+              onClick={() => setTab('financial_statements')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'financial_statements' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <FinancialStatementsIcon className="h-4 w-4" /> {t('القوائم المالية')}
+            </button>
+          )}
         </div>
       )}
 
@@ -142,6 +157,7 @@ export default function Accounting() {
       {tab === 'tax' && canTax && <TaxTab />}
       {tab === 'contracts' && canContracts && <Contracts allowCreate={false} />}
       {tab === 'inventory' && canInventory && <InventoryTab />}
+      {tab === 'financial_statements' && canFinancialStatements && <FinancialStatementsTab />}
     </div>
   );
 }

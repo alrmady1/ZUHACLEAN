@@ -128,7 +128,8 @@ export type PermissionKey =
   | 'manage_sales_discount'
   | 'view_inventory_page'
   | 'manage_inventory'
-  | 'view_employee_contract';
+  | 'view_employee_contract'
+  | 'view_financial_statements';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -189,6 +190,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_inventory_page: 'الاطلاع على تبويب الجرد والأصول الثابتة (المحاسبة)',
   manage_inventory: 'إدارة الأصول الثابتة (إضافة/تعديل/شطب) وتنفيذ الجرد الدوري',
   view_employee_contract: 'الاطلاع على بيانات عقد الموظف (تاريخ العقد وملفه)',
+  view_financial_statements: 'الاطلاع على تبويب القوائم المالية (المحاسبة)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -286,6 +288,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // المدير العام ومدير النظام فقط افتراضياً، قابلة للتوسيع لاحقاً من صفحة
   // الصلاحيات نفسها.
   view_employee_contract: GM_ADMIN,
+  // القوائم المالية حسّاسة جداً (تُستخدَم للإيداع الرسمي لدى الجهات
+  // الحكومية) — المدير العام ومدير النظام فقط افتراضياً.
+  view_financial_statements: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
