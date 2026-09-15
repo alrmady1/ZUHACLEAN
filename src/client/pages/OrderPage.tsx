@@ -25,8 +25,9 @@ import {
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
+import { fireBookingConversion } from '../lib/googleAds.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
-import type { LandingPageSettings, LandingService } from '../../shared/types.js';
+import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
 // صفحة عامة خارجية — بلا تسجيل دخول عمداً — لاستقبال طلبات العملاء من
 // خارج النظام (يُشارَك رابطها في وسائل التواصل وواتساب الأعمال). الألوان
@@ -140,12 +141,17 @@ export default function OrderPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      await api.post('/public/leads', {
+      // الرد يحمل الـlead المُنشأ بمعرّفه الفريد — يُستخدم لمنع تكرار حدث
+      // تحويل Google Ads أدناه لنفس عملية الحجز (انظر fireBookingConversion).
+      const lead = await api.post<Lead>('/public/leads', {
         name: name.trim(),
         phone: phone.trim(),
         service_name: serviceName || undefined,
       });
       setDone(true);
+      // يُطلَق فقط هنا — بعد تأكيد نجاح الحجز فعلياً من الخادم، لا عند
+      // مجرد الضغط على زر "إرسال الطلب" أعلاه.
+      fireBookingConversion(lead.id);
     } catch {
       setSubmitError('تعذّر إرسال طلبك، حاول مرة أخرى أو تواصل معنا مباشرة عبر واتساب.');
     } finally {
