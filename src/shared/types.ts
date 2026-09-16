@@ -953,6 +953,12 @@ export interface LandingPageSettings {
   // بلا أي تغيير مرئي. تُرفَع من هنا بدل تعديل الكود مباشرة في كل مرة
   // يتغيّر فيها الفني/المشهد بالصورة.
   hero_image_url?: string;
+  // كلمات مفتاحية (SEO) لصفحة "اطلب الخدمة" العامة — تُدرَج في وسم
+  // meta[name=keywords] وتُستخدَم كأساس للنص الظاهر أعلى الفوتر (انظر
+  // OrderPage.tsx)، فاصلة بينها بفواصل. غائبة/فارغة = تُستخدَم قائمة
+  // افتراضية ثابتة في الكود، فحسابات قديمة بلا هذا الحقل تستمر تعمل بلا
+  // أي تغيير مرئي.
+  seo_keywords?: string;
 }
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {

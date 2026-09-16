@@ -2875,6 +2875,21 @@ function LandingPageTab() {
               className="input"
             />
           </Field>
+          {/* الكلمات المفتاحية (SEO) — تتحكم بظهور الصفحة في نتائج بحث
+              جوجل لعبارات معيَّنة، انظر meta[name=keywords] والنص أعلى
+              الفوتر في OrderPage.tsx. */}
+          <Field label={t('الكلمات المفتاحية (SEO) — مفصولة بفواصل')}>
+            <textarea
+              value={settings.seo_keywords ?? ''}
+              onChange={(e) => setSettings((s) => ({ ...s, seo_keywords: e.target.value }))}
+              rows={2}
+              placeholder={t('مثال: أرخص شركة تنظيف في الرياض, شركة تنظيف فلل بالرياض')}
+              className="input resize-none"
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              {t('تُستخدَم لتحسين ظهور صفحة "اطلب الخدمة" في نتائج بحث جوجل لهذه العبارات — اتركها فارغة لاستخدام القائمة الافتراضية')}
+            </span>
+          </Field>
 
           <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
             <span>
