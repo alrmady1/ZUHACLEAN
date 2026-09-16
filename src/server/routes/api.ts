@@ -3953,6 +3953,10 @@ api.patch('/landing-settings', (req, res) => {
     tagline: typeof body.tagline === 'string' && body.tagline.trim() ? body.tagline.trim() : current.tagline,
     show_installments_banner:
       typeof body.show_installments_banner === 'boolean' ? body.show_installments_banner : current.show_installments_banner ?? true,
+    show_tabby_tamara_banner:
+      typeof body.show_tabby_tamara_banner === 'boolean' ? body.show_tabby_tamara_banner : current.show_tabby_tamara_banner ?? true,
+    show_payment_methods_section:
+      typeof body.show_payment_methods_section === 'boolean' ? body.show_payment_methods_section : current.show_payment_methods_section ?? true,
     popup_ad_enabled: typeof body.popup_ad_enabled === 'boolean' ? body.popup_ad_enabled : current.popup_ad_enabled ?? false,
     popup_ad_image_url: body.popup_ad_image_url !== undefined ? body.popup_ad_image_url || undefined : current.popup_ad_image_url,
     hero_image_url: body.hero_image_url !== undefined ? body.hero_image_url || undefined : current.hero_image_url,

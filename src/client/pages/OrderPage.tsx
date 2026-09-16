@@ -491,50 +491,33 @@ export default function OrderPage() {
         </div>
       </section>
 
-      {/* =================== دفع مرن وآمن (تابي وتمارا ومدى وApple Pay) ===================
-          مباشرة تحت قسم الهيرو (بدل أسفل الصفحة قرب الفوتر) — بطلب صريح،
-          حتى يظهر للزائر من أول شاشة دون الحاجة للتمرير طويلاً؛ كان
-          يعمل فعلياً حتى في موضعه القديم (تحقَّقنا من ذلك)، لكنه كان غير
-          ملحوظ لبُعده عن أعلى الصفحة. يظهر افتراضياً (undefined = true،
-          للسجلات المحفوظة قبل إضافة هذا الخيار) ويُخفى بالكامل فقط لو
-          عطّله المدير صراحةً من الإعدادات ← الطلبات الخارجية. */}
-      {settings.show_installments_banner !== false && (
+      {/* =================== شريط تابي وتمارا (بند مستقل بالمنتصف) ===================
+          سطر خفيف يحمل شعاري تابي وتمارا فقط + نص "لا تشيل هم الدفع"،
+          مباشرة تحت الهيرو — مستقل تماماً عن قسم "طرق الدفع" الكامل أسفل
+          الصفحة (مدى/Apple Pay/تابي/تمارا)، بطلب صريح. يُخفى فقط لو عطّله
+          المدير صراحةً من الإعدادات ← الطلبات الخارجية. show_tabby_tamara_
+          banner حقل جديد؛ يتراجع إلى show_installments_banner القديم (كان
+          وصفه في الإعدادات يطابق هذا الشريط تحديداً) لمن ضبطه سابقاً قبل
+          إضافة هذا الحقل المستقل. */}
+      {(settings.show_tabby_tamara_banner ?? settings.show_installments_banner) !== false && (
         <section className="px-5 pb-2 sm:px-10">
           <div
-            className="mx-auto flex max-w-6xl flex-col items-center gap-5 rounded-2xl px-6 py-5 shadow-sm sm:flex-row-reverse sm:justify-between sm:px-8"
+            className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-3 rounded-2xl px-5 py-3.5 shadow-sm sm:gap-4"
             style={{ backgroundColor: NAVY }}
           >
-            <div className="text-center sm:text-right">
-              <p className="text-base font-extrabold text-white sm:text-lg">دفع مرن وآمن</p>
-              <p className="mt-1 text-sm text-white/60">خيارات متعددة بعد تأكيد تفاصيل الخدمة والسعر.</p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-              {/* مدى */}
-              <div className="flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5">
-                <div className="h-5 w-8 overflow-hidden rounded-sm">
-                  <div className="h-1/2" style={{ backgroundColor: '#1D9BD8' }} />
-                  <div className="h-1/2" style={{ backgroundColor: '#84B440' }} />
-                </div>
-                <span className="text-sm font-bold text-slate-800">مدى</span>
-              </div>
-              {/* Apple Pay */}
-              <div className="flex items-center gap-1 rounded-full bg-white px-4 py-2.5 text-slate-900">
-                <Apple className="h-4 w-4" fill="currentColor" />
-                <span className="text-sm font-semibold">Pay</span>
-              </div>
-              {/* تابي — الشعار الرسمي كما هو. */}
-              <img src="/tabby-logo.png" alt="Tabby" className="h-9 w-auto rounded-full shadow-sm" />
-              {/* تمارا — نفس كبسولة التدرّج الرسمية. */}
-              <span
-                className="flex items-center justify-center rounded-full px-4 py-2.5 shadow-sm"
-                style={{
-                  background:
-                    'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
-                }}
-              >
-                <img src="/tamara-logo.svg" alt="Tamara" className="h-3.5 w-auto" />
-              </span>
-            </div>
+            <span className="text-sm font-bold text-white sm:text-base">لا تشيل هم الدفع! يمكنك التقسيط عن طريق</span>
+            {/* تابي — الشعار الرسمي كما هو. */}
+            <img src="/tabby-logo.png" alt="Tabby" className="h-8 w-auto rounded-full shadow-sm" />
+            {/* تمارا — نفس كبسولة التدرّج الرسمية. */}
+            <span
+              className="flex items-center justify-center rounded-full px-4 py-2 shadow-sm"
+              style={{
+                background:
+                  'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
+              }}
+            >
+              <img src="/tamara-logo.svg" alt="Tamara" className="h-3 w-auto" />
+            </span>
           </div>
         </section>
       )}
@@ -615,6 +598,51 @@ export default function OrderPage() {
           </a>
         </div>
       </section>
+
+      {/* =================== طرق الدفع (مدى، Apple Pay، تابي، تمارا) ===================
+          أسفل الصفحة (فوق الفوتر مباشرة) — نفس موضعه الأصلي دائماً، قسم
+          مستقل عن شريط "تابي وتمارا" أعلى الصفحة. يُخفى فقط لو عطّله
+          المدير صراحةً من الإعدادات ← الطلبات الخارجية. */}
+      {settings.show_payment_methods_section !== false && (
+        <section className="px-5 pb-2 pt-8 sm:px-10">
+          <div
+            className="mx-auto flex max-w-6xl flex-col items-center gap-5 rounded-2xl px-6 py-5 shadow-sm sm:flex-row-reverse sm:justify-between sm:px-8"
+            style={{ backgroundColor: NAVY }}
+          >
+            <div className="text-center sm:text-right">
+              <p className="text-base font-extrabold text-white sm:text-lg">دفع مرن وآمن</p>
+              <p className="mt-1 text-sm text-white/60">خيارات متعددة بعد تأكيد تفاصيل الخدمة والسعر.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {/* مدى */}
+              <div className="flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5">
+                <div className="h-5 w-8 overflow-hidden rounded-sm">
+                  <div className="h-1/2" style={{ backgroundColor: '#1D9BD8' }} />
+                  <div className="h-1/2" style={{ backgroundColor: '#84B440' }} />
+                </div>
+                <span className="text-sm font-bold text-slate-800">مدى</span>
+              </div>
+              {/* Apple Pay */}
+              <div className="flex items-center gap-1 rounded-full bg-white px-4 py-2.5 text-slate-900">
+                <Apple className="h-4 w-4" fill="currentColor" />
+                <span className="text-sm font-semibold">Pay</span>
+              </div>
+              {/* تابي — الشعار الرسمي كما هو. */}
+              <img src="/tabby-logo.png" alt="Tabby" className="h-9 w-auto rounded-full shadow-sm" />
+              {/* تمارا — نفس كبسولة التدرّج الرسمية. */}
+              <span
+                className="flex items-center justify-center rounded-full px-4 py-2.5 shadow-sm"
+                style={{
+                  background:
+                    'radial-gradient(circle at 12% 15%, #ffcf6b 0%, transparent 48%), radial-gradient(circle at 78% 18%, #ff8fa8 0%, transparent 55%), radial-gradient(circle at 12% 88%, #a7ddf5 0%, transparent 50%), radial-gradient(circle at 85% 85%, #b48cfe 0%, transparent 55%), linear-gradient(135deg, #ffdca0, #ffb0b8)',
+                }}
+              >
+                <img src="/tamara-logo.svg" alt="Tamara" className="h-3.5 w-auto" />
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ============================== الفوتر ============================== */}
       <footer className="px-5 py-8 text-center sm:px-10" style={{ backgroundColor: NAVY }}>
