@@ -115,6 +115,53 @@ export default function OrderPage() {
     };
   }, []);
 
+  // عنوان ووصف وكلمات مفتاحية خاصة بهذه الصفحة العامة فقط (تُستعاد لقيمها
+  // الافتراضية عند مغادرتها) — نفس النمط أعلاه (استعادة الحالة عند
+  // unmount)، بهدف ظهور الصفحة في نتائج بحث جوجل لعبارات مثل "أرخص شركة
+  // تنظيف في الرياض" و"شركة تنظيف فلل بالرياض" بدل العنوان العام لتطبيق
+  // التشغيل الداخلي وحده (index.html).
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'زهى (كلين لايف) | أرخص وأفضل شركة تنظيف فلل وكنب وسجاد بالرياض';
+
+    const description =
+      'زهى (كلين لايف) من أرخص شركات تنظيف الفلل والمنازل بالرياض — تنظيف كنب وسجاد وتنظيف فلل شامل بفريق مدرّب وحجز فوري عبر واتساب.';
+    const keywords = 'ارخص شركة تنظيف في الرياض, شركة تنظيف كنب بالرياض, كلين لايف, شركة تنظيف فلل بالرياض, أفضل شركة تنظيف فلل بالرياض, شركة تنظيف سجاد بالرياض';
+
+    // يُعيد العنصر لو أنشأه هو نفسه (ليُحذف عند المغادرة)، أو null لو كان
+    // العنصر موجوداً أصلاً (عندها تُستعاد قيمته القديمة بدل حذفه).
+    function upsertMeta(name: string, content: string): HTMLMetaElement | null {
+      let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+      const preexisting = !!el;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+      return preexisting ? null : el;
+    }
+
+    const existingDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]')?.getAttribute('content') ?? null;
+    const existingKeywords = document.querySelector<HTMLMetaElement>('meta[name="keywords"]')?.getAttribute('content') ?? null;
+    const createdDescriptionEl = upsertMeta('description', description);
+    const createdKeywordsEl = upsertMeta('keywords', keywords);
+
+    return () => {
+      document.title = previousTitle;
+      if (createdDescriptionEl) {
+        createdDescriptionEl.remove();
+      } else if (existingDescription !== null) {
+        document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', existingDescription);
+      }
+      if (createdKeywordsEl) {
+        createdKeywordsEl.remove();
+      } else if (existingKeywords !== null) {
+        document.querySelector<HTMLMetaElement>('meta[name="keywords"]')?.setAttribute('content', existingKeywords);
+      }
+    };
+  }, []);
+
   const { primary: NAVY, secondary: CREAM, background: OFFWHITE, accent: GREEN } = settings.colors;
 
   // يُختار من بطاقات قسم "خدماتنا" الأدنى في الصفحة — الخدمة معروفة
@@ -560,6 +607,13 @@ export default function OrderPage() {
         <div className="mb-3 flex items-center justify-center gap-2">
           <span className="font-extrabold text-white">{COMPANY_LEGAL_NAME}</span>
         </div>
+        {/* نص مرئي (لا وسم مخفي) يحمل عبارات البحث المستهدَفة لظهور الصفحة
+            في نتائج جوجل — انظر أيضاً عنوان الصفحة ووصفها في useEffect
+            أعلاه. */}
+        <p className="mx-auto mb-3 max-w-xl text-xs leading-relaxed text-white/60">
+          {COMPANY_NAME} (كلين لايف) من أرخص شركة تنظيف في الرياض، متخصصون في شركة تنظيف فلل بالرياض وشركة تنظيف كنب بالرياض
+          وشركة تنظيف سجاد بالرياض — نسعى لنكون أفضل شركة تنظيف فلل بالرياض بجودة عالية وأسعار مناسبة.
+        </p>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
       </footer>
 
