@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { FileBarChart, Printer, Download, X, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -416,8 +417,11 @@ function FinancialStatementsDocument({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
+  // تُرسَم كابن مباشر لـ<body> (وليس داخل صفحة المحاسبة) حتى يخفي CSS الطباعة
+  // بقية التطبيق كلياً ويتدفق المستند الطويل على عدة صفحات بدل أن يُقصّ عند
+  // حدود صفحة واحدة — انظر .print-document-root في index.css.
+  return createPortal(
+    <div className="print-document-root fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:w-auto print:overflow-visible print:rounded-none print:shadow-none">
         <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
           <h2 className="text-sm font-bold text-slate-800">{t('القوائم المالية')}</h2>
@@ -448,7 +452,8 @@ function FinancialStatementsDocument({
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -459,8 +464,11 @@ function FinancialStatementsDocument({
 // ----------------------------------------------------------------------------
 function AuditorExemptionDeclaration({ fiscalYearEnd, onClose }: { fiscalYearEnd: string; onClose: () => void }) {
   const { t } = useI18n();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
+  // تُرسَم كابن مباشر لـ<body> (وليس داخل صفحة المحاسبة) حتى يخفي CSS الطباعة
+  // بقية التطبيق كلياً ويتدفق المستند الطويل على عدة صفحات بدل أن يُقصّ عند
+  // حدود صفحة واحدة — انظر .print-document-root في index.css.
+  return createPortal(
+    <div className="print-document-root fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
       <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:w-auto print:overflow-visible print:rounded-none print:shadow-none">
         <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
           <h2 className="text-sm font-bold text-slate-800">{t('إقرار الإعفاء من مراجع الحسابات')}</h2>
@@ -516,6 +524,7 @@ function AuditorExemptionDeclaration({ fiscalYearEnd, onClose }: { fiscalYearEnd
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

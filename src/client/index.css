@@ -254,6 +254,39 @@ html.dark .input::placeholder {
   }
 }
 
+/* مستندات طويلة متعددة الصفحات (القوائم المالية، الإقرار — انظر
+   FinancialStatements.tsx): تُرسَم كابن مباشر لـ<body> بواسطة portal، وفي
+   الطباعة يُخفى التطبيق كلياً (display:none بدل visibility فقط) ويتدفق
+   المستند بشكل عادي على الصفحات. .invoice-print-area وحدها بموضع absolute
+   وارتفاع صفحة واحدة تقصّ أي مستند أطول من صفحة. */
+@media print {
+  body:has(.print-document-root) > #root {
+    display: none;
+  }
+  html:has(.print-document-root),
+  body:has(.print-document-root) {
+    height: auto;
+    overflow: visible;
+  }
+  .print-document-root {
+    position: static;
+    display: block;
+    padding: 0;
+    background: none;
+  }
+  .print-document-root .invoice-print-area {
+    position: static;
+    inset: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 16px;
+  }
+  .print-document-root tr {
+    break-inside: avoid;
+  }
+}
+
 /* طباعة ملصق تعريف أصل (انظر AssetLabelModal في Inventory.tsx) — نفس
    منطق .invoice-print-area أعلاه بالضبط، بمساحة أصغر تناسب ملصقاً واحداً. */
 @media print {
