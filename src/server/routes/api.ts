@@ -3595,11 +3595,17 @@ api.post('/quotes', (req, res) => {
     return res.status(400).json({ error: 'customer_id وقائمة items (خدمة واحدة على الأقل) مطلوبة' });
   }
   const customer = store.customers.get(body.customer_id);
-  const items = body.items.map((it: { service_id: string; service_name: string; price: number }) => ({
-    service_id: it.service_id,
-    service_name: it.service_name,
-    price: Number(it.price) || 0,
-  }));
+  const items = body.items.map(
+    (it: { service_id: string; service_name: string; price: number; pricing_model?: string; quantity?: number; unit_price?: number }) => {
+      const base = { service_id: it.service_id, service_name: it.service_name, price: Number(it.price) || 0 };
+      // طريقة تسعير بالوحدة (متر/مقعد) تُحفظ للعرض والطباعة فقط — الإجمالي
+      // المعتمد يبقى price (انظر QuoteItem).
+      if ((it.pricing_model === 'per_sqm' || it.pricing_model === 'per_seat') && Number(it.quantity) > 0) {
+        return { ...base, pricing_model: it.pricing_model, quantity: Number(it.quantity), unit_price: Number(it.unit_price) || 0 };
+      }
+      return base;
+    },
+  );
   const itemsTotal = Math.round(items.reduce((sum: number, it: { price: number }) => sum + it.price, 0) * 100) / 100;
 
   // خصم اختياري — نفس دالتَي POST /invoices (resolveNamedDiscount/

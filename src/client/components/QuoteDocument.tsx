@@ -1,10 +1,13 @@
-import { X, Printer, Copy } from 'lucide-react';
+import { X, Printer, Copy, CalendarPlus } from 'lucide-react';
 import type { Quote } from '../../shared/types.js';
 import { VAT_RATE } from '../../shared/types.js';
 import { QUOTE_VALIDITY_DAYS } from '../../shared/documentDefaults.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import DocumentHeader from './DocumentHeader.js';
+import { PRICING_METHOD_LABELS_AR } from './ServicePricingLine.js';
+
+const PRICING_UNIT_SHORT_AR = { per_sqm: 'م²', per_seat: 'مقعد' } as const;
 
 // عرض السعر المطبوع — أسعار items مخزَّنة شاملة الضريبة (نفس اصطلاح
 // تسعير الخدمات في كل النظام)، تُفصَل هنا فقط للعرض إلى قبل الضريبة +
@@ -13,9 +16,13 @@ export default function QuoteDocument({
   quote,
   onClose,
   onDuplicate,
+  onConvertToAppointment,
 }: {
   quote: Quote;
   onClose: () => void;
+  // متاح فقط لمن يملك صلاحية حجز المواعيد — يفتح نموذج "حجز موعد جديد"
+  // معبَّأً ببيانات العرض (العميل، الخدمات، السعر النهائي)، انظر Quotes.tsx.
+  onConvertToAppointment?: () => void;
   // متاح فقط لمن يملك صلاحية إنشاء عروض أسعار — يفتح NewQuoteFlow معبَّأً
   // بنفس بيانات هذا العرض (انظر Quotes.tsx)، بدل التكرار اليدوي.
   onDuplicate?: () => void;
@@ -32,6 +39,14 @@ export default function QuoteDocument({
         <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
           <h2 className="text-sm font-bold text-slate-800">{t('عرض السعر')}</h2>
           <div className="flex items-center gap-2">
+            {onConvertToAppointment && (
+              <button
+                onClick={onConvertToAppointment}
+                className="flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+              >
+                <CalendarPlus className="h-3.5 w-3.5" /> {t('تحويل إلى موعد')}
+              </button>
+            )}
             {onDuplicate && (
               <button
                 onClick={onDuplicate}
@@ -82,7 +97,14 @@ export default function QuoteDocument({
               <tbody>
                 {quote.items.map((it, i) => (
                   <tr key={`${it.service_id}-${i}`} className="border-b border-slate-50 last:border-0">
-                    <td className="p-2.5 text-slate-700">{it.service_name}</td>
+                    <td className="p-2.5 text-slate-700">
+                      {it.service_name}
+                      {it.pricing_model && it.pricing_model !== 'fixed' && it.quantity ? (
+                        <div className="text-[11px] text-slate-400">
+                          {t(PRICING_METHOD_LABELS_AR[it.pricing_model])}: {it.quantity} {t(PRICING_UNIT_SHORT_AR[it.pricing_model])} × {formatMoney(it.unit_price ?? 0)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="p-2.5 text-slate-700">{formatMoney(it.price)}</td>
                   </tr>
                 ))}

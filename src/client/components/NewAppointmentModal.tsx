@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility, PreferredTimeOfDay } from '../../shared/types.js';
+import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility, PreferredTimeOfDay, ServicePricingModel, QuoteItem } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
 import { formatDuration, formatTimeAr, formatMoney } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
@@ -10,6 +10,7 @@ import { findDayOffConflicts, WEEKDAYS } from '../../shared/weekdays.js';
 import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 import { findZoneForNeighborhood } from '../../shared/riyadhZones.js';
+import ServicePricingLine, { applyPricingOverride, baseOverride, catalogPricingMethod, makeOverrideForMethod, type PricingOverride } from './ServicePricingLine.js';
 
 // السعر/المدة الفعليان للوحدة الواحدة لخدمة مسعَّرة بالوحدة: إن كان لديها
 // مستويات تسعير (pricing_tiers)، تُستخدَم قيم المستوى المختار (أو المستوى
@@ -57,6 +58,37 @@ function computeServicesDuration(chosen: Service[], quantities: Record<string, n
   return totalMinutes + Math.round(totalSeconds / 60);
 }
 
+// حالة التسعير الابتدائية لنموذج الحجز من بنود عرض سعر — الخدمات وكمياتها
+// ومستوياتها، وأي طريقة تسعير اختارها معدّ العرض تختلف عن الافتراضية
+// للخدمة (بالمتر بدل المقطوعية مثلاً) تُستعاد كتجاوز يدوي.
+function buildQuotePricingInit(items: QuoteItem[], services: Service[]) {
+  const serviceIds: string[] = [];
+  const quantities: Record<string, number> = {};
+  const tierKeys: Record<string, string> = {};
+  const overrides: Record<string, PricingOverride> = {};
+  for (const it of items) {
+    const s = services.find((x) => x.id === it.service_id);
+    if (!s) continue;
+    serviceIds.push(s.id);
+    const method: ServicePricingModel = it.pricing_model && it.pricing_model !== 'fixed' && it.quantity ? it.pricing_model : 'fixed';
+    if (method === 'fixed') {
+      if (catalogPricingMethod(s) !== 'fixed' || it.price !== s.default_price) {
+        overrides[s.id] = { method: 'fixed', unitPrice: 0, lumpPrice: it.price };
+      }
+      continue;
+    }
+    quantities[s.id] = it.quantity ?? 1;
+    const unitPrice = it.unit_price ?? 0;
+    const matchedTier = catalogPricingMethod(s) === method ? s.pricing_tiers?.find((tr) => tr.unit_price === unitPrice) : undefined;
+    if (matchedTier) {
+      tierKeys[s.id] = matchedTier.key;
+    } else if (catalogPricingMethod(s) !== method || unitPrice !== (s.unit_price ?? 0) || (s.pricing_tiers && s.pricing_tiers.length > 0)) {
+      overrides[s.id] = { method, unitPrice, lumpPrice: s.default_price };
+    }
+  }
+  return { serviceIds, quantities, tierKeys, overrides };
+}
+
 function Section({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
@@ -92,6 +124,19 @@ export interface NewAppointmentInitialLead {
   preferredTime?: PreferredTimeOfDay;
 }
 
+// بيانات أولية عند تحويل عرض سعر إلى موعد (زر "تحويل إلى موعد" في
+// QuoteDocument / صفحة عروض الأسعار) — العميل والخدمات والسعر النهائي
+// (بعد الخصم) تنتقل مباشرة، ويبقى للموظف اختيار الموعد المناسب فقط.
+export interface NewAppointmentInitialQuote {
+  quoteNumber: string;
+  customerId: string;
+  // بنود العرض بطريقة تسعير كل منها (مقطوعية/بالمتر/بالمقعد) وكميتها —
+  // تُستعاد كما هي في نموذج الحجز.
+  items: QuoteItem[];
+  // إجمالي العرض شامل الضريبة بعد أي خصم — هو السعر المتفق عليه مع العميل.
+  amount: number;
+}
+
 // وقت تمثيلي (24 ساعة) لكل فترة مفضَّلة — نقطة انطلاق معقولة فقط، الوقت
 // الفعلي يبقى قابلاً للتعديل بحرية كأي حجز عادي.
 const PREFERRED_TIME_OF_DAY_DEFAULT_HOUR: Record<PreferredTimeOfDay, string> = {
@@ -106,6 +151,7 @@ export default function NewAppointmentModal({
   supervisors,
   technicians,
   initialLead,
+  initialQuote,
   mode = 'service',
   onClose,
   onCreated,
@@ -116,6 +162,7 @@ export default function NewAppointmentModal({
   supervisors: Profile[];
   technicians: Profile[];
   initialLead?: NewAppointmentInitialLead;
+  initialQuote?: NewAppointmentInitialQuote;
   // 'visit' = زيارة معاينة عميل (لا خدمة أو سعر محدد بعد، انظر
   // AppointmentKind في shared/types.ts) — تُخفي قسم اختيار الخدمة
   // والسعر، وتحفظ الموعد بـ kind: 'visit'. باقي النموذج (العميل، المشرف،
@@ -135,7 +182,10 @@ export default function NewAppointmentModal({
   // نموذج "عميل جديد" فارغ، حتى لا نُنشئ عملاء مكررين لعميل موجود أصلاً.
   const matchedLeadCustomer = initialLead
     ? customers.find((c) => c.phone.replace(/\D/g, '') === initialLead.phone.replace(/\D/g, ''))
-    : undefined;
+    : initialQuote
+      ? customers.find((c) => c.id === initialQuote.customerId)
+      : undefined;
+  const quoteInit = initialQuote ? buildQuotePricingInit(initialQuote.items, services) : undefined;
   const matchedLeadService = initialLead?.serviceName ? services.find((s) => s.name === initialLead.serviceName) : undefined;
 
   const [allCustomers, setAllCustomers] = useState<Customer[]>(customers);
@@ -159,31 +209,45 @@ export default function NewAppointmentModal({
   const [showAddCustomer, setShowAddCustomer] = useState(allCustomers.length === 0 || (!!initialLead && !matchedLeadCustomer));
   const [addingCustomer, setAddingCustomer] = useState(false);
 
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(matchedLeadService ? [matchedLeadService.id] : []);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(
+    quoteInit ? quoteInit.serviceIds : matchedLeadService ? [matchedLeadService.id] : [],
+  );
   // الكمية المُدخَلة لكل خدمة مسعَّرة بالوحدة (عدد الأمتار أو المقاعد) —
   // خدمات السعر الثابت لا تظهر هنا إطلاقاً. تبدأ بـ1 لأي خدمة كهذه محدَّدة
   // مسبقاً (من طلب وارد محوَّل)، وتُضاف/تُحذف تلقائياً مع toggleService.
-  const [serviceQuantities, setServiceQuantities] = useState<Record<string, number>>(
-    matchedLeadService && matchedLeadService.pricing_model && matchedLeadService.pricing_model !== 'fixed'
-      ? { [matchedLeadService.id]: 1 }
-      : {},
-  );
+  const [serviceQuantities, setServiceQuantities] = useState<Record<string, number>>(() => {
+    if (quoteInit) return quoteInit.quantities;
+    const initial = matchedLeadService ? [matchedLeadService] : [];
+    return Object.fromEntries(initial.filter((s) => s.pricing_model && s.pricing_model !== 'fixed').map((s) => [s.id, 1]));
+  });
   // المستوى المختار لكل خدمة لها مستويات تسعير (pricing_tiers) — مفتاح
   // (key) المستوى، وليس فهرسه، حتى يبقى الاختيار صحيحاً بصرف النظر عن
   // ترتيب المستويات. خدمة بلا مستويات لا تظهر هنا إطلاقاً.
-  const [serviceTierKeys, setServiceTierKeys] = useState<Record<string, string>>(
-    matchedLeadService?.pricing_tiers && matchedLeadService.pricing_tiers.length > 0
-      ? { [matchedLeadService.id]: matchedLeadService.pricing_tiers[0].key }
-      : {},
-  );
+  const [serviceTierKeys, setServiceTierKeys] = useState<Record<string, string>>(() => {
+    if (quoteInit) return quoteInit.tierKeys;
+    const initial = matchedLeadService ? [matchedLeadService] : [];
+    return Object.fromEntries(initial.filter((s) => s.pricing_tiers && s.pricing_tiers.length > 0).map((s) => [s.id, s.pricing_tiers![0].key]));
+  });
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const serviceBoxRef = useRef<HTMLDivElement>(null);
   const [amount, setAmount] = useState<number | ''>(
-    matchedLeadService ? computeServicesAmount([matchedLeadService], { [matchedLeadService.id]: 1 }, serviceTierKeys) : 0,
+    initialQuote
+      ? initialQuote.amount
+      : matchedLeadService
+        ? computeServicesAmount([matchedLeadService], { [matchedLeadService.id]: 1 }, serviceTierKeys)
+        : 0,
   );
   // مدة زيارة المعاينة افتراضياً أقصر بكثير من موعد خدمة فعلي (30 دقيقة
   // بدل 120) — قابلة للتعديل بالطبع لو احتاج المشرف وقتاً أطول.
-  const [duration, setDuration] = useState<number | ''>(matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120));
+  const [duration, setDuration] = useState<number | ''>(
+    quoteInit && quoteInit.serviceIds.length > 0
+      ? computeServicesDuration(
+          services.filter((s) => quoteInit.serviceIds.includes(s.id)).map((s) => applyPricingOverride(s, quoteInit.overrides[s.id])),
+          serviceQuantities,
+          serviceTierKeys,
+        )
+      : matchedLeadService?.default_duration_minutes ?? (isVisit ? 30 : 120),
+  );
 
   const [date, setDate] = useState(initialLead?.preferredDate ?? today);
   const [time, setTime] = useState(initialLead?.preferredTime ? PREFERRED_TIME_OF_DAY_DEFAULT_HOUR[initialLead.preferredTime] : '10:00');
@@ -228,7 +292,25 @@ export default function NewAppointmentModal({
     );
   })();
 
-  const selectedServices = services.filter((s) => selectedServiceIds.includes(s.id));
+  // طريقة التسعير المختارة يدوياً لكل خدمة (مقطوعية/بالمتر/بالمقعد) —
+  // تتجاوز طريقة الخدمة الافتراضية من الإعدادات، وتبقى فارغة لخدمة لم
+  // يغيّر الموظف طريقتها (فتُسعَّر كما هي في الكتالوج بما فيها مستوياتها).
+  const [pricingOverrides, setPricingOverrides] = useState<Record<string, PricingOverride>>(quoteInit?.overrides ?? {});
+
+  // الخدمات كما ستُسعَّر فعلاً (بعد أي تجاوز يدوي) — كل حسابات السعر والمدة
+  // أدناه تعمل عليها، وليس على تعريف الكتالوج مباشرة.
+  const selectedServices = services.filter((s) => selectedServiceIds.includes(s.id)).map((s) => applyPricingOverride(s, pricingOverrides[s.id]));
+
+  // يُعيد احتساب السعر والمدة الإجماليين بعد أي تغيير في اختيار الخدمات أو
+  // كمياتها أو مستوياتها أو طريقة تسعيرها — يبقيان قابلين للتعديل اليدوي بعدها.
+  function applyPricingState(ids: string[], q: Record<string, number>, t: Record<string, string>, o: Record<string, PricingOverride>) {
+    const chosen = services.filter((s) => ids.includes(s.id)).map((s) => applyPricingOverride(s, o[s.id]));
+    setServiceQuantities(q);
+    setServiceTierKeys(t);
+    setPricingOverrides(o);
+    setAmount(computeServicesAmount(chosen, q, t));
+    setDuration(computeServicesDuration(chosen, q, t));
+  }
 
   // Selecting/deselecting a service recomputes the totals as the sum of the
   // selected services' defaults — still editable afterwards if the agreed
@@ -236,12 +318,13 @@ export default function NewAppointmentModal({
   // instead of default_price (quantity defaults to 1 when first selected).
   function toggleService(id: string) {
     const next = selectedServiceIds.includes(id) ? selectedServiceIds.filter((x) => x !== id) : [...selectedServiceIds, id];
-    const chosen = services.filter((s) => next.includes(s.id));
     const nextQ = { ...serviceQuantities };
     const nextT = { ...serviceTierKeys };
+    const nextO = { ...pricingOverrides };
     if (!next.includes(id)) {
       delete nextQ[id];
       delete nextT[id];
+      delete nextO[id];
     } else if (nextQ[id] === undefined) {
       const svc = services.find((s) => s.id === id);
       if (svc?.pricing_model && svc.pricing_model !== 'fixed') {
@@ -249,10 +332,7 @@ export default function NewAppointmentModal({
         if (svc.pricing_tiers && svc.pricing_tiers.length > 0) nextT[id] = svc.pricing_tiers[0].key;
       }
     }
-    setServiceQuantities(nextQ);
-    setServiceTierKeys(nextT);
-    setAmount(computeServicesAmount(chosen, nextQ, nextT));
-    setDuration(computeServicesDuration(chosen, nextQ, nextT));
+    applyPricingState(next, nextQ, nextT, nextO);
     setSelectedServiceIds(next);
   }
 
@@ -260,19 +340,55 @@ export default function NewAppointmentModal({
   // احتساب السعر والمدة الإجماليين فوراً — يبقيان قابلين للتعديل اليدوي
   // بعدها كأي سعر أو مدة أخرى.
   function updateServiceQuantity(id: string, qty: number) {
-    const nextQ = { ...serviceQuantities, [id]: qty };
-    setServiceQuantities(nextQ);
-    setAmount(computeServicesAmount(selectedServices, nextQ, serviceTierKeys));
-    setDuration(computeServicesDuration(selectedServices, nextQ, serviceTierKeys));
+    applyPricingState(selectedServiceIds, { ...serviceQuantities, [id]: qty }, serviceTierKeys, pricingOverrides);
   }
 
   // تغيير مستوى التسعير المختار لخدمة (مثال: تنظيف سطحي ↔ عميق)، مع إعادة
   // احتساب السعر والمدة الإجماليين فوراً من سعر/مدة المستوى الجديد.
   function updateServiceTier(id: string, tierKey: string) {
-    const nextT = { ...serviceTierKeys, [id]: tierKey };
-    setServiceTierKeys(nextT);
-    setAmount(computeServicesAmount(selectedServices, serviceQuantities, nextT));
-    setDuration(computeServicesDuration(selectedServices, serviceQuantities, nextT));
+    applyPricingState(selectedServiceIds, serviceQuantities, { ...serviceTierKeys, [id]: tierKey }, pricingOverrides);
+  }
+
+  // تغيير طريقة تسعير خدمة (مقطوعية ↔ بالمتر ↔ بالمقعد) — العودة للطريقة
+  // الافتراضية للخدمة تُلغي التجاوز فترجع أسعارها ومستوياتها الأصلية.
+  function changePricingMethod(id: string, method: ServicePricingModel) {
+    const base = services.find((s) => s.id === id);
+    if (!base) return;
+    const current = selectedServices.find((s) => s.id === id) ?? base;
+    const currentTotal = computeServicesAmount([current], serviceQuantities, serviceTierKeys);
+    const override = makeOverrideForMethod(base, method, currentTotal);
+    const nextO = { ...pricingOverrides };
+    const nextQ = { ...serviceQuantities };
+    const nextT = { ...serviceTierKeys };
+    if (override) nextO[id] = override;
+    else delete nextO[id];
+    if (method === 'fixed') {
+      delete nextQ[id];
+      delete nextT[id];
+    } else {
+      nextQ[id] = nextQ[id] ?? 1;
+      if (!override && base.pricing_tiers && base.pricing_tiers.length > 0) nextT[id] = nextT[id] ?? base.pricing_tiers[0].key;
+      else delete nextT[id];
+    }
+    applyPricingState(selectedServiceIds, nextQ, nextT, nextO);
+  }
+
+  function updateServiceUnitPrice(id: string, unitPrice: number) {
+    const base = services.find((s) => s.id === id);
+    if (!base) return;
+    applyPricingState(selectedServiceIds, serviceQuantities, serviceTierKeys, {
+      ...pricingOverrides,
+      [id]: { ...baseOverride(base, pricingOverrides[id]), unitPrice },
+    });
+  }
+
+  function updateServiceLumpPrice(id: string, lumpPrice: number) {
+    const base = services.find((s) => s.id === id);
+    if (!base) return;
+    applyPricingState(selectedServiceIds, serviceQuantities, serviceTierKeys, {
+      ...pricingOverrides,
+      [id]: { ...baseOverride(base, pricingOverrides[id]), lumpPrice },
+    });
   }
 
   useEffect(() => {
@@ -443,7 +559,9 @@ export default function NewAppointmentModal({
             <h2 className="text-lg font-bold text-slate-800">
               {initialLead
                 ? tt(`تحديد موعد لطلب ${initialLead.name}`, `Book appointment for ${initialLead.name}'s request`)
-                : isVisit
+                : initialQuote
+                  ? tt(`تحديد موعد لعرض السعر ${initialQuote.quoteNumber}`, `Book appointment for quote ${initialQuote.quoteNumber}`)
+                  : isVisit
                   ? t('إضافة زيارة عميل جديدة')
                   : t('إضافة حجز موعد جديد')}
             </h2>
@@ -698,54 +816,30 @@ export default function NewAppointmentModal({
                 )}
               </div>
 
-              {selectedServices.some((s) => s.pricing_model && s.pricing_model !== 'fixed') && (
+              {selectedServices.length > 0 && (
                 <div className="space-y-2">
-                  {selectedServices
-                    .filter((s): s is Service & { pricing_model: 'per_sqm' | 'per_seat' } => !!s.pricing_model && s.pricing_model !== 'fixed')
-                    .map((s) => {
-                      const { unitPrice } = resolveUnitPricing(s, serviceTierKeys[s.id]);
-                      return (
-                        <div key={s.id} className="space-y-1.5 rounded-xl border border-slate-200 bg-white p-2.5">
-                          {s.pricing_tiers && s.pricing_tiers.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-1.5">
-                              <span className="text-xs font-medium text-slate-600">{s.name}</span>
-                              <div className="flex flex-1 flex-wrap justify-end gap-1.5">
-                                {s.pricing_tiers.map((tier) => {
-                                  const active = (serviceTierKeys[s.id] ?? s.pricing_tiers![0].key) === tier.key;
-                                  return (
-                                    <button
-                                      key={tier.key}
-                                      type="button"
-                                      onClick={() => updateServiceTier(s.id, tier.key)}
-                                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                                        active ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {tier.label} · {formatMoney(tier.unit_price)}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            {!(s.pricing_tiers && s.pricing_tiers.length > 0) && (
-                              <span className="flex-1 truncate text-xs font-medium text-slate-600">{s.name}</span>
-                            )}
-                            <span className="shrink-0 text-xs text-slate-400">{t(SERVICE_PRICING_UNIT_LABELS_AR[s.pricing_model])}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={serviceQuantities[s.id] ?? 1}
-                              onChange={(e) => updateServiceQuantity(s.id, e.target.value === '' ? 0 : Number(e.target.value))}
-                              className="input w-20 shrink-0 py-1 text-center"
-                            />
-                            <span className="shrink-0 text-xs text-slate-400">× {formatMoney(unitPrice)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {selectedServices.map((s) => {
+                    const method = s.pricing_model ?? 'fixed';
+                    const { unitPrice } = resolveUnitPricing(s, serviceTierKeys[s.id]);
+                    return (
+                      <ServicePricingLine
+                        key={s.id}
+                        name={s.name}
+                        method={method}
+                        onMethodChange={(m) => changePricingMethod(s.id, m)}
+                        lumpPrice={s.default_price}
+                        onLumpPriceChange={(v) => updateServiceLumpPrice(s.id, v)}
+                        quantity={serviceQuantities[s.id] ?? 1}
+                        onQuantityChange={(v) => updateServiceQuantity(s.id, v)}
+                        unitPrice={unitPrice}
+                        onUnitPriceChange={(v) => updateServiceUnitPrice(s.id, v)}
+                        tiers={s.pricing_tiers}
+                        tierKey={serviceTierKeys[s.id]}
+                        onTierChange={(k) => updateServiceTier(s.id, k)}
+                        total={computeServicesAmount([s], serviceQuantities, serviceTierKeys)}
+                      />
+                    );
+                  })}
                 </div>
               )}
 
@@ -942,7 +1036,9 @@ export default function NewAppointmentModal({
             <textarea
               name="notes"
               rows={3}
-              defaultValue={initialLead?.message}
+              defaultValue={
+                initialLead?.message ?? (initialQuote ? tt(`محوّل من عرض السعر رقم ${initialQuote.quoteNumber}`, `Converted from quote ${initialQuote.quoteNumber}`) : undefined)
+              }
               placeholder={t('مثال: يرجى التركيز على تعقيم المطبخ والحمام الرئيسي وتجهيز مواد خاصة...')}
               className="input resize-none"
             />

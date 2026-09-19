@@ -1833,6 +1833,12 @@ export interface QuoteItem {
   // (انظر NewAppointmentModal)، يُفصَل عند الطباعة إلى سعر قبل الضريبة
   // + الضريبة + الإجمالي (نفس منطق الفاتورة).
   price: number;
+  // طريقة التسعير المختارة لهذا البند عند إنشاء العرض (بالمتر/بالمقعد) مع
+  // الكمية وسعر الوحدة (شامل الضريبة) — غائبة للمقطوعية (سعر واحد بلا كمية)
+  // ولعروض قديمة. للعرض والطباعة فقط؛ price أعلاه هو الإجمالي دائماً.
+  pricing_model?: ServicePricingModel;
+  quantity?: number;
+  unit_price?: number;
 }
 
 export interface Quote {

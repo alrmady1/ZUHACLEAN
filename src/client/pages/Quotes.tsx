@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { Plus, Eye, Trash2, Copy } from 'lucide-react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Plus, Eye, Trash2, Copy, CalendarPlus } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Quote } from '../../shared/types.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
@@ -8,15 +8,18 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import NewQuoteFlow from '../components/NewQuoteFlow.js';
 import QuoteDocument from '../components/QuoteDocument.js';
+import NewAppointmentModal from '../components/NewAppointmentModal.js';
 
 // صفحة مستقلة (كانت تبويباً داخل صفحة العقود) — إنشاء عرض سعر لعميل
 // موجود أو جديد قبل الالتزام بموعد أو عقد فعلي. عروض الأسعار مستقلة
 // تماماً عن العقود والمواعيد، مجرد اقتراح سعر قابل للطباعة والإرسال.
 export default function Quotes() {
-  const { user, can } = useAuth();
+  const { user, allProfiles, can } = useAuth();
+  const navigate = useNavigate();
   const { t, tt } = useI18n();
   const canCreateQuote = can('create_quotes');
   const canViewPrintQuote = can('view_print_quotes');
+  const canBookAppointment = can('create_appointments');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -25,6 +28,10 @@ export default function Quotes() {
   // عرض السعر المطلوب نسخه كعرض جديد — يفتح NewQuoteFlow معبَّأً منه (انظر
   // initialQuote هناك) بدل نموذج فارغ.
   const [duplicatingQuote, setDuplicatingQuote] = useState<Quote | null>(null);
+
+  // عرض السعر المطلوب تحويله إلى موعد — يفتح نموذج حجز موعد جديد معبَّأً
+  // منه (العميل، الخدمات، السعر النهائي بعد الخصم) ليختار الموظف الموعد فقط.
+  const [convertingQuote, setConvertingQuote] = useState<Quote | null>(null);
 
   function refreshQuotes() {
     api.get<Quote[]>('/quotes').then(setQuotes);
@@ -107,6 +114,18 @@ export default function Quotes() {
                         <Eye className="h-4 w-4" />
                       </button>
                     )}
+                    {canBookAppointment && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConvertingQuote(q);
+                        }}
+                        title={t('تحويل إلى موعد')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <CalendarPlus className="h-4 w-4" />
+                      </button>
+                    )}
                     {canCreateQuote && (
                       <button
                         onClick={(e) => {
@@ -171,6 +190,14 @@ export default function Quotes() {
         <QuoteDocument
           quote={viewingQuote}
           onClose={() => setViewingQuote(null)}
+          onConvertToAppointment={
+            canBookAppointment
+              ? () => {
+                  setConvertingQuote(viewingQuote);
+                  setViewingQuote(null);
+                }
+              : undefined
+          }
           onDuplicate={
             canCreateQuote
               ? () => {
@@ -179,6 +206,24 @@ export default function Quotes() {
                 }
               : undefined
           }
+        />
+      )}
+
+      {canBookAppointment && convertingQuote && (
+        <NewAppointmentModal
+          customers={customers}
+          services={services}
+          supervisors={allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor')}
+          technicians={allProfiles.filter((p) => p.role === 'technician')}
+          initialQuote={{
+            quoteNumber: convertingQuote.quote_number,
+            customerId: convertingQuote.customer_id,
+            items: convertingQuote.items,
+            amount: convertingQuote.total,
+          }}
+          onClose={() => setConvertingQuote(null)}
+          onCreated={() => navigate('/appointments')}
+          onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
         />
       )}
     </div>
