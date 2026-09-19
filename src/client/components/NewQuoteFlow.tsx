@@ -533,11 +533,14 @@ export default function NewQuoteFlow({
                   );
                 })}
                 <div className="space-y-1 border-t border-slate-200 pt-2 text-sm">
+                  {/* الخصم يُعرَض قبل الضريبة وبقيمته المسجَّلة نفسها (مثلاً 96
+                      ثابتة كما في إعدادات المحاسبة) — نفس ترتيب الفاتورة
+                      وQuoteDocument، بدل عرض الفرق شاملاً الضريبة (110.40). */}
                   {discountAmountPreview > 0 && (
                     <>
                       <div className="flex justify-between text-slate-500">
                         <span>{t('الإجمالي قبل الخصم')}</span>
-                        <span>{formatMoney(total)}</span>
+                        <span>{formatMoney(subtotalBeforeDiscount)}</span>
                       </div>
                       <div className="flex justify-between text-violet-600">
                         <span>
@@ -546,7 +549,15 @@ export default function NewQuoteFlow({
                             ? (discountSettings.named_discount_kind ?? 'percent') === 'percent' && ` (${discountSettings.named_discount_percent}٪)`
                             : openDiscountKind === 'percent' && ` (${openDiscountPercent}٪)`}
                         </span>
-                        <span>-{formatMoney(total - totalAfterDiscountPreview)}</span>
+                        <span>-{formatMoney(discountAmountPreview)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>{t('الإجمالي قبل الضريبة')}</span>
+                        <span>{formatMoney(subtotalAfterDiscountPreview)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>{t('ضريبة القيمة المضافة (15٪)')}</span>
+                        <span>{formatMoney(Math.round((totalAfterDiscountPreview - subtotalAfterDiscountPreview) * 100) / 100)}</span>
                       </div>
                     </>
                   )}

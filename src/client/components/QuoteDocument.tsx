@@ -91,18 +91,22 @@ export default function QuoteDocument({
           </div>
 
           <div className="mb-6 space-y-1.5 border-t border-dashed border-slate-200 pt-3 text-sm">
+            {/* الخصم يُعرَض قبل الضريبة وبقيمته المسجَّلة نفسها (discount_amount،
+                مثل InvoiceDocument تماماً) — كان يُعرَض سابقاً الفرق شاملاً
+                الضريبة (مثلاً 96 ← 110.40) فيبدو مختلفاً عن المبلغ الثابت
+                المضبوط في المحاسبة. */}
             {!!quote.discount_amount && (
               <>
                 <div className="flex justify-between text-slate-500">
                   <span>{t('الإجمالي قبل الخصم')}</span>
-                  <span>{formatMoney(quote.pre_discount_total ?? quote.total)}</span>
+                  <span>{formatMoney(Math.round(((quote.pre_discount_total ?? quote.total) / (1 + VAT_RATE)) * 100) / 100)}</span>
                 </div>
                 <div className="flex justify-between text-violet-600">
                   <span>
                     {quote.discount_label ?? t('خصم')}{' '}
                     {quote.discount_kind === 'fixed' ? '' : `(${quote.discount_percent}٪)`}
                   </span>
-                  <span>-{formatMoney((quote.pre_discount_total ?? quote.total) - quote.total)}</span>
+                  <span>-{formatMoney(quote.discount_amount)}</span>
                 </div>
               </>
             )}
