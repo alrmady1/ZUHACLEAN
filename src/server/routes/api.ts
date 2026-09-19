@@ -3591,7 +3591,23 @@ api.post('/quotes', (req, res) => {
     service_name: it.service_name,
     price: Number(it.price) || 0,
   }));
-  const total = Math.round(items.reduce((sum: number, it: { price: number }) => sum + it.price, 0) * 100) / 100;
+  const itemsTotal = Math.round(items.reduce((sum: number, it: { price: number }) => sum + it.price, 0) * 100) / 100;
+
+  // خصم اختياري — نفس منطق POST /invoices بالضبط (resolveNamedDiscount/
+  // resolveOpenDiscount أعلاه، عامّتان بالفعل وتُستخدمان هنا كما هما دون
+  // تعديل): يُحتسَب على المبلغ قبل الضريبة، ثم تُعاد إضافة الضريبة على
+  // الباقي — items أعلاه (كأسعار الخدمات في كل مكان بالتطبيق) شاملة
+  // الضريبة، فيُشتَق منها المبلغ قبل الضريبة أولاً.
+  const preDiscountSubtotal = Math.round((itemsTotal / (1 + VAT_RATE)) * 100) / 100;
+  let discount: ResolvedDiscount | null = null;
+  if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountSubtotal);
+  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, preDiscountSubtotal);
+
+  const discountAmount = discount?.amount ?? 0;
+  const subtotalAfterDiscount = Math.round((preDiscountSubtotal - discountAmount) * 100) / 100;
+  const vatAfterDiscount = Math.round(subtotalAfterDiscount * VAT_RATE * 100) / 100;
+  const total = Math.round((subtotalAfterDiscount + vatAfterDiscount) * 100) / 100;
+
   const quote: Quote = {
     id: store.id(),
     quote_number: body.quote_number ?? `QT-${Date.now()}`,
@@ -3606,9 +3622,17 @@ api.post('/quotes', (req, res) => {
     created_at: new Date().toISOString(),
     created_by: body.created_by || undefined,
     created_by_name: body.created_by ? store.profiles.list().find((p) => p.id === body.created_by)?.full_name : undefined,
+    discount_label: discount?.label,
+    discount_kind: discount?.kind,
+    discount_percent: discount?.percent,
+    discount_amount: discount ? discountAmount : undefined,
+    pre_discount_total: discount ? itemsTotal : undefined,
   };
   store.quotes.insert(quote);
-  logActivity(req, `تم إنشاء عرض سعر "${quote.quote_number}" للعميل "${quote.customer_name_snapshot}" بقيمة ${quote.total} ر.س`);
+  const discountNote = discount
+    ? ` بعد خصم "${discount.label}" (${discount.kind === 'fixed' ? `${discountAmount} ر.س` : `${discount.percent}٪`})`
+    : '';
+  logActivity(req, `تم إنشاء عرض سعر "${quote.quote_number}" للعميل "${quote.customer_name_snapshot}" بقيمة ${quote.total} ر.س${discountNote}`);
   res.status(201).json(quote);
 });
 

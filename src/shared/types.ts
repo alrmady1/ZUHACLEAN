@@ -1849,6 +1849,19 @@ export interface Quote {
   created_at: string;
   created_by?: string;
   created_by_name?: string;
+  // خصم اختياري — نفس بنية وقواعد خصم الفاتورة تماماً (انظر Invoice
+  // أعلاه): إما خصم مناسبة (SalesDiscountSettings المفعَّل من صفحة
+  // المبيعات) أو خصم مفتوح يُدخِله من ينشئ العرض (نسبة أو مبلغ ثابت لا
+  // يتجاوزان ما يعادل OPEN_DISCOUNT_MAX_PERCENT) — كلا الخصمين محسوبان
+  // على المبلغ قبل الضريبة (مثل الفاتورة)، ثم يُعاد احتساب الضريبة على
+  // الباقي. كل الحقول غائبة يعني بلا خصم. total أعلاه هو الإجمالي شامل
+  // الضريبة بعد الخصم (كما كان دائماً)؛ pre_discount_total يحفظ نفس
+  // الإجمالي شامل الضريبة لكن قبل الخصم، للعرض والطباعة فقط.
+  discount_label?: string;
+  discount_kind?: SalesDiscountKind;
+  discount_percent?: number;
+  discount_amount?: number;
+  pre_discount_total?: number;
 }
 
 // الاسم التجاري المختصر — يظهر في هوية التطبيق نفسه وصفحة "اطلب الخدمة"

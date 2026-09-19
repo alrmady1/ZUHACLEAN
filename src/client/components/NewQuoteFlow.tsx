@@ -1,13 +1,24 @@
 import { useRef, useState, useEffect } from 'react';
 import { X, Plus, ChevronDown, Check, Sparkles, User, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Service, Quote, QuotePathType, ServicePricingModel, NeighborhoodZoneAssignment } from '../../shared/types.js';
-import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
+import type {
+  Customer,
+  Service,
+  Quote,
+  QuotePathType,
+  ServicePricingModel,
+  NeighborhoodZoneAssignment,
+  SalesDiscountSettings,
+  SalesDiscountKind,
+} from '../../shared/types.js';
+import { SERVICE_PRICING_UNIT_LABELS_AR, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT, VAT_RATE } from '../../shared/types.js';
 import { DEFAULT_QUOTE_PAYMENT_NOTE } from '../../shared/documentDefaults.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
+
+type DiscountChoice = 'none' | 'named' | 'open';
 
 interface QuoteLineItem {
   service_id: string;
@@ -61,7 +72,7 @@ export default function NewQuoteFlow({
   onCreated: (quote: Quote) => void;
   onCustomerCreated?: (customer: Customer) => void;
 }) {
-  const { t } = useI18n();
+  const { t, tt } = useI18n();
   const { user } = useAuth();
 
   const [allCustomers, setAllCustomers] = useState(customers);
@@ -93,6 +104,21 @@ export default function NewQuoteFlow({
 
   const [paymentNote, setPaymentNote] = useState(initialQuote?.payment_note || DEFAULT_QUOTE_PAYMENT_NOTE);
   const [submitting, setSubmitting] = useState(false);
+
+  // خصم اختياري — نفس آلية خصم الفاتورة تماماً في صفحة المبيعات (Sales.tsx):
+  // إما خصم المناسبة الحالي المفعَّل من هناك (settings مشترك، هنا للقراءة
+  // فقط)، أو خصم مفتوح يُدخَل هنا مباشرة. عند نسخ عرض سابق (initialQuote)
+  // يبدأ الخصم دائماً "بدون خصم" بدل محاولة استنتاج نوعه القديم، فلا يبقى
+  // خصم مناسبة انتهت مناسبته معاداً تطبيقه بصمت على عرض جديد.
+  const [discountSettings, setDiscountSettings] = useState<SalesDiscountSettings>(DEFAULT_SALES_DISCOUNT_SETTINGS);
+  const [discountChoice, setDiscountChoice] = useState<DiscountChoice>('none');
+  const [openDiscountKind, setOpenDiscountKind] = useState<SalesDiscountKind>('percent');
+  const [openDiscountPercent, setOpenDiscountPercent] = useState(0);
+  const [openDiscountAmount, setOpenDiscountAmount] = useState(0);
+
+  useEffect(() => {
+    api.get<SalesDiscountSettings>('/sales-discount-settings').then(setDiscountSettings).catch(() => {});
+  }, []);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -177,6 +203,30 @@ export default function NewQuoteFlow({
 
   const total = Math.round(items.reduce((sum, it) => sum + it.price, 0) * 100) / 100;
 
+  // معاينة الخصم — نفس ترتيب الحساب المُعتمَد على الخادم بالضبط (خصم على
+  // المبلغ قبل الضريبة، ثم الضريبة على الباقي، انظر POST /quotes)، لعرض
+  // النتيجة فقط قبل الحفظ؛ القيمة الفعلية المحفوظة تُحتسَب هناك من جديد.
+  const subtotalBeforeDiscount = Math.round((total / (1 + VAT_RATE)) * 100) / 100;
+  const openMaxFixedAmount = Math.round(((subtotalBeforeDiscount * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
+
+  let discountAmountPreview = 0;
+  if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
+    if ((discountSettings.named_discount_kind ?? 'percent') === 'fixed') {
+      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, subtotalBeforeDiscount);
+    } else {
+      discountAmountPreview = Math.round(((subtotalBeforeDiscount * (discountSettings.named_discount_percent ?? 0)) / 100) * 100) / 100;
+    }
+  } else if (discountChoice === 'open') {
+    if (openDiscountKind === 'fixed') {
+      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, subtotalBeforeDiscount);
+    } else {
+      const percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+      discountAmountPreview = Math.round(((subtotalBeforeDiscount * percent) / 100) * 100) / 100;
+    }
+  }
+  const subtotalAfterDiscountPreview = Math.round((subtotalBeforeDiscount - discountAmountPreview) * 100) / 100;
+  const totalAfterDiscountPreview = Math.round((subtotalAfterDiscountPreview * (1 + VAT_RATE)) * 100) / 100;
+
   async function createNewCustomer() {
     const container = newCustomerBoxRef.current;
     if (!container) return;
@@ -207,14 +257,35 @@ export default function NewQuoteFlow({
   async function submit() {
     if (!customerId || items.length === 0) return;
     setSubmitting(true);
+    const payload: Record<string, unknown> = {
+      customer_id: customerId,
+      path_type: pathType,
+      items,
+      payment_note: paymentNote.trim() || undefined,
+      created_by: user?.id,
+    };
+    // القيم الفعلية المحفوظة تُحتسَب على الخادم من جديد (انظر POST
+    // /quotes) — هنا فقط اختيار نوع الخصم والقيمة المطلوبة، لا يُوثَق بأي
+    // مبلغ يحسبه العميل بنفسه.
+    if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
+      payload.discount_type = 'named';
+    } else if (discountChoice === 'open') {
+      if (openDiscountKind === 'fixed' && openDiscountAmount > 0) {
+        payload.discount_type = 'open';
+        payload.discount_kind = 'fixed';
+        payload.discount_amount = openDiscountAmount;
+      } else if (openDiscountKind === 'percent' && openDiscountPercent > 0) {
+        payload.discount_type = 'open';
+        payload.discount_kind = 'percent';
+        payload.discount_percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
+      }
+    }
     try {
-      const quote = await api.post<Quote>('/quotes', {
-        customer_id: customerId,
-        path_type: pathType,
-        items,
-        payment_note: paymentNote.trim() || undefined,
-        created_by: user?.id,
-      });
+      const quote = await api.post<Quote>('/quotes', payload);
+      setDiscountChoice('none');
+      setOpenDiscountKind('percent');
+      setOpenDiscountPercent(0);
+      setOpenDiscountAmount(0);
       onCreated(quote);
     } finally {
       setSubmitting(false);
@@ -461,10 +532,103 @@ export default function NewQuoteFlow({
                     </div>
                   );
                 })}
-                <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800">
-                  <span>{t('الإجمالي (شامل الضريبة)')}</span>
-                  <span>{formatMoney(total)}</span>
+                <div className="space-y-1 border-t border-slate-200 pt-2 text-sm">
+                  {discountAmountPreview > 0 && (
+                    <>
+                      <div className="flex justify-between text-slate-500">
+                        <span>{t('الإجمالي قبل الخصم')}</span>
+                        <span>{formatMoney(total)}</span>
+                      </div>
+                      <div className="flex justify-between text-violet-600">
+                        <span>
+                          {discountChoice === 'named' ? discountSettings.named_discount_label || t('خصم مناسبة') : t('خصم مفتوح')}
+                          {discountChoice === 'named'
+                            ? (discountSettings.named_discount_kind ?? 'percent') === 'percent' && ` (${discountSettings.named_discount_percent}٪)`
+                            : openDiscountKind === 'percent' && ` (${openDiscountPercent}٪)`}
+                        </span>
+                        <span>-{formatMoney(total - totalAfterDiscountPreview)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between font-bold text-slate-800">
+                    <span>{t('الإجمالي (شامل الضريبة)')}</span>
+                    <span>{formatMoney(discountAmountPreview > 0 ? totalAfterDiscountPreview : total)}</span>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <div className="space-y-1.5 rounded-xl border border-slate-200 p-3">
+                <span className="block text-sm font-medium text-slate-600">{t('الخصم')}</span>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="radio" checked={discountChoice === 'none'} onChange={() => setDiscountChoice('none')} />
+                  {t('بدون خصم')}
+                </label>
+                {discountSettings.named_discount_enabled &&
+                  ((discountSettings.named_discount_kind ?? 'percent') === 'fixed'
+                    ? (discountSettings.named_discount_amount ?? 0) > 0
+                    : (discountSettings.named_discount_percent ?? 0) > 0) && (
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input type="radio" checked={discountChoice === 'named'} onChange={() => setDiscountChoice('named')} />
+                      {(discountSettings.named_discount_kind ?? 'percent') === 'fixed'
+                        ? `${discountSettings.named_discount_label || t('خصم مناسبة')} (${formatMoney(discountSettings.named_discount_amount ?? 0)})`
+                        : `${discountSettings.named_discount_label || t('خصم مناسبة')} (${discountSettings.named_discount_percent}٪)`}
+                    </label>
+                  )}
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="radio" checked={discountChoice === 'open'} onChange={() => setDiscountChoice('open')} />
+                  {t('خصم مفتوح')}
+                </label>
+                {discountChoice === 'open' && (
+                  <div className="ms-6 space-y-1.5">
+                    <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+                      <button
+                        type="button"
+                        onClick={() => setOpenDiscountKind('percent')}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium ${openDiscountKind === 'percent' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+                      >
+                        {t('نسبة مئوية')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOpenDiscountKind('fixed')}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium ${openDiscountKind === 'fixed' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}
+                      >
+                        {t('مبلغ ثابت')}
+                      </button>
+                    </div>
+                    {openDiscountKind === 'percent' ? (
+                      <input
+                        type="number"
+                        min={0}
+                        max={OPEN_DISCOUNT_MAX_PERCENT}
+                        step="0.1"
+                        value={openDiscountPercent || ''}
+                        onChange={(e) => setOpenDiscountPercent(Math.min(Math.max(Number(e.target.value) || 0, 0), OPEN_DISCOUNT_MAX_PERCENT))}
+                        className="input w-28"
+                        placeholder={t('النسبة٪')}
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min={0}
+                        max={openMaxFixedAmount}
+                        step="0.01"
+                        value={openDiscountAmount || ''}
+                        onChange={(e) => setOpenDiscountAmount(Math.min(Math.max(Number(e.target.value) || 0, 0), openMaxFixedAmount))}
+                        className="input w-28"
+                        placeholder={t('المبلغ (ر.س)')}
+                      />
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      {tt(
+                        `الحد الأقصى المسموح به: ${openDiscountKind === 'percent' ? `${OPEN_DISCOUNT_MAX_PERCENT}٪` : formatMoney(openMaxFixedAmount)} (ما يعادل ${OPEN_DISCOUNT_MAX_PERCENT}٪ من المبلغ قبل الخصم)`,
+                        `Maximum allowed: ${openDiscountKind === 'percent' ? `${OPEN_DISCOUNT_MAX_PERCENT}%` : formatMoney(openMaxFixedAmount)} (equivalent to ${OPEN_DISCOUNT_MAX_PERCENT}% of the amount before discount)`,
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

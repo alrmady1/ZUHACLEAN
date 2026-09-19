@@ -91,6 +91,21 @@ export default function QuoteDocument({
           </div>
 
           <div className="mb-6 space-y-1.5 border-t border-dashed border-slate-200 pt-3 text-sm">
+            {!!quote.discount_amount && (
+              <>
+                <div className="flex justify-between text-slate-500">
+                  <span>{t('الإجمالي قبل الخصم')}</span>
+                  <span>{formatMoney(quote.pre_discount_total ?? quote.total)}</span>
+                </div>
+                <div className="flex justify-between text-violet-600">
+                  <span>
+                    {quote.discount_label ?? t('خصم')}{' '}
+                    {quote.discount_kind === 'fixed' ? '' : `(${quote.discount_percent}٪)`}
+                  </span>
+                  <span>-{formatMoney((quote.pre_discount_total ?? quote.total) - quote.total)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-slate-500">
               <span>{t('الإجمالي قبل الضريبة')}</span>
               <span>{formatMoney(subtotal)}</span>
