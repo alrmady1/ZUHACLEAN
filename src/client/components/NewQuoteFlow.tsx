@@ -11,7 +11,7 @@ import type {
   SalesDiscountSettings,
   SalesDiscountKind,
 } from '../../shared/types.js';
-import { SERVICE_PRICING_UNIT_LABELS_AR, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT, VAT_RATE } from '../../shared/types.js';
+import { SERVICE_PRICING_UNIT_LABELS_AR, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT } from '../../shared/types.js';
 import { DEFAULT_QUOTE_PAYMENT_NOTE } from '../../shared/documentDefaults.js';
 import { formatMoney } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
@@ -206,26 +206,27 @@ export default function NewQuoteFlow({
   // معاينة الخصم — نفس ترتيب الحساب المُعتمَد على الخادم بالضبط (خصم على
   // المبلغ قبل الضريبة، ثم الضريبة على الباقي، انظر POST /quotes)، لعرض
   // النتيجة فقط قبل الحفظ؛ القيمة الفعلية المحفوظة تُحتسَب هناك من جديد.
-  const subtotalBeforeDiscount = Math.round((total / (1 + VAT_RATE)) * 100) / 100;
-  const openMaxFixedAmount = Math.round(((subtotalBeforeDiscount * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
+  // الخصم هنا يُحتسَب على الإجمالي شامل الضريبة الذي يراه العميل (total)،
+  // فالمبلغ الثابت ينقص السعر النهائي بمقدار قيمته بالضبط (96 ← -96)،
+  // ولا يُضرَب بالضريبة — انظر POST /quotes.
+  const openMaxFixedAmount = Math.round(((total * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
 
   let discountAmountPreview = 0;
   if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
     if ((discountSettings.named_discount_kind ?? 'percent') === 'fixed') {
-      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, subtotalBeforeDiscount);
+      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, total);
     } else {
-      discountAmountPreview = Math.round(((subtotalBeforeDiscount * (discountSettings.named_discount_percent ?? 0)) / 100) * 100) / 100;
+      discountAmountPreview = Math.round(((total * (discountSettings.named_discount_percent ?? 0)) / 100) * 100) / 100;
     }
   } else if (discountChoice === 'open') {
     if (openDiscountKind === 'fixed') {
-      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, subtotalBeforeDiscount);
+      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, total);
     } else {
       const percent = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
-      discountAmountPreview = Math.round(((subtotalBeforeDiscount * percent) / 100) * 100) / 100;
+      discountAmountPreview = Math.round(((total * percent) / 100) * 100) / 100;
     }
   }
-  const subtotalAfterDiscountPreview = Math.round((subtotalBeforeDiscount - discountAmountPreview) * 100) / 100;
-  const totalAfterDiscountPreview = Math.round((subtotalAfterDiscountPreview * (1 + VAT_RATE)) * 100) / 100;
+  const totalAfterDiscountPreview = Math.round((total - discountAmountPreview) * 100) / 100;
 
   async function createNewCustomer() {
     const container = newCustomerBoxRef.current;
@@ -533,14 +534,11 @@ export default function NewQuoteFlow({
                   );
                 })}
                 <div className="space-y-1 border-t border-slate-200 pt-2 text-sm">
-                  {/* الخصم يُعرَض قبل الضريبة وبقيمته المسجَّلة نفسها (مثلاً 96
-                      ثابتة كما في إعدادات المحاسبة) — نفس ترتيب الفاتورة
-                      وQuoteDocument، بدل عرض الفرق شاملاً الضريبة (110.40). */}
                   {discountAmountPreview > 0 && (
                     <>
                       <div className="flex justify-between text-slate-500">
                         <span>{t('الإجمالي قبل الخصم')}</span>
-                        <span>{formatMoney(subtotalBeforeDiscount)}</span>
+                        <span>{formatMoney(total)}</span>
                       </div>
                       <div className="flex justify-between text-violet-600">
                         <span>
@@ -550,14 +548,6 @@ export default function NewQuoteFlow({
                             : openDiscountKind === 'percent' && ` (${openDiscountPercent}٪)`}
                         </span>
                         <span>-{formatMoney(discountAmountPreview)}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>{t('الإجمالي قبل الضريبة')}</span>
-                        <span>{formatMoney(subtotalAfterDiscountPreview)}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>{t('ضريبة القيمة المضافة (15٪)')}</span>
-                        <span>{formatMoney(Math.round((totalAfterDiscountPreview - subtotalAfterDiscountPreview) * 100) / 100)}</span>
                       </div>
                     </>
                   )}

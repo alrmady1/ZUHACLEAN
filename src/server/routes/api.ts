@@ -3593,20 +3593,20 @@ api.post('/quotes', (req, res) => {
   }));
   const itemsTotal = Math.round(items.reduce((sum: number, it: { price: number }) => sum + it.price, 0) * 100) / 100;
 
-  // خصم اختياري — نفس منطق POST /invoices بالضبط (resolveNamedDiscount/
-  // resolveOpenDiscount أعلاه، عامّتان بالفعل وتُستخدمان هنا كما هما دون
-  // تعديل): يُحتسَب على المبلغ قبل الضريبة، ثم تُعاد إضافة الضريبة على
-  // الباقي — items أعلاه (كأسعار الخدمات في كل مكان بالتطبيق) شاملة
-  // الضريبة، فيُشتَق منها المبلغ قبل الضريبة أولاً.
-  const preDiscountSubtotal = Math.round((itemsTotal / (1 + VAT_RATE)) * 100) / 100;
+  // خصم اختياري — نفس دالتَي POST /invoices (resolveNamedDiscount/
+  // resolveOpenDiscount أعلاه)، وitems أعلاه شاملة الضريبة (كأسعار الخدمات
+  // في كل مكان بالتطبيق).
+  // بخلاف الفاتورة: في عرض السعر يُحتسَب الخصم على الإجمالي شامل الضريبة
+  // الذي يراه العميل (itemsTotal)، فالمبلغ الثابت (مثلاً 96 ر.س) ينقص
+  // السعر النهائي بمقدار 96 بالضبط — كان يُخصَم سابقاً من المبلغ قبل
+  // الضريبة فيظهر أثره 96 × 1.15 = 110.40 على السعر. تُمرَّر الأساس شاملاً
+  // الضريبة للدالتين (سقف الخصم المفتوح ٥٪ ونسب الخصم نسبية فلا تتأثر).
   let discount: ResolvedDiscount | null = null;
-  if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountSubtotal);
-  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, preDiscountSubtotal);
+  if (body.discount_type === 'named') discount = resolveNamedDiscount(itemsTotal);
+  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, itemsTotal);
 
   const discountAmount = discount?.amount ?? 0;
-  const subtotalAfterDiscount = Math.round((preDiscountSubtotal - discountAmount) * 100) / 100;
-  const vatAfterDiscount = Math.round(subtotalAfterDiscount * VAT_RATE * 100) / 100;
-  const total = Math.round((subtotalAfterDiscount + vatAfterDiscount) * 100) / 100;
+  const total = Math.round((itemsTotal - discountAmount) * 100) / 100;
 
   const quote: Quote = {
     id: store.id(),
