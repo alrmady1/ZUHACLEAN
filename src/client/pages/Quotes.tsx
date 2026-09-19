@@ -85,7 +85,14 @@ export default function Quotes() {
                 <td className="p-3 text-slate-600">{q.customer_name_snapshot}</td>
                 <td className="p-3 text-slate-600">{q.path_type === 'contract' ? t('عقد متعدد الزيارات') : t('زيارة مرة واحدة')}</td>
                 <td className="p-3 text-slate-600" dir="ltr">{formatDateAr(q.issue_date)}</td>
-                <td className="p-3 text-slate-600">{formatMoney(q.total)}</td>
+                <td className="p-3 text-slate-600">
+                  {formatMoney(q.total)}
+                  {!!q.discount_amount && (
+                    <div className="text-[11px] text-violet-600">
+                      {t('بعد خصم')} {q.discount_label} ({q.discount_kind === 'fixed' ? formatMoney(q.discount_amount) : `${q.discount_percent}٪`})
+                    </div>
+                  )}
+                </td>
                 <td className="p-3">
                   <div className="flex items-center gap-1">
                     {canViewPrintQuote && (
