@@ -1591,6 +1591,11 @@ export interface Invoice {
   discount_percent?: number;
   discount_amount?: number;
   pre_discount_subtotal?: number;
+  // true للفواتير الجديدة: discount_amount هنا مبلغ شامل الضريبة (الفرق بين
+  // الإجمالي شامل الضريبة قبل الخصم وبعده)، فالمبلغ الثابت 96 ينقص الإجمالي
+  // 96 بالضبط — نفس منطق عروض الأسعار. غائب/false للفواتير القديمة، حيث
+  // كان discount_amount يُخصَم من المبلغ قبل الضريبة (يُعرَض كما كان).
+  discount_includes_vat?: boolean;
 }
 
 // نوع الخصم: نسبة مئوية من المبلغ قبل الضريبة، أو مبلغ ثابت بالريال.

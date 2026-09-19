@@ -320,8 +320,9 @@ export default function Sales() {
   // الخادم (خصم على المبلغ قبل الضريبة، ثم الضريبة على الباقي)، لعرض
   // النتيجة فقط؛ القيم الفعلية المحفوظة تُحتسَب هناك من جديد. تدعم كِلا
   // نوعي الخصم (نسبة/مبلغ ثابت) للخصمَين معاً (المناسبة والمفتوح).
-  const subtotalBeforeDiscountPreview = Math.round((previewTotal / (1 + VAT_RATE)) * 100) / 100;
-  const openMaxFixedAmount = Math.round(((subtotalBeforeDiscountPreview * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
+  // الخصم يُحتسَب على الإجمالي شامل الضريبة (previewTotal) — المبلغ الثابت
+  // ينقص الإجمالي بقيمته بالضبط (96 ← -96)، انظر POST /invoices.
+  const openMaxFixedAmount = Math.round(((previewTotal * OPEN_DISCOUNT_MAX_PERCENT) / 100) * 100) / 100;
 
   let discountKindPreview: SalesDiscountKind = 'percent';
   let discountPercentPreview: number | undefined;
@@ -329,23 +330,23 @@ export default function Sales() {
   if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
     discountKindPreview = discountSettings.named_discount_kind ?? 'percent';
     if (discountKindPreview === 'fixed') {
-      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, subtotalBeforeDiscountPreview);
+      discountAmountPreview = Math.min(discountSettings.named_discount_amount ?? 0, previewTotal);
     } else {
       discountPercentPreview = discountSettings.named_discount_percent ?? 0;
-      discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * discountPercentPreview) / 100) * 100) / 100;
+      discountAmountPreview = Math.round(((previewTotal * discountPercentPreview) / 100) * 100) / 100;
     }
   } else if (discountChoice === 'open') {
     discountKindPreview = openDiscountKind;
     if (openDiscountKind === 'fixed') {
-      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, subtotalBeforeDiscountPreview);
+      discountAmountPreview = Math.min(Math.max(openDiscountAmount, 0), openMaxFixedAmount, previewTotal);
     } else {
       discountPercentPreview = Math.min(Math.max(openDiscountPercent, 0), OPEN_DISCOUNT_MAX_PERCENT);
-      discountAmountPreview = Math.round(((subtotalBeforeDiscountPreview * discountPercentPreview) / 100) * 100) / 100;
+      discountAmountPreview = Math.round(((previewTotal * discountPercentPreview) / 100) * 100) / 100;
     }
   }
-  const subtotalPreview = Math.round((subtotalBeforeDiscountPreview - discountAmountPreview) * 100) / 100;
-  const vatPreview = Math.round(subtotalPreview * VAT_RATE * 100) / 100;
-  const totalPreview = Math.round((subtotalPreview + vatPreview) * 100) / 100;
+  const totalPreview = Math.round((previewTotal - discountAmountPreview) * 100) / 100;
+  const subtotalPreview = Math.round((totalPreview / (1 + VAT_RATE)) * 100) / 100;
+  const vatPreview = Math.round((totalPreview - subtotalPreview) * 100) / 100;
 
   return (
     <div className="space-y-6">
@@ -660,18 +661,24 @@ export default function Sales() {
               </div>
 
               <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
-                <div className="flex justify-between text-slate-500">
-                  <span>{t('المبلغ قبل الخصم والضريبة')}</span>
-                  <span>{formatMoney(subtotalBeforeDiscountPreview)}</span>
-                </div>
                 {discountAmountPreview > 0 && (
-                  <div className="flex justify-between text-violet-600">
-                    <span>
-                      {t('الخصم')} {discountKindPreview === 'percent' && discountPercentPreview ? `(${discountPercentPreview}٪)` : ''}
-                    </span>
-                    <span>-{formatMoney(discountAmountPreview)}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between text-slate-500">
+                      <span>{t('الإجمالي قبل الخصم')}</span>
+                      <span>{formatMoney(previewTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-violet-600">
+                      <span>
+                        {t('الخصم')} {discountKindPreview === 'percent' && discountPercentPreview ? `(${discountPercentPreview}٪)` : ''}
+                      </span>
+                      <span>-{formatMoney(discountAmountPreview)}</span>
+                    </div>
+                  </>
                 )}
+                <div className="flex justify-between text-slate-500">
+                  <span>{t('الإجمالي قبل الضريبة')}</span>
+                  <span>{formatMoney(subtotalPreview)}</span>
+                </div>
                 <div className="flex justify-between text-slate-500">
                   <span>{t('الضريبة (15٪)')}</span>
                   <span>{formatMoney(vatPreview)}</span>

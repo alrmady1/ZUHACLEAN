@@ -130,9 +130,17 @@ export default function InvoiceDocument({
           <div className="mb-6 space-y-1.5 border-t border-dashed border-slate-200 pt-3 text-sm">
             {!!invoice.discount_amount && (
               <>
+                {/* فواتير جديدة: الخصم شامل الضريبة (الإجمالي قبله = الإجمالي
+                    بعده + الخصم)؛ فواتير قديمة: قبل الضريبة كما كانت. */}
                 <div className="flex justify-between text-slate-500">
                   <span>{t('الإجمالي قبل الخصم')}</span>
-                  <span>{formatMoney(invoice.pre_discount_subtotal ?? invoice.subtotal)}</span>
+                  <span>
+                    {formatMoney(
+                      invoice.discount_includes_vat
+                        ? Math.round((invoice.total + (invoice.discount_amount ?? 0)) * 100) / 100
+                        : invoice.pre_discount_subtotal ?? invoice.subtotal,
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between text-violet-600">
                   <span>

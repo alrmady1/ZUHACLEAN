@@ -2825,14 +2825,22 @@ api.post('/invoices', (req, res) => {
   // قبل إضافة هذه الميزة) — الخصم، إن وُجد، يُحتسَب هنا على الخادم فقط،
   // ولا يُوثَق بأي نسبة أو مبلغ يحسبه العميل بنفسه.
   const preDiscountSubtotal = Number(body.subtotal ?? 0);
+  // الخصم يُحتسَب على الإجمالي شامل الضريبة (نفس أسعار العميل)، فالمبلغ
+  // الثابت (مثلاً 96) ينقص الإجمالي بمقدار 96 بالضبط — كان يُخصَم سابقاً من
+  // المبلغ قبل الضريبة فيصير أثره 96 × 1.15 = 110.40. نفس منطق POST /quotes.
+  const preDiscountTotal = Math.round(preDiscountSubtotal * (1 + VAT_RATE) * 100) / 100;
 
   let discount: ResolvedDiscount | null = null;
-  if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountSubtotal);
-  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, preDiscountSubtotal);
+  if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountTotal);
+  else if (body.discount_type === 'open') discount = resolveOpenDiscount(body, preDiscountTotal);
 
   const discountAmount = discount?.amount ?? 0;
-  const subtotal = Math.round((preDiscountSubtotal - discountAmount) * 100) / 100;
-  const vat_amount = Math.round(subtotal * VAT_RATE * 100) / 100;
+  // بلا خصم: الحساب كما كان تماماً؛ مع خصم: الإجمالي بعد الخصم أولاً، ثم
+  // يُشتقّ منه المبلغ قبل الضريبة والضريبة.
+  const finalTotal = discount ? Math.round((preDiscountTotal - discountAmount) * 100) / 100 : undefined;
+  const subtotal =
+    finalTotal !== undefined ? Math.round((finalTotal / (1 + VAT_RATE)) * 100) / 100 : preDiscountSubtotal;
+  const vat_amount = finalTotal !== undefined ? Math.round((finalTotal - subtotal) * 100) / 100 : Math.round(subtotal * VAT_RATE * 100) / 100;
   const invoice: Invoice = {
     id: store.id(),
     invoice_number: body.invoice_number ?? `INV-${Date.now()}`,
@@ -2855,6 +2863,7 @@ api.post('/invoices', (req, res) => {
     discount_percent: discount?.percent,
     discount_amount: discount ? discountAmount : undefined,
     pre_discount_subtotal: discount ? preDiscountSubtotal : undefined,
+    discount_includes_vat: discount ? true : undefined,
   };
   store.invoices.insert(invoice);
   const discountNote = discount
