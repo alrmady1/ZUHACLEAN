@@ -14,6 +14,8 @@ import {
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
+import { sendWhatsappOtpCode } from '../lib/whatsappApi.js';
+import { toLocalSaudiMobile, samePhone, issueOtp, verifyOtp, getMobileSession, endMobileSession } from '../lib/mobileAuth.js';
 import { createTamaraCheckoutSession, isValidTamaraWebhookAuth } from '../lib/tamara.js';
 import { createTabbyCheckoutSession, getTabbyPayment, captureTabbyPayment } from '../lib/tabby.js';
 import type {
@@ -4010,6 +4012,80 @@ api.patch('/landing-settings', (req, res) => {
 // دخول (يستهلكها تطبيق زهى للجوال مباشرة، نفس مستوى حماية /landing-settings
 // أعلاه)، تُعدَّل من الإعدادات ← تطبيق الجوال خلف صلاحية edit_landing_page.
 api.get('/mobile-app-settings', (_req, res) => res.json(store.mobileAppSettings.get()));
+
+// ---------------------------------------------------------------------------
+// دخول عميل تطبيق الجوال برمز يصل عبر واتساب، ثم قراءة حجوزاته هو فقط.
+// ---------------------------------------------------------------------------
+
+// يرد دائماً { ok: true } بصرف النظر عن كون الرقم مسجَّلاً أو ممنوعاً بحدّ
+// الإرسال، حتى لا تُستخدم هذه النقطة لمعرفة أرقام عملائنا. الإرسال الفعلي
+// لا يحدث إلا لرقم له عميل أو طلب سابق عندنا (فلا تُهدَر رسائل واتساب
+// مدفوعة على أرقام عشوائية).
+api.post('/public/mobile/otp/request', async (req, res) => {
+  const phone = toLocalSaudiMobile(req.body?.phone);
+  if (!phone) return res.status(400).json({ error: 'رقم الجوال غير صالح' });
+  const known =
+    store.customers.list().some((c) => samePhone(c.phone, phone)) || store.leads.list().some((l) => samePhone(l.phone, phone));
+  if (known) {
+    const issued = issueOtp(phone);
+    if (issued.ok) {
+      const sent = await sendWhatsappOtpCode(`whatsapp:+966${phone.slice(1)}`, issued.code);
+      if (!sent) console.warn('⚠️ تعذّر إرسال رمز تحقق تطبيق الجوال عبر واتساب (راجع إعدادات Twilio).');
+    }
+  }
+  res.json({ ok: true });
+});
+
+api.post('/public/mobile/otp/verify', (req, res) => {
+  const phone = toLocalSaudiMobile(req.body?.phone);
+  const code = typeof req.body?.code === 'string' ? req.body.code.replace(/D/g, '') : '';
+  if (!phone || code.length !== 6) return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي' });
+  const result = verifyOtp(phone, code);
+  if (!result.ok) {
+    return res
+      .status(result.reason === 'too_many_attempts' ? 429 : 400)
+      .json({ error: result.reason === 'too_many_attempts' ? 'محاولات كثيرة، اطلب رمزاً جديداً' : 'الرمز غير صحيح أو منتهي' });
+  }
+  res.json({ token: result.token, phone });
+});
+
+api.post('/public/mobile/logout', (req, res) => {
+  const session = getMobileSession(req.headers.authorization);
+  if (session) endMobileSession(session);
+  res.json({ ok: true });
+});
+
+// حجوزات وطلبات صاحب الجلسة فقط (بحسب رقم جواله الموثَّق). تُعاد حقول
+// آمنة للعرض فقط — بلا ملاحظات داخلية أو بيانات موظفين أو عمولات.
+api.get('/public/mobile/bookings', (req, res) => {
+  const session = getMobileSession(req.headers.authorization);
+  if (!session) return res.status(401).json({ error: 'انتهت الجلسة، سجّل الدخول من جديد' });
+
+  const customerIds = new Set(store.customers.list().filter((c) => samePhone(c.phone, session.phone)).map((c) => c.id));
+  const appointments = store.appointments
+    .list()
+    .filter((a) => customerIds.has(a.customer_id))
+    .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))
+    .map((a) => ({
+      id: a.id,
+      service_name: a.kind === 'visit' ? 'زيارة معاينة' : a.service_name_snapshot,
+      scheduled_at: a.scheduled_at,
+      expected_duration_minutes: a.expected_duration_minutes,
+      status: a.status,
+      status_label: APPT_STATUS_LABEL_AR[a.status] ?? a.status,
+      address: a.address_snapshot,
+      amount: a.amount,
+      remaining_amount: a.remaining_amount,
+    }));
+
+  // طلبات لم تتحوّل إلى موعد بعد (بانتظار تواصل الفريق).
+  const requests = store.leads
+    .list()
+    .filter((l) => samePhone(l.phone, session.phone) && !l.linked_appointment_id && l.status !== 'appointment_booked')
+    .map((l) => ({ id: l.id, service_name: l.service_name ?? '', created_at: l.created_at, status_label: LEAD_STATUS_LABELS_AR[l.status] }));
+
+  res.json({ appointments, requests });
+});
 
 // الصورة نفسها تُرفَع أولاً من العميل عبر /landing-images الموجودة أصلاً
 // (نفس الحاوية المستخدَمة لصور بطاقات الخدمات)، ثم يُرسَل رابطها الناتج

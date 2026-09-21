@@ -54,6 +54,8 @@ import type {
   LandingPageSettings,
   LandingService,
   MobileAppSettings,
+  MobileOtpRecord,
+  MobileSessionRecord,
   SalesDiscountSettings,
   CommissionConfig,
   CommissionTier,
@@ -141,6 +143,9 @@ interface DbShape {
   // بانر الشاشة الرئيسية ونصوص شاشة الدخول في تطبيق الجوال — سجل واحد
   // فقط، انظر MobileAppSettings في src/shared/types.ts.
   mobileAppSettings: MobileAppSettings;
+  // رموز التحقق والجلسات الخاصة بعملاء تطبيق الجوال (انظر mobileAuth.ts).
+  mobileOtps: MobileOtpRecord[];
+  mobileSessions: MobileSessionRecord[];
   // خصم المناسبة (اليوم الوطني، يوم التأسيس...) — سجل واحد فقط، انظر
   // SalesDiscountSettings في src/shared/types.ts.
   salesDiscountSettings: SalesDiscountSettings;
@@ -486,6 +491,8 @@ function seed(): DbShape {
         created_at: new Date().toISOString(),
       })),
     mobileAppSettings: { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: now },
+    mobileOtps: [],
+    mobileSessions: [],
     salesDiscountSettings: { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: now },
     whatsappThreads: [],
     liveChatThreads: [],
@@ -649,6 +656,8 @@ async function load(): Promise<DbShape> {
     if (!parsed.leads) parsed.leads = [];
     if (!parsed.landingSettings) parsed.landingSettings = DEFAULT_LANDING_SETTINGS;
     if (!parsed.mobileAppSettings) parsed.mobileAppSettings = { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: new Date().toISOString() };
+    if (!parsed.mobileOtps) parsed.mobileOtps = [];
+    if (!parsed.mobileSessions) parsed.mobileSessions = [];
     if (!parsed.salesDiscountSettings) parsed.salesDiscountSettings = { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: new Date().toISOString() };
     if (!parsed.landingServices) {
       parsed.landingServices = parsed.services
@@ -1167,6 +1176,44 @@ export const store = {
       db.mobileAppSettings = { ...db.mobileAppSettings, ...next, updated_at: new Date().toISOString() };
       persist();
       return db.mobileAppSettings;
+    },
+  },
+  // رمز تحقق نشط واحد لكل رقم — set يستبدل السابق. السجلات المنتهية تُزال
+  // عند كل كتابة (purgeExpired) حتى لا تتراكم.
+  mobileOtps: {
+    get: (phone: string) => db.mobileOtps.find((o) => o.phone === phone),
+    set: (record: MobileOtpRecord) => {
+      db.mobileOtps = db.mobileOtps.filter((o) => o.phone !== record.phone);
+      db.mobileOtps.push(record);
+      persist();
+      return record;
+    },
+    remove: (phone: string) => {
+      const before = db.mobileOtps.length;
+      db.mobileOtps = db.mobileOtps.filter((o) => o.phone !== phone);
+      if (db.mobileOtps.length !== before) persist();
+    },
+    purgeExpired: () => {
+      const now = Date.now();
+      // سجل انتهى رمزه يبقى فقط ما دامت نافذة تحديد المعدل (ساعة) سارية.
+      const before = db.mobileOtps.length;
+      db.mobileOtps = db.mobileOtps.filter((o) => new Date(o.window_start).getTime() + 3600_000 > now);
+      if (db.mobileOtps.length !== before) persist();
+    },
+  },
+  mobileSessions: {
+    getByTokenHash: (hash: string) => db.mobileSessions.find((s) => s.token_hash === hash),
+    insert: (s: MobileSessionRecord) => { db.mobileSessions.push(s); persist(); return s; },
+    remove: (id: string) => {
+      const before = db.mobileSessions.length;
+      db.mobileSessions = db.mobileSessions.filter((s) => s.id !== id);
+      if (db.mobileSessions.length !== before) persist();
+    },
+    purgeExpired: () => {
+      const now = Date.now();
+      const before = db.mobileSessions.length;
+      db.mobileSessions = db.mobileSessions.filter((s) => new Date(s.expires_at).getTime() > now);
+      if (db.mobileSessions.length !== before) persist();
     },
   },
   salesDiscountSettings: {

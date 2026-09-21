@@ -44,3 +44,39 @@ export async function sendWhatsappTextMessage(toWhatsappAddress: string, text: s
     console.error('❌ خطأ أثناء إرسال رسالة واتساب:', err);
   }
 }
+
+// رمز تحقق لتسجيل دخول تطبيق الجوال. واتساب يمنع رسائل النص الحر خارج نافذة
+// الـ24 ساعة من آخر رسالة للعميل، والعميل هنا لم يراسلنا غالباً، فالإرسال
+// الفعلي يحتاج "قالب مصادقة" معتمداً من واتساب: يُضبط معرّفه (ContentSid) في
+// TWILIO_WHATSAPP_OTP_CONTENT_SID، ويكون متغيّره {{1}} هو الرمز. بدون هذا
+// المتغيّر يُرسَل نص حر عادي (يعمل مع رقم التجربة Sandbox أو ضمن نافذة الـ24
+// ساعة فقط). يرجع true فقط عند قبول Twilio للرسالة — لا يعني وصولها فعلاً.
+export async function sendWhatsappOtpCode(toWhatsappAddress: string, code: string): Promise<boolean> {
+  if (!twilioConfigured) return false;
+  try {
+    const params = new URLSearchParams();
+    params.set('From', TWILIO_WHATSAPP_NUMBER!);
+    params.set('To', toWhatsappAddress);
+    const contentSid = process.env.TWILIO_WHATSAPP_OTP_CONTENT_SID;
+    if (contentSid) {
+      params.set('ContentSid', contentSid);
+      params.set('ContentVariables', JSON.stringify({ '1': code }));
+    } else {
+      params.set('Body', `رمز التحقق الخاص بك في زهى: ${code}`);
+    }
+    const authHeader = 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      console.error('❌ فشل إرسال رمز التحقق عبر واتساب:', res.status, await res.text().catch(() => ''));
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('❌ خطأ أثناء إرسال رمز التحقق عبر واتساب:', err);
+    return false;
+  }
+}

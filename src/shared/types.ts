@@ -991,6 +991,32 @@ export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
 // "التحكم بمحتوى الواجهات العامة"). قائمة الخدمات وصورها/أوصافها في
 // التطبيق لا تُدار من هنا إطلاقاً — يقرأها التطبيق من نفس
 // LandingService/landing-services المستخدَمة في صفحة "اطلب الخدمة" مباشرة.
+// رمز تحقق لمرة واحدة لدخول عميل تطبيق الجوال (يُرسَل عبر واتساب) — سجل
+// واحد نشط لكل رقم. الرمز نفسه لا يُخزَّن إطلاقاً، بل بصمته فقط (code_hash
+// مع salt)، وهو صالح لمدة قصيرة وبعدد محاولات محدود. window_start/
+// window_count يحدّان عدد الطلبات في الساعة لكل رقم (تفادياً لإغراق العميل
+// برسائل واتساب ولتكلفة الإرسال).
+export interface MobileOtpRecord {
+  phone: string; // صيغة محلية 05XXXXXXXX
+  code_hash: string;
+  salt: string;
+  attempts: number;
+  created_at: string;
+  expires_at: string;
+  window_start: string;
+  window_count: number;
+}
+
+// جلسة عميل تطبيق الجوال بعد التحقق — الرمز الفعلي (token) لا يُخزَّن أبداً
+// على الخادم، فقط بصمته token_hash.
+export interface MobileSessionRecord {
+  id: string;
+  token_hash: string;
+  phone: string; // صيغة محلية 05XXXXXXXX
+  created_at: string;
+  expires_at: string;
+}
+
 export interface MobileAppSettings {
   // بانر ترحيبي أعلى الشاشة الرئيسية في التطبيق — أي حقل فارغ/غائب يُخفي
   // البانر بالكامل بدل عرضه فارغاً.
