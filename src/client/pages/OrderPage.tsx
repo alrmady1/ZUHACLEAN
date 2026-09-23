@@ -657,7 +657,12 @@ export default function OrderPage() {
           وشركة تنظيف سجاد بالرياض — نسعى لنكون أفضل شركة تنظيف فلل بالرياض بجودة عالية وأسعار مناسبة.
         </p>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
-        {COMPANY_CR_NUMBER && <p className="mt-1 text-xs text-white/50">السجل التجاري {COMPANY_CR_NUMBER}</p>}
+        {COMPANY_CR_NUMBER && (
+          <p className="mt-1.5 flex items-center justify-center gap-1.5 text-xs text-white/50">
+            <img src="/saudi-cr-emblem.png" alt="" aria-hidden="true" className="h-4 w-4 shrink-0" />
+            السجل التجاري {COMPANY_CR_NUMBER}
+          </p>
+        )}
       </footer>
 
       <LiveChatWidget />
