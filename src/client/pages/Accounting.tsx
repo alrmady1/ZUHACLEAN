@@ -9,6 +9,7 @@ import {
   FileSignature as ContractsIcon,
   Boxes as InventoryIcon,
   FileBarChart as FinancialStatementsIcon,
+  CalendarClock as ExpiryDocumentsIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -20,8 +21,9 @@ import { TaxTab } from './Tax.js';
 import Contracts from './Contracts.js';
 import { InventoryTab } from './Inventory.js';
 import { FinancialStatementsTab } from './FinancialStatements.js';
+import { ExpiryDocumentsTab } from './ExpiryDocuments.js';
 
-type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory' | 'financial_statements';
+type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory' | 'financial_statements' | 'expiry_documents';
 
 // صفحة "المحاسبة" — تجمع "المبيعات والفواتير" و"المصروفات" (كانتا
 // صفحتين مستقلتين في القائمة الجانبية) وتبويبي "الموظفين" (كانت "كشف حساب
@@ -45,10 +47,19 @@ export default function Accounting() {
   const canContracts = can('view_contracts_page');
   const canInventory = can('view_inventory_page');
   const canFinancialStatements = can('view_financial_statements');
+  const canExpiryDocuments = can('view_expiry_documents');
   const canSalesTab = canSales || canManageDiscount;
-  const availableCount = [canSalesTab, canExpenses, canEmployees, canCommissions, canTax, canContracts, canInventory, canFinancialStatements].filter(
-    Boolean,
-  ).length;
+  const availableCount = [
+    canSalesTab,
+    canExpenses,
+    canEmployees,
+    canCommissions,
+    canTax,
+    canContracts,
+    canInventory,
+    canFinancialStatements,
+    canExpiryDocuments,
+  ].filter(Boolean).length;
   // رابط ملصق أصل مطبوع (?tab=inventory، انظر AssetLabelModal في
   // Inventory.tsx) يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له —
   // وإلا يُتبَع نفس ترتيب الأولوية المعتاد.
@@ -57,7 +68,9 @@ export default function Accounting() {
   const [tab, setTab] = useState<Tab>(
     requestedTab === 'inventory' && canInventory
       ? 'inventory'
-      : canSalesTab
+      : requestedTab === 'expiry_documents' && canExpiryDocuments
+        ? 'expiry_documents'
+        : canSalesTab
         ? 'sales'
         : canExpenses
           ? 'expenses'
@@ -71,7 +84,9 @@ export default function Accounting() {
                   ? 'contracts'
                   : canInventory
                     ? 'inventory'
-                    : 'financial_statements',
+                    : canFinancialStatements
+                      ? 'financial_statements'
+                      : 'expiry_documents',
   );
 
   return (
@@ -147,6 +162,14 @@ export default function Accounting() {
               <FinancialStatementsIcon className="h-4 w-4" /> {t('القوائم المالية')}
             </button>
           )}
+          {canExpiryDocuments && (
+            <button
+              onClick={() => setTab('expiry_documents')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'expiry_documents' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <ExpiryDocumentsIcon className="h-4 w-4" /> {t('تواريخ الانتهاء')}
+            </button>
+          )}
         </div>
       )}
 
@@ -158,6 +181,7 @@ export default function Accounting() {
       {tab === 'contracts' && canContracts && <Contracts allowCreate={false} />}
       {tab === 'inventory' && canInventory && <InventoryTab />}
       {tab === 'financial_statements' && canFinancialStatements && <FinancialStatementsTab />}
+      {tab === 'expiry_documents' && canExpiryDocuments && <ExpiryDocumentsTab />}
     </div>
   );
 }

@@ -11,9 +11,12 @@ import {
   uploadVehicleRegistrationPhoto,
   uploadAssetPurchaseInvoice,
   uploadEmployeeContractFile,
+  uploadDocumentExpiryAttachment,
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
+import { buildExpiryRegister } from '../../shared/expiryRegister.js';
+import { checkExpiryNotifications } from '../lib/expiryNotifications.js';
 import { sendWhatsappOtpCode } from '../lib/whatsappApi.js';
 import { toLocalSaudiMobile, samePhone, issueOtp, verifyOtp, getMobileSession, endMobileSession } from '../lib/mobileAuth.js';
 import { createTamaraCheckoutSession, isValidTamaraWebhookAuth } from '../lib/tamara.js';
@@ -68,6 +71,7 @@ import type {
   CompanyBankAccount,
   Vehicle,
   Facility,
+  CompanyDocumentExpiry,
   PaymentStatus,
   Asset,
   AuditCycle,
@@ -671,6 +675,89 @@ api.delete('/assets/:id', (req, res) => {
 // كخسارة، ثم يجمّد الإهلاك بضبط status='scrapped' وscrapped_at على نفس
 // اللحظة — أي احتساب لاحق لهذا الأصل (computeAssetDepreciation) يستخدم
 // scrapped_at سقفاً بدل الآن، فتبقى القيمة الدفترية ثابتة منذ هذه اللحظة.
+// ---------------------------------------------------------------------------
+// سجل تواريخ الانتهاء (المحاسبة ← تواريخ الانتهاء) — انظر
+// src/shared/expiryRegister.ts للتفصيل الكامل: يجمع مستندات الشركة الحرة
+// (المخزَّنة هنا) مع أوراق المركبات وهويات/عقود الموظفين (مقروءة مباشرة من
+// Vehicle/Profile، بلا تخزين مكرَّر).
+// ---------------------------------------------------------------------------
+
+api.get('/expiry-documents', (_req, res) => {
+  const rows = buildExpiryRegister(store.companyDocumentExpiries.list(), store.vehicles.list(), store.profiles.list());
+  res.json(rows);
+  // بعد إرسال الرد — لا يُبطئ فتح التبويب، انظر تعليق checkExpiryNotifications.
+  void checkExpiryNotifications(rows).catch((err) => console.error('❌ فشل فحص تنبيهات تواريخ الانتهاء:', err));
+});
+
+api.post('/expiry-documents', async (req, res) => {
+  const body = req.body ?? {};
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  const expiry_date = typeof body.expiry_date === 'string' ? body.expiry_date : '';
+  if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(expiry_date)) {
+    return res.status(400).json({ error: 'اسم البند وتاريخ الانتهاء مطلوبان' });
+  }
+  let attachment_url: string | undefined;
+  if (body.attachment_data_url) {
+    try {
+      attachment_url = await uploadDocumentExpiryAttachment(store.id(), body.attachment_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع مرفق مستند تواريخ الانتهاء:', err);
+      return res.status(500).json({ error: 'تعذّر رفع المرفق' });
+    }
+  }
+  const now = new Date().toISOString();
+  const doc: CompanyDocumentExpiry = {
+    id: store.id(),
+    category: typeof body.category === 'string' && body.category.trim() ? body.category.trim().slice(0, 100) : 'سجلات المنشأة',
+    name: name.slice(0, 200),
+    expiry_date,
+    cost: Number(body.cost) > 0 ? Number(body.cost) : undefined,
+    notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim().slice(0, 1000) : undefined,
+    attachment_url,
+    attachment_name: attachment_url ? (typeof body.attachment_name === 'string' ? body.attachment_name : undefined) : undefined,
+    created_at: now,
+    updated_at: now,
+  };
+  store.companyDocumentExpiries.insert(doc);
+  logActivity(req, `تمت إضافة مستند "${doc.name}" (ينتهي ${doc.expiry_date}) إلى سجل تواريخ الانتهاء`);
+  res.status(201).json(doc);
+});
+
+api.patch('/expiry-documents/:id', async (req, res) => {
+  const existing = store.companyDocumentExpiries.get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'المستند غير موجود' });
+  const body = req.body ?? {};
+  const patch: Partial<CompanyDocumentExpiry> = {};
+  if (typeof body.category === 'string') patch.category = body.category.trim().slice(0, 100) || 'سجلات المنشأة';
+  if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim().slice(0, 200);
+  if (typeof body.expiry_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.expiry_date)) patch.expiry_date = body.expiry_date;
+  if (body.cost !== undefined) patch.cost = Number(body.cost) > 0 ? Number(body.cost) : undefined;
+  if (typeof body.notes === 'string') patch.notes = body.notes.trim().slice(0, 1000) || undefined;
+  if (body.attachment_data_url) {
+    try {
+      patch.attachment_url = await uploadDocumentExpiryAttachment(existing.id, body.attachment_data_url);
+      patch.attachment_name = typeof body.attachment_name === 'string' ? body.attachment_name : undefined;
+    } catch (err) {
+      console.error('❌ فشل رفع مرفق مستند تواريخ الانتهاء:', err);
+      return res.status(500).json({ error: 'تعذّر رفع المرفق' });
+    }
+  } else if (body.remove_attachment) {
+    patch.attachment_url = undefined;
+    patch.attachment_name = undefined;
+  }
+  const updated = store.companyDocumentExpiries.update(existing.id, patch);
+  logActivity(req, `تم تعديل مستند "${updated?.name ?? existing.name}" في سجل تواريخ الانتهاء`);
+  res.json(updated);
+});
+
+api.delete('/expiry-documents/:id', (req, res) => {
+  const existing = store.companyDocumentExpiries.get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'المستند غير موجود' });
+  store.companyDocumentExpiries.remove(existing.id);
+  logActivity(req, `تم حذف مستند "${existing.name}" من سجل تواريخ الانتهاء`);
+  res.status(204).end();
+});
+
 api.post('/assets/:id/scrap', (req, res) => {
   const body = req.body ?? {};
   const asset = store.assets.get(req.params.id);

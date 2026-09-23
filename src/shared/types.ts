@@ -129,7 +129,8 @@ export type PermissionKey =
   | 'view_inventory_page'
   | 'manage_inventory'
   | 'view_employee_contract'
-  | 'view_financial_statements';
+  | 'view_financial_statements'
+  | 'view_expiry_documents';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -191,6 +192,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   manage_inventory: 'إدارة الأصول الثابتة (إضافة/تعديل/شطب) وتنفيذ الجرد الدوري',
   view_employee_contract: 'الاطلاع على بيانات عقد الموظف (تاريخ العقد وملفه)',
   view_financial_statements: 'الاطلاع على تبويب القوائم المالية (المحاسبة)',
+  view_expiry_documents: 'الاطلاع على تبويب تواريخ الانتهاء (المحاسبة)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -291,6 +293,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // القوائم المالية حسّاسة جداً (تُستخدَم للإيداع الرسمي لدى الجهات
   // الحكومية) — المدير العام ومدير النظام فقط افتراضياً.
   view_financial_statements: GM_ADMIN,
+  // سجل تواريخ الانتهاء يجمع بيانات حسّاسة (هويات الموظفين وعقودهم) —
+  // المدير العام ومدير النظام فقط افتراضياً، كسابقيه.
+  view_expiry_documents: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -1968,6 +1973,25 @@ export const VEHICLE_RENTAL_FREQUENCY_LABELS_AR: Record<VehicleRentalFrequency, 
 // التأمين، الفحص الدوري، من يقودها، ومن هي تابعة له. assigned_profile_id
 // يربط بأي موظف (فني، مشرف ميداني، أو أي دور آخر) — تُعرَض تلقائياً في
 // تبويب "المعلومات الشخصية" الخاص بذلك الموظف (انظر PersonalInfoTab.tsx).
+// مستند حر بتاريخ انتهاء (سجل تجاري، شهادة استثمار، تأمين مبنى...) لا
+// مكان له أصلاً في النظام (بخلاف أوراق المركبات وهويات/عقود الموظفين،
+// المخزَّنة على Vehicle/Profile نفسيهما) — انظر buildExpiryRegister في
+// src/shared/expiryRegister.ts الذي يضمّه مع تلك البيانات في جدول واحد.
+export interface CompanyDocumentExpiry {
+  id: string;
+  category: string;
+  name: string;
+  expiry_date: string;
+  cost?: number;
+  notes?: string;
+  // رابط موقَّع طويل الأمد على Supabase Storage — نفس نمط باقي مرفقات
+  // النظام (انظر uploadDocumentExpiryAttachment في server/lib/storage.ts).
+  attachment_url?: string;
+  attachment_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Vehicle {
   id: string;
   type: string; // النوع (مثال: تويوتا هايلكس ٢٠٢٣)

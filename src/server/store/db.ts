@@ -56,6 +56,7 @@ import type {
   MobileAppSettings,
   MobileOtpRecord,
   MobileSessionRecord,
+  CompanyDocumentExpiry,
   SalesDiscountSettings,
   CommissionConfig,
   CommissionTier,
@@ -146,6 +147,12 @@ interface DbShape {
   // رموز التحقق والجلسات الخاصة بعملاء تطبيق الجوال (انظر mobileAuth.ts).
   mobileOtps: MobileOtpRecord[];
   mobileSessions: MobileSessionRecord[];
+  // مستندات تواريخ الانتهاء الحرة (انظر src/shared/expiryRegister.ts).
+  companyDocumentExpiries: CompanyDocumentExpiry[];
+  // بصمة "هل أُرسل تنبيه قرب/انتهاء" لكل بند في سجل تواريخ الانتهاء
+  // (بنود المستندات الحرة والمركبات والموظفين معاً) — مفتاحة بـrow_key
+  // (انظر ExpiryRow)، حتى لا يتكرر التنبيه كل مرة يُفتح فيها الجدول.
+  expiryNotificationFlags: { row_key: string; near_notified: boolean; expired_notified: boolean }[];
   // خصم المناسبة (اليوم الوطني، يوم التأسيس...) — سجل واحد فقط، انظر
   // SalesDiscountSettings في src/shared/types.ts.
   salesDiscountSettings: SalesDiscountSettings;
@@ -493,6 +500,8 @@ function seed(): DbShape {
     mobileAppSettings: { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: now },
     mobileOtps: [],
     mobileSessions: [],
+    companyDocumentExpiries: [],
+    expiryNotificationFlags: [],
     salesDiscountSettings: { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: now },
     whatsappThreads: [],
     liveChatThreads: [],
@@ -658,6 +667,8 @@ async function load(): Promise<DbShape> {
     if (!parsed.mobileAppSettings) parsed.mobileAppSettings = { ...DEFAULT_MOBILE_APP_SETTINGS, updated_at: new Date().toISOString() };
     if (!parsed.mobileOtps) parsed.mobileOtps = [];
     if (!parsed.mobileSessions) parsed.mobileSessions = [];
+    if (!parsed.companyDocumentExpiries) parsed.companyDocumentExpiries = [];
+    if (!parsed.expiryNotificationFlags) parsed.expiryNotificationFlags = [];
     if (!parsed.salesDiscountSettings) parsed.salesDiscountSettings = { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: new Date().toISOString() };
     if (!parsed.landingServices) {
       parsed.landingServices = parsed.services
@@ -1214,6 +1225,37 @@ export const store = {
       const before = db.mobileSessions.length;
       db.mobileSessions = db.mobileSessions.filter((s) => new Date(s.expires_at).getTime() > now);
       if (db.mobileSessions.length !== before) persist();
+    },
+  },
+  companyDocumentExpiries: {
+    list: () => db.companyDocumentExpiries,
+    get: (id: string) => db.companyDocumentExpiries.find((d) => d.id === id),
+    insert: (d: CompanyDocumentExpiry) => { db.companyDocumentExpiries.push(d); persist(); return d; },
+    update: (id: string, patch: Partial<CompanyDocumentExpiry>) => {
+      const idx = db.companyDocumentExpiries.findIndex((d) => d.id === id);
+      if (idx === -1) return undefined;
+      db.companyDocumentExpiries[idx] = { ...db.companyDocumentExpiries[idx], ...patch, updated_at: new Date().toISOString() };
+      persist();
+      return db.companyDocumentExpiries[idx];
+    },
+    remove: (id: string) => {
+      const before = db.companyDocumentExpiries.length;
+      db.companyDocumentExpiries = db.companyDocumentExpiries.filter((d) => d.id !== id);
+      if (db.companyDocumentExpiries.length !== before) persist();
+      return db.companyDocumentExpiries.length !== before;
+    },
+  },
+  expiryNotificationFlags: {
+    list: () => db.expiryNotificationFlags,
+    // استبدال بصمة بند واحد (upsert) — لا يُنشئ persist منفصلاً لكل بند
+    // متغيّر أثناء فحص كامل السجل؛ المُستدعي (expiryNotifications.ts)
+    // يستدعي هذا لكل بند تغيّرت حالته ثم يُحفَظ الكل دفعة واحدة عبر آخر
+    // نداء (persist يدمج الكتابات المتتالية أصلاً، انظر persistTail).
+    set: (flag: { row_key: string; near_notified: boolean; expired_notified: boolean }) => {
+      const idx = db.expiryNotificationFlags.findIndex((f) => f.row_key === flag.row_key);
+      if (idx === -1) db.expiryNotificationFlags.push(flag);
+      else db.expiryNotificationFlags[idx] = flag;
+      persist();
     },
   },
   salesDiscountSettings: {
