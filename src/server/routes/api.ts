@@ -192,6 +192,44 @@ api.get('/notifications/recent', (req, res) => {
   res.json(id ? store.notificationLog.listForProfile(id, 5) : []);
 });
 
+// السجل الكامل (كل التنبيهات لكل المستخدمين، الأحدث أولاً) — الإعدادات ←
+// التنبيهات. target_profiles مُحلَّلة هنا (اسم + منصب كل مُستهدَف وقت
+// القراءة، وليس وقت الإرسال) حتى تعكس دائماً بيانات الموظف الحالية.
+api.get('/notifications', (_req, res) => {
+  const profileById = new Map(store.profiles.list().map((p) => [p.id, p]));
+  const entries = store.notificationLog.list().map((n) => ({
+    ...n,
+    target_profiles: n.target_profile_ids
+      .map((id) => profileById.get(id))
+      .filter((p): p is StoredProfile => !!p)
+      .map((p) => ({ id: p.id, full_name: p.full_name, role: p.role })),
+  }));
+  res.json(entries);
+});
+
+// إرسال رسالة يدوية (تذكير، معايدة، إعلان...) لكل الموظفين النشطين
+// بمنصب/مناصب مُختارة — نفس قناة التنبيهات الفورية المستخدَمة في بقية
+// النظام (sendPushToProfiles)، فتُسجَّل تلقائياً في notificationLog أيضاً
+// وتظهر في السجل أعلاه فور إرسالها.
+api.post('/notifications/broadcast', async (req, res) => {
+  const body = req.body ?? {};
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const messageBody = typeof body.body === 'string' ? body.body.trim() : '';
+  const roles: UserRole[] = Array.isArray(body.roles) ? body.roles.filter((r: unknown): r is UserRole => typeof r === 'string') : [];
+  if (!title || !messageBody) return res.status(400).json({ error: 'العنوان ونص الرسالة مطلوبان' });
+  if (roles.length === 0) return res.status(400).json({ error: 'اختر منصباً واحداً على الأقل' });
+
+  const targetIds = store.profiles
+    .list()
+    .filter((p) => p.is_active && roles.includes(p.role))
+    .map((p) => p.id);
+  if (targetIds.length === 0) return res.status(400).json({ error: 'لا يوجد موظفون نشطون بالمناصب المختارة' });
+
+  await sendPushToProfiles(targetIds, { title, body: messageBody });
+  logActivity(req, `تم إرسال رسالة "${title}" إلى ${targetIds.length} موظف (${roles.join('، ')})`);
+  res.status(201).json({ sent_to: targetIds.length });
+});
+
 api.get('/permissions', (_req, res) => {
   const stored = store.permissions.list();
   // كائن JS يحافظ على ترتيب إدخال مفاتيحه النصية — بناء الاستجابة بهذا

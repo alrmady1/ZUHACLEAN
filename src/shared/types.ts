@@ -130,7 +130,8 @@ export type PermissionKey =
   | 'manage_inventory'
   | 'view_employee_contract'
   | 'view_financial_statements'
-  | 'view_expiry_documents';
+  | 'view_expiry_documents'
+  | 'view_notifications_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -193,6 +194,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_employee_contract: 'الاطلاع على بيانات عقد الموظف (تاريخ العقد وملفه)',
   view_financial_statements: 'الاطلاع على تبويب القوائم المالية (المحاسبة)',
   view_expiry_documents: 'الاطلاع على تبويب تواريخ الانتهاء (المحاسبة)',
+  view_notifications_page: 'الاطلاع على سجل التنبيهات وإرسال رسائل للموظفين (الإعدادات)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -296,6 +298,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // سجل تواريخ الانتهاء يجمع بيانات حسّاسة (هويات الموظفين وعقودهم) —
   // المدير العام ومدير النظام فقط افتراضياً، كسابقيه.
   view_expiry_documents: GM_ADMIN,
+  // إرسال رسائل مباشرة لجوالات الموظفين — المدير العام ومدير النظام فقط
+  // افتراضياً، قابلة للتوسيع لاحقاً من صفحة الصلاحيات نفسها.
+  view_notifications_page: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير

@@ -1286,6 +1286,9 @@ export const store = {
         .filter((n) => n.target_profile_ids.includes(profileId))
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
         .slice(0, limit),
+    // السجل كاملاً (كل التنبيهات لكل المستخدمين)، الأحدث أولاً — صفحة
+    // الإعدادات ← التنبيهات (GET /notifications في api.ts).
+    list: () => [...db.notificationLog].sort((a, b) => b.created_at.localeCompare(a.created_at)),
   },
   salesDiscountSettings: {
     get: () => db.salesDiscountSettings,

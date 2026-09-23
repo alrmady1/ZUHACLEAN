@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import {
   Plus,
   X,
@@ -53,6 +53,7 @@ import {
   MapPin as MapIcon,
   Paperclip,
   Megaphone as MarketingPlanIcon,
+  Bell as NotificationsIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -118,6 +119,7 @@ import { compressImageToDataUrl } from '../lib/image.js';
 import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
+import NotificationsTab from './NotificationsTab.js';
 
 // Leaflet محمَّل عالمياً عبر <script> في index.html — نفس أسلوب
 // RiyadhZonesTab.tsx/CustomerHeatMapTab.tsx بالضبط (بلا حزمة npm ولا
@@ -5568,6 +5570,7 @@ export default function Settings() {
   const canActivityLog = can('view_activity_log');
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
+  const canNotifications = can('view_notifications_page');
 
   type SettingsTab =
     | 'users'
@@ -5585,8 +5588,15 @@ export default function Settings() {
     | 'commissions'
     | 'riyadh_zones'
     | 'marketing_plan'
-    | 'activity_log';
+    | 'activity_log'
+    | 'notifications';
+  // رابط الجرس في الشريط العلوي (?tab=notifications، انظر TopBar.tsx)
+  // يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له — وإلا يُتبَع نفس
+  // ترتيب الأولوية المعتاد.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const [tab, setTab] = useState<SettingsTab>(() => {
+    if (requestedTab === 'notifications' && canNotifications) return 'notifications';
     // أول تبويب فعلياً متاح لهذا المستخدم — بترتيب أولوية ثابت، بدل
     // افتراض "المستخدمون" دائماً (لم يعد كل من يفتح الصفحة يملكه).
     if (canUsers) return 'users';
@@ -5603,6 +5613,7 @@ export default function Settings() {
     if (canCommissions) return 'commissions';
     if (canRiyadhZones) return 'riyadh_zones';
     if (canMarketingPlan) return 'marketing_plan';
+    if (canNotifications) return 'notifications';
     return 'activity_log';
   });
 
@@ -5747,6 +5758,14 @@ export default function Settings() {
             <ActivityLogIcon className="h-4 w-4" /> {t('سجل العمليات')}
           </button>
         )}
+        {canNotifications && (
+          <button
+            onClick={() => setTab('notifications')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'notifications' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <NotificationsIcon className="h-4 w-4" /> {t('التنبيهات')}
+          </button>
+        )}
       </div>
 
       {tab === 'users' && canUsers ? (
@@ -5779,6 +5798,8 @@ export default function Settings() {
         <RiyadhZonesTab />
       ) : tab === 'marketing_plan' && canMarketingPlan ? (
         <MarketingPlanTab />
+      ) : tab === 'notifications' && canNotifications ? (
+        <NotificationsTab />
       ) : canActivityLog ? (
         <ActivityLogTab />
       ) : null}

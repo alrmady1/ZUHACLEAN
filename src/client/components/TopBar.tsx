@@ -6,7 +6,6 @@ import { api } from '../lib/api.js';
 import type { Customer, Service, NotificationLogEntry } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import type { Lang } from '../lib/date.js';
-import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useDarkMode } from '../lib/theme.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
@@ -33,13 +32,13 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // جرس الإشعارات — آخر 5 تنبيهات فوريّة استهدفت هذا المستخدم فعلياً
-  // (حجز موعد، طلب خارجي جديد، اقتراب انتهاء وثيقة...)، انظر GET
-  // /notifications/recent وnotificationLog في server/lib/push.ts.
+  // جرس الإشعارات — يفتح مباشرة الإعدادات ← التنبيهات (سجل كامل + إرسال
+  // رسائل للموظفين هناك)، بلا قائمة منسدلة هنا. النقطة الحمراء وحدها تُبنى
+  // من آخر 5 تنبيهات استهدفت هذا المستخدم (انظر GET /notifications/recent
+  // وnotificationLog في server/lib/push.ts).
   const [notifications, setNotifications] = useState<NotificationLogEntry[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [seenAt, setSeenAt] = useState(() => localStorage.getItem(NOTIFICATIONS_SEEN_KEY) ?? '');
-  const notificationsBoxRef = useRef<HTMLDivElement>(null);
+  const canViewNotificationsPage = can('view_notifications_page');
 
   useEffect(() => {
     api.get<Customer[]>('/customers').then(setCustomers);
@@ -51,35 +50,24 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
       api.get<NotificationLogEntry[]>('/notifications/recent').then(setNotifications).catch(() => {});
     }
     loadNotifications();
-    // بلا Web Socket في هذا التطبيق — استطلاع دوري بسيط يكفي لجرس إشعارات
-    // من 5 عناصر فقط (ليس مصدر التنبيه الفوري نفسه، ذاك عبر Web Push).
+    // بلا Web Socket في هذا التطبيق — استطلاع دوري بسيط يكفي لنقطة "جديد"
+    // على الجرس (ليس مصدر التنبيه الفوري نفسه، ذاك عبر Web Push).
     const interval = setInterval(loadNotifications, 60_000);
     return () => clearInterval(interval);
   }, []);
 
   const hasUnseenNotification = notifications.some((n) => n.created_at > seenAt);
 
-  function toggleNotifications() {
-    setShowNotifications((v) => {
-      const next = !v;
-      if (next) {
-        const now = new Date().toISOString();
-        localStorage.setItem(NOTIFICATIONS_SEEN_KEY, now);
-        setSeenAt(now);
-      }
-      return next;
-    });
-  }
-
-  function openNotification(n: NotificationLogEntry) {
-    setShowNotifications(false);
-    if (n.url) navigate(n.url);
+  function openNotifications() {
+    const now = new Date().toISOString();
+    localStorage.setItem(NOTIFICATIONS_SEEN_KEY, now);
+    setSeenAt(now);
+    navigate(canViewNotificationsPage ? '/settings?tab=notifications' : '/settings');
   }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) setShowResults(false);
-      if (notificationsBoxRef.current && !notificationsBoxRef.current.contains(e.target as Node)) setShowNotifications(false);
     }
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
@@ -181,40 +169,17 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         </button>
       )}
 
-      <div ref={notificationsBoxRef} className="relative shrink-0">
+      {canViewNotificationsPage && (
         <button
           type="button"
-          onClick={toggleNotifications}
+          onClick={openNotifications}
           title={t('التنبيهات')}
           className="relative flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
         >
           <Bell className="h-4 w-4" />
           {hasUnseenNotification && <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />}
         </button>
-        {showNotifications && (
-          <div className="absolute end-0 top-full z-30 mt-1 w-80 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-            <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">{t('آخر التنبيهات')}</div>
-            {notifications.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-slate-400">{t('لا توجد تنبيهات بعد')}</div>
-            ) : (
-              notifications.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => openNotification(n)}
-                  className="block w-full border-b border-slate-50 px-3 py-2 text-start last:border-0 hover:bg-slate-50"
-                >
-                  <div className="text-sm font-medium text-slate-700">{n.title}</div>
-                  <div className="mt-0.5 text-xs text-slate-500">{n.body}</div>
-                  <div className="mt-1 text-[11px] text-slate-400" dir="ltr">
-                    {formatDateAr(n.created_at)} — {formatTimeAr(n.created_at)}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       <button
         type="button"
