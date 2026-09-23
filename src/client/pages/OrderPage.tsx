@@ -123,7 +123,7 @@ export default function OrderPage() {
   // التشغيل الداخلي وحده (index.html).
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'زهى | أرخص وأفضل شركة تنظيف فلل وكنب وسجاد بالرياض';
+    document.title = 'شركة زهى للنظافة والصيانة';
 
     const description =
       'زهى من أرخص شركات تنظيف الفلل والمنازل بالرياض — تنظيف كنب وسجاد وتنظيف فلل شامل بفريق مدرّب وحجز فوري عبر واتساب.';
