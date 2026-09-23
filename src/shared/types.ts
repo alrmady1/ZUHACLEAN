@@ -1992,6 +1992,25 @@ export interface CompanyDocumentExpiry {
   updated_at: string;
 }
 
+// سجل كل تنبيه فوري (Web Push) أُرسل فعلياً عبر sendPushToProfiles (انظر
+// server/lib/push.ts) — يُكتب من داخل تلك الدالة نفسها فقط، فيغطي كل نقاط
+// الإرسال الحالية والمستقبلية تلقائياً (حجز موعد، طلب خارجي جديد، اقتراب
+// انتهاء وثيقة...) بلا حاجة لتعديل كل موضع استدعاء على حدة. يُكتب حتى لو
+// كان Web Push نفسه معطَّلاً (VAPID غير مضبوط)، فتبقى قائمة "آخر
+// التنبيهات" (جرس الإشعارات في الشريط العلوي) تعمل بمعزل عن ذلك الإعداد.
+// محدود العدد إجمالاً (NOTIFICATION_LOG_MAX_ENTRIES في db.ts) لتفادي نمو
+// غير محدود مع الوقت.
+export interface NotificationLogEntry {
+  id: string;
+  title: string;
+  body: string;
+  // مسار داخل التطبيق يُفتح عند الضغط على التنبيه من الجرس — نفس
+  // PushPayload.url في server/lib/push.ts.
+  url?: string;
+  target_profile_ids: string[];
+  created_at: string;
+}
+
 export interface Vehicle {
   id: string;
   type: string; // النوع (مثال: تويوتا هايلكس ٢٠٢٣)

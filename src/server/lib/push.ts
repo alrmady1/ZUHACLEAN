@@ -27,8 +27,20 @@ export interface PushPayload {
 
 // يرسل لكل اشتراكات (أجهزة) مجموعة من المستخدمين. اشتراك منتهي الصلاحية
 // أو أُلغي من طرف المستخدم (404/410 من خدمة الدفع) يُحذف تلقائياً هنا.
+// يُسجَّل التنبيه في notificationLog دائماً (حتى لو كان Web Push نفسه
+// معطَّلاً) — هذا هو مصدر جرس الإشعارات في الشريط العلوي (GET
+// /notifications/recent في api.ts)، فيبقى يعمل بمعزل عن ضبط VAPID.
 export async function sendPushToProfiles(profileIds: string[], payload: PushPayload): Promise<void> {
-  if (!vapidConfigured || profileIds.length === 0) return;
+  if (profileIds.length === 0) return;
+  store.notificationLog.insert({
+    id: store.id(),
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+    target_profile_ids: profileIds,
+    created_at: new Date().toISOString(),
+  });
+  if (!vapidConfigured) return;
   const idSet = new Set(profileIds);
   const subs = store.pushSubscriptions.list().filter((s) => idSet.has(s.profile_id));
   await Promise.all(

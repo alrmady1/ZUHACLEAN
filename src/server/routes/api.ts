@@ -184,6 +184,14 @@ function orderedPermissionKeys(): PermissionKey[] {
   return [...savedOrder, ...missing];
 }
 
+// آخر 5 تنبيهات استهدفت المستخدم الحالي (من X-Actor-Id، نفس actorFromReq
+// أعلاه) — جرس الإشعارات في الشريط العلوي. بلا هوية معروفة (لم يُرسِل
+// العميل X-Actor-Id) تُعاد قائمة فارغة بدل خطأ.
+api.get('/notifications/recent', (req, res) => {
+  const { id } = actorFromReq(req);
+  res.json(id ? store.notificationLog.listForProfile(id, 5) : []);
+});
+
 api.get('/permissions', (_req, res) => {
   const stored = store.permissions.list();
   // كائن JS يحافظ على ترتيب إدخال مفاتيحه النصية — بناء الاستجابة بهذا

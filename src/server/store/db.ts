@@ -57,6 +57,7 @@ import type {
   MobileOtpRecord,
   MobileSessionRecord,
   CompanyDocumentExpiry,
+  NotificationLogEntry,
   SalesDiscountSettings,
   CommissionConfig,
   CommissionTier,
@@ -72,6 +73,9 @@ import {
   DEFAULT_COMPANY_BANK_ACCOUNT,
 } from '../../shared/types.js';
 import { normalizeSaudiPhone } from '../../shared/phone.js';
+
+// الحد الأقصى لعدد السجلات المحفوظة في notificationLog — انظر تعليقه أدناه.
+const NOTIFICATION_LOG_MAX_ENTRIES = 500;
 
 // Server-only: carries the password hash alongside the public Profile
 // fields. Never sent to the client as-is — routes must strip password_hash
@@ -153,6 +157,9 @@ interface DbShape {
   // (بنود المستندات الحرة والمركبات والموظفين معاً) — مفتاحة بـrow_key
   // (انظر ExpiryRow)، حتى لا يتكرر التنبيه كل مرة يُفتح فيها الجدول.
   expiryNotificationFlags: { row_key: string; near_notified: boolean; expired_notified: boolean }[];
+  // سجل كل تنبيه فوري أُرسل فعلياً (جرس الإشعارات في الشريط العلوي) —
+  // انظر NotificationLogEntry في src/shared/types.ts.
+  notificationLog: NotificationLogEntry[];
   // خصم المناسبة (اليوم الوطني، يوم التأسيس...) — سجل واحد فقط، انظر
   // SalesDiscountSettings في src/shared/types.ts.
   salesDiscountSettings: SalesDiscountSettings;
@@ -502,6 +509,7 @@ function seed(): DbShape {
     mobileSessions: [],
     companyDocumentExpiries: [],
     expiryNotificationFlags: [],
+    notificationLog: [],
     salesDiscountSettings: { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: now },
     whatsappThreads: [],
     liveChatThreads: [],
@@ -669,6 +677,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.mobileSessions) parsed.mobileSessions = [];
     if (!parsed.companyDocumentExpiries) parsed.companyDocumentExpiries = [];
     if (!parsed.expiryNotificationFlags) parsed.expiryNotificationFlags = [];
+    if (!parsed.notificationLog) parsed.notificationLog = [];
     if (!parsed.salesDiscountSettings) parsed.salesDiscountSettings = { ...DEFAULT_SALES_DISCOUNT_SETTINGS, updated_at: new Date().toISOString() };
     if (!parsed.landingServices) {
       parsed.landingServices = parsed.services
@@ -1257,6 +1266,26 @@ export const store = {
       else db.expiryNotificationFlags[idx] = flag;
       persist();
     },
+  },
+  // انظر تعليق NotificationLogEntry في src/shared/types.ts — يُكتب من
+  // sendPushToProfiles فقط، أياً كان مصدر التنبيه.
+  notificationLog: {
+    insert: (n: NotificationLogEntry) => {
+      db.notificationLog.push(n);
+      // إبقاء آخر NOTIFICATION_LOG_MAX_ENTRIES فقط — بلا حاجة لسجل غير محدود.
+      if (db.notificationLog.length > NOTIFICATION_LOG_MAX_ENTRIES) {
+        db.notificationLog = db.notificationLog.slice(db.notificationLog.length - NOTIFICATION_LOG_MAX_ENTRIES);
+      }
+      persist();
+      return n;
+    },
+    // آخر limit تنبيه استهدفت هذا الموظف تحديداً، الأحدث أولاً — لجرس
+    // الإشعارات في الشريط العلوي (GET /notifications/recent في api.ts).
+    listForProfile: (profileId: string, limit: number) =>
+      db.notificationLog
+        .filter((n) => n.target_profile_ids.includes(profileId))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, limit),
   },
   salesDiscountSettings: {
     get: () => db.salesDiscountSettings,
