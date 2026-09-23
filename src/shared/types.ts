@@ -1922,10 +1922,7 @@ export const COMPANY_NAME = 'زهى';
 export const COMPANY_LEGAL_NAME = 'شركة زهى الاعمال';
 export const COMPANY_VAT_NUMBER = '314739292200003';
 export const COMPANY_PHONE = '0582464181';
-// لم يزوّدنا صاحب العمل برقم السجل التجاري بعد — يبقى فارغاً عمداً حتى
-// يُضاف هنا لاحقاً، وتُخفي مستندات العقد وعرض السعر هذا السطر تلقائياً
-// طالما فارغ (انظر DocumentHeader.tsx) بدل طباعة رقم غير صحيح.
-export const COMPANY_CR_NUMBER = '';
+export const COMPANY_CR_NUMBER = '7054095315';
 // نطاق الموقع العام المنشور — يُستخدَم لبناء روابط مطلقة يجب أن تصل لجهات
 // خارجية لا تعرف شيئاً عن بيئة التشغيل الحالية (مثل رابط الإشعار
 // notification الذي نرسله لتمارا عند إنشاء طلب دفع، انظر

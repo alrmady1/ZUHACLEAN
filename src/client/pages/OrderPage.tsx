@@ -26,7 +26,7 @@ import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
 import { fireBookingConversion } from '../lib/googleAds.js';
-import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
+import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
 // صفحة عامة خارجية — بلا تسجيل دخول عمداً — لاستقبال طلبات العملاء من
@@ -657,6 +657,7 @@ export default function OrderPage() {
           وشركة تنظيف سجاد بالرياض — نسعى لنكون أفضل شركة تنظيف فلل بالرياض بجودة عالية وأسعار مناسبة.
         </p>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
+        {COMPANY_CR_NUMBER && <p className="mt-1 text-xs text-white/50">السجل التجاري {COMPANY_CR_NUMBER}</p>}
       </footer>
 
       <LiveChatWidget />
