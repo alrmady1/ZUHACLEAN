@@ -27,10 +27,6 @@ export function weekdayKeyForDate(dateStr: string): string | undefined {
   return WEEKDAY_KEY_BY_JS_DAY[d.getDay()];
 }
 
-export function weekdayLabel(key: string | undefined): string {
-  return WEEKDAYS.find((w) => w.key === key)?.label ?? key ?? '';
-}
-
 // من بين الأشخاص المُختارين لموعد ما (المشرف والفني عادة)، من كان تاريخ
 // هذا الموعد يوافق إجازته الأسبوعية الثابتة (Profile.weekly_days_off)؟
 // لا تُستخدم هذه للمنع — فقط لتنبيه تأكيدي قبل الحفظ (انظر

@@ -40,7 +40,6 @@ import type {
   Profile,
   CommissionEligibility,
   TerminationReason,
-  AdvanceDeductionMode,
   UserLanguage,
 } from '../../shared/types.js';
 import {

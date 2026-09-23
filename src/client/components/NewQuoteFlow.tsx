@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { X, Plus, ChevronDown, Check, Sparkles, User, Trash2 } from 'lucide-react';
+import { X, Plus, ChevronDown, Check, Sparkles, User } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type {
   Customer,
@@ -162,7 +162,6 @@ export default function NewQuoteFlow({
           (c.district ?? '').toLowerCase().includes(q) ||
           (c.city ?? '').toLowerCase().includes(q),
       );
-  const selectedCustomer = allCustomers.find((c) => c.id === customerId);
 
   // سعر الوحدة الفعلي لبند مسعَّر بالوحدة — من المستوى المختار إن وُجد،
   // وإلا من سعر الوحدة المخزَّن على البند نفسه (قابل للتعديل يدوياً).

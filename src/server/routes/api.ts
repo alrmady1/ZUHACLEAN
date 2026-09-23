@@ -88,9 +88,6 @@ import {
   HOUSING_ALLOWANCE_CATEGORY_NAME,
   TRANSPORT_ALLOWANCE_CATEGORY_NAME,
   VEHICLE_CATEGORY_NAME,
-  FACILITY_CATEGORY_NAME,
-  ELECTRICITY_CATEGORY_NAME,
-  GAS_CATEGORY_NAME,
   EXPENSE_INCOME_TYPE_LABELS_AR,
   TERMINATION_REASON_LABELS_AR,
   DEFAULT_PERMISSIONS,
@@ -2188,7 +2185,6 @@ function buildPaymentSchedule(raw: unknown): ContractScheduleItem[] | undefined 
 function generateAppointmentsForContract(contract: Contract): Appointment[] {
   const customer = store.customers.get(contract.customer_id);
   const service = store.services.get(contract.service_id);
-  const [visitHour, visitMinute] = (contract.visit_time ?? '09:00').split(':').map(Number);
   const start = new Date(`${contract.start_date}T${contract.visit_time ?? '09:00'}:00`);
   const end = new Date(contract.end_date);
 

@@ -196,7 +196,7 @@ export default function ContractDocument({
 
             <div className="mb-6 space-y-4">
               <div className="text-sm font-bold text-slate-800">{t('البنود والشروط')}</div>
-              {displayedClauses.map((c, i) => (
+              {displayedClauses.map((c) => (
                 <div key={c.id} className="text-sm">
                   <div className="font-semibold text-slate-700">{c.title}</div>
                   <div className="mt-0.5 leading-relaxed text-slate-600">{c.body}</div>

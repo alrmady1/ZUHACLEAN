@@ -63,15 +63,3 @@ export async function ensurePushSubscribed(profileId: string): Promise<void> {
     // صامت عمداً — لا يوجد جرس أو زر لإظهار الخطأ عليه.
   }
 }
-
-export async function disablePush(): Promise<void> {
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = await reg?.pushManager.getSubscription();
-  if (sub) {
-    await api.post('/push/unsubscribe', { endpoint: sub.endpoint });
-    await sub.unsubscribe();
-  }
-  if ('clearAppBadge' in navigator) {
-    (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge().catch(() => {});
-  }
-}

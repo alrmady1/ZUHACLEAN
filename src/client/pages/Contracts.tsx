@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Navigate } from 'react-router-dom';
 import { Plus, X, Eye, Trash2, Pencil, Check, Printer, Wallet, User } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Contract, Customer, Service, PaymentMethodOption, NeighborhoodZoneAssignment, ContractScheduleItem } from '../../shared/types.js';
+import type { Appointment, Contract, Customer, Service, PaymentMethodOption, NeighborhoodZoneAssignment } from '../../shared/types.js';
 import { ContractStatusBadge, PaymentStatusBadge, AppointmentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';

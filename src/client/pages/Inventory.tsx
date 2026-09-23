@@ -1075,7 +1075,7 @@ function AuditItemsView({
   onCancel: () => void;
   onRefresh: () => void;
 }) {
-  const { t, tt } = useI18n();
+  const { t } = useI18n();
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showPrintSheet, setShowPrintSheet] = useState(false);
 

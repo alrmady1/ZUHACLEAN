@@ -64,7 +64,6 @@ import type {
   CommissionEligibility,
 } from '../../shared/types.js';
 import {
-  DEFAULT_PERMISSIONS,
   DEFAULT_LANDING_SETTINGS,
   DEFAULT_MOBILE_APP_SETTINGS,
   DEFAULT_SALES_DISCOUNT_SETTINGS,
