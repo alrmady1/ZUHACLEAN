@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Send, History as LogIcon } from 'lucide-react';
+import { Send, History as LogIcon, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { NotificationLogEntry, UserRole } from '../../shared/types.js';
 import { formatDateAr, formatTimeAr } from '../lib/date.js';
@@ -22,7 +22,7 @@ const TEMPLATES: { label: string; title: string; body: string }[] = [
   { label: 'معايدة', title: 'كل عام وأنتم بخير', body: 'نتقدم لكم بأحر التهاني بمناسبة العيد، أعاده الله عليكم باليمن والبركات.' },
 ];
 
-// الإعدادات ← التنبيهات (خلف صلاحية view_notifications_page): سجل كل
+// الإعدادات ← الإشعارات (خلف صلاحية view_notifications_page): سجل كل
 // تنبيه فوري أُرسل في النظام فعلياً (حجز موعد، طلب خارجي جديد، اقتراب
 // انتهاء وثيقة...) — نفس notificationLog الذي يغذّي جرس الإشعارات في
 // الشريط العلوي (انظر server/lib/push.ts) — بالإضافة إلى نموذج لإرسال
@@ -36,6 +36,10 @@ export default function NotificationsTab() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [sendSuccess, setSendSuccess] = useState('');
+  // مسح السجل — تحديد سطر أو الكل ثم حذف المحدد، نفس أسلوب سجل العمليات
+  // (ActivityLogTab) بالضبط.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   function refresh() {
     api.get<NotificationWithTargets[]>('/notifications').then(setEntries);
@@ -45,6 +49,43 @@ export default function NotificationsTab() {
 
   function toggleRole(role: UserRole) {
     setSelectedRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = !!entries && entries.length > 0 && entries.every((n) => selected.has(n.id));
+
+  function toggleAll() {
+    if (!entries) return;
+    setSelected(allSelected ? new Set() : new Set(entries.map((n) => n.id)));
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    if (
+      !window.confirm(
+        tt(
+          `حذف ${selected.size} من سجل الإشعارات نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`,
+          `Permanently delete ${selected.size} notification log ${selected.size === 1 ? 'entry' : 'entries'}? This cannot be undone.`,
+        ),
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      await api.del('/notifications', { ids: [...selected] });
+      setSelected(new Set());
+      refresh();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function send() {
@@ -148,9 +189,20 @@ export default function NotificationsTab() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex items-center gap-1.5 border-b border-slate-100 px-4 py-3">
-          <LogIcon className="h-4 w-4 text-slate-400" />
-          <h3 className="text-sm font-bold text-slate-700">{t('سجل التنبيهات')}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="flex items-center gap-1.5">
+            <LogIcon className="h-4 w-4 text-slate-400" />
+            <h3 className="text-sm font-bold text-slate-700">{t('سجل الإشعارات')}</h3>
+          </div>
+          {!!entries?.length && (
+            <button
+              onClick={deleteSelected}
+              disabled={selected.size === 0 || deleting}
+              className="flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {deleting ? t('جارِ الحذف…') : t('حذف المحدد')} {selected.size > 0 && `(${selected.size})`}
+            </button>
+          )}
         </div>
         {entries === null ? (
           <div className="p-8 text-center text-sm text-slate-400">{t('جارِ التحميل…')}</div>
@@ -161,6 +213,14 @@ export default function NotificationsTab() {
             <table className="w-full text-start text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="border-b border-slate-100 text-xs text-slate-400">
+                  <th className="p-3 text-start font-medium">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+                    />
+                  </th>
                   <th className="p-3 text-start font-medium">{t('العنوان')}</th>
                   <th className="p-3 text-start font-medium">{t('النص')}</th>
                   <th className="p-3 text-start font-medium">{t('أُرسلت إلى')}</th>
@@ -170,6 +230,14 @@ export default function NotificationsTab() {
               <tbody>
                 {entries.map((n) => (
                   <tr key={n.id} className="border-b border-slate-50 last:border-0 align-top">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(n.id)}
+                        onChange={() => toggleOne(n.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+                      />
+                    </td>
                     <td className="p-3 font-medium text-slate-700">{n.title}</td>
                     <td className="max-w-xs p-3 text-slate-600">{n.body}</td>
                     <td className="p-3 text-slate-500">

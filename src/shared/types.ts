@@ -194,7 +194,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_employee_contract: 'الاطلاع على بيانات عقد الموظف (تاريخ العقد وملفه)',
   view_financial_statements: 'الاطلاع على تبويب القوائم المالية (المحاسبة)',
   view_expiry_documents: 'الاطلاع على تبويب تواريخ الانتهاء (المحاسبة)',
-  view_notifications_page: 'الاطلاع على سجل التنبيهات وإرسال رسائل للموظفين (الإعدادات)',
+  view_notifications_page: 'الاطلاع على سجل الإشعارات وإرسال رسائل للموظفين (الإعدادات)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];

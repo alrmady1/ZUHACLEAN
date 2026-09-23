@@ -5763,7 +5763,7 @@ export default function Settings() {
             onClick={() => setTab('notifications')}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'notifications' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
           >
-            <NotificationsIcon className="h-4 w-4" /> {t('التنبيهات')}
+            <NotificationsIcon className="h-4 w-4" /> {t('الإشعارات')}
           </button>
         )}
       </div>

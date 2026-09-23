@@ -32,7 +32,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // جرس الإشعارات — يفتح مباشرة الإعدادات ← التنبيهات (سجل كامل + إرسال
+  // جرس الإشعارات — يفتح مباشرة الإعدادات ← الإشعارات (سجل كامل + إرسال
   // رسائل للموظفين هناك)، بلا قائمة منسدلة هنا. النقطة الحمراء وحدها تُبنى
   // من آخر 5 تنبيهات استهدفت هذا المستخدم (انظر GET /notifications/recent
   // وnotificationLog في server/lib/push.ts).
@@ -173,7 +173,7 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <button
           type="button"
           onClick={openNotifications}
-          title={t('التنبيهات')}
+          title={t('الإشعارات')}
           className="relative flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
         >
           <Bell className="h-4 w-4" />

@@ -230,6 +230,18 @@ api.post('/notifications/broadcast', async (req, res) => {
   res.status(201).json({ sent_to: targetIds.length });
 });
 
+// حذف جماعي من سجل التنبيهات (تحديد سطر أو الكل من NotificationsTab) —
+// نفس تعاقد DELETE /activity-log بالضبط.
+api.delete('/notifications', (req, res) => {
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
+    return res.status(400).json({ error: 'ids (مصفوفة معرّفات نصية) مطلوبة' });
+  }
+  const removed = store.notificationLog.removeMany(ids);
+  if (removed > 0) logActivity(req, `تم حذف ${removed} من سجل التنبيهات`);
+  res.json({ removed });
+});
+
 api.get('/permissions', (_req, res) => {
   const stored = store.permissions.list();
   // كائن JS يحافظ على ترتيب إدخال مفاتيحه النصية — بناء الاستجابة بهذا

@@ -1289,6 +1289,16 @@ export const store = {
     // السجل كاملاً (كل التنبيهات لكل المستخدمين)، الأحدث أولاً — صفحة
     // الإعدادات ← التنبيهات (GET /notifications في api.ts).
     list: () => [...db.notificationLog].sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    // حذف جماعي (تحديد سطر أو الكل من NotificationsTab) — يرجع عدد
+    // السطور المحذوفة فعلياً، نفس نمط activityLog.removeMany بالضبط.
+    removeMany: (ids: string[]) => {
+      const idSet = new Set(ids);
+      const before = db.notificationLog.length;
+      db.notificationLog = db.notificationLog.filter((n) => !idSet.has(n.id));
+      const removed = before - db.notificationLog.length;
+      if (removed > 0) persist();
+      return removed;
+    },
   },
   salesDiscountSettings: {
     get: () => db.salesDiscountSettings,
