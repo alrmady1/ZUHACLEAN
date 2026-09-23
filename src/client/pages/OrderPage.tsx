@@ -658,8 +658,8 @@ export default function OrderPage() {
         </p>
         <p className="text-xs text-white/50">© {new Date().getFullYear()} {COMPANY_NAME} للنظافة والخدمات. جميع الحقوق محفوظة.</p>
         {COMPANY_CR_NUMBER && (
-          <p className="mt-1.5 flex items-center justify-center gap-1.5 text-xs text-white/50">
-            <img src="/saudi-cr-emblem.png" alt="" aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <p className="mt-3 flex items-center justify-center gap-3 text-2xl text-white/50">
+            <img src="/saudi-cr-emblem.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
             السجل التجاري {COMPANY_CR_NUMBER}
           </p>
         )}
