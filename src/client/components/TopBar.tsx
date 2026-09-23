@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, Plus, Languages, Moon, Sun, Bell } from 'lucide-react';
+import { Menu, Search, Plus, Languages, Moon, Sun, Bell, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import type { Customer, Service, NotificationLogEntry } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 import type { Lang } from '../lib/date.js';
+import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useDarkMode } from '../lib/theme.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
@@ -32,12 +33,15 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // جرس الإشعارات — يفتح مباشرة الإعدادات ← الإشعارات (سجل كامل + إرسال
-  // رسائل للموظفين هناك)، بلا قائمة منسدلة هنا. النقطة الحمراء وحدها تُبنى
-  // من آخر 5 تنبيهات استهدفت هذا المستخدم (انظر GET /notifications/recent
-  // وnotificationLog في server/lib/push.ts).
+  // جرس الإشعارات — يظهر لكل موظف مسجَّل الدخول على كل صفحة، ويعرض عند
+  // الضغط عليه آخر 5 تنبيهات استهدفته هو تحديداً (GET /notifications/recent
+  // برأس X-Actor-Id، انظر notificationLog في server/lib/push.ts). من يملك
+  // صلاحية view_notifications_page يرى رابطاً إضافياً أسفل القائمة لسجل
+  // الإشعارات الكامل وإرسال رسائل (الإعدادات ← الإشعارات).
   const [notifications, setNotifications] = useState<NotificationLogEntry[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [seenAt, setSeenAt] = useState(() => localStorage.getItem(NOTIFICATIONS_SEEN_KEY) ?? '');
+  const notificationsBoxRef = useRef<HTMLDivElement>(null);
   const canViewNotificationsPage = can('view_notifications_page');
 
   useEffect(() => {
@@ -58,16 +62,27 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   const hasUnseenNotification = notifications.some((n) => n.created_at > seenAt);
 
-  function openNotifications() {
-    const now = new Date().toISOString();
-    localStorage.setItem(NOTIFICATIONS_SEEN_KEY, now);
-    setSeenAt(now);
-    navigate(canViewNotificationsPage ? '/settings?tab=notifications' : '/settings');
+  function toggleNotifications() {
+    setShowNotifications((v) => {
+      const next = !v;
+      if (next) {
+        const now = new Date().toISOString();
+        localStorage.setItem(NOTIFICATIONS_SEEN_KEY, now);
+        setSeenAt(now);
+      }
+      return next;
+    });
+  }
+
+  function openNotification(n: NotificationLogEntry) {
+    setShowNotifications(false);
+    if (n.url) navigate(n.url);
   }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) setShowResults(false);
+      if (notificationsBoxRef.current && !notificationsBoxRef.current.contains(e.target as Node)) setShowNotifications(false);
     }
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
@@ -169,16 +184,53 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         </button>
       )}
 
-      {canViewNotificationsPage && (
-        <button
-          type="button"
-          onClick={openNotifications}
-          title={t('الإشعارات')}
-          className="relative flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-        >
-          <Bell className="h-4 w-4" />
-          {hasUnseenNotification && <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />}
-        </button>
+      {user && (
+        <div ref={notificationsBoxRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={toggleNotifications}
+            title={t('الإشعارات')}
+            className="relative flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+          >
+            <Bell className="h-4 w-4" />
+            {hasUnseenNotification && <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />}
+          </button>
+          {showNotifications && (
+            <div className="absolute end-0 top-full z-30 mt-1 w-80 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+              <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">{t('الإشعارات')}</div>
+              {notifications.length === 0 ? (
+                <div className="px-3 py-4 text-center text-xs text-slate-400">{t('لا توجد تنبيهات بعد')}</div>
+              ) : (
+                notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => openNotification(n)}
+                    className="block w-full border-b border-slate-50 px-3 py-2 text-start last:border-0 hover:bg-slate-50"
+                  >
+                    <div className="text-sm font-medium text-slate-700">{n.title}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">{n.body}</div>
+                    <div className="mt-1 text-[11px] text-slate-400" dir="ltr">
+                      {formatDateAr(n.created_at)} — {formatTimeAr(n.created_at)}
+                    </div>
+                  </button>
+                ))
+              )}
+              {canViewNotificationsPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNotifications(false);
+                    navigate('/settings?tab=notifications');
+                  }}
+                  className="flex w-full items-center gap-1.5 border-t border-slate-100 px-3 py-2 text-start text-xs font-semibold text-brand-600 hover:bg-slate-50"
+                >
+                  <SettingsIcon className="h-3.5 w-3.5" /> {t('إدارة الإشعارات')}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <button
