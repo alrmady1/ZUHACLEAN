@@ -2602,6 +2602,17 @@ api.patch('/expenses/:id', async (req, res) => {
   }
   if (body.advance_period_start !== undefined) patch.advance_period_start = body.advance_period_start || undefined;
   if (body.advance_period_end !== undefined) patch.advance_period_end = body.advance_period_end || undefined;
+  // تصحيح يدوي لحالة سداد السلفية — لتسجيل سداد نقدي خارج الاستقطاع
+  // التلقائي من الراتب، أو تصحيح خطأ. مقيَّد بين 0 والمبلغ الأصلي (أو
+  // الجديد إن أُرسل ضمن نفس الطلب) حتى لا يصبح "المتبقي" سالباً أو أكبر
+  // من السلفية نفسها. انظر EmployeeAccounts.tsx (زر "تعديل السداد").
+  let advanceSettlementNote = '';
+  if (body.advance_settled_amount !== undefined) {
+    const amountForClamp = patch.amount ?? target.amount;
+    const clamped = Math.max(0, Math.min(Number(body.advance_settled_amount) || 0, amountForClamp));
+    patch.advance_settled_amount = clamped;
+    advanceSettlementNote = ` — تصحيح المسدَّد يدوياً إلى ${clamped} ر.س`;
+  }
   // إعادة احتساب ضريبة الفاتورة كلما تغيّر أحد مدخليها (الوسم أو المبلغ)
   // — نفس دالة POST أعلاه، بحيث تبقى tax_amount متسقة دوماً مع amount.
   if (body.is_tax_invoice !== undefined || body.amount !== undefined) {
@@ -2642,7 +2653,7 @@ api.patch('/expenses/:id', async (req, res) => {
   if (linkChanged && newFacilityId && newItemId) {
     applyFacilityScheduleDelta(newFacilityId, newItemId, updated.amount);
   }
-  logActivity(req, `تم تعديل مصروف "${updated.title}"`);
+  logActivity(req, `تم تعديل مصروف "${updated.title}"${advanceSettlementNote}`);
   res.json(updated);
 });
 

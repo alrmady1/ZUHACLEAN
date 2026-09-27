@@ -589,6 +589,9 @@ function EmployeeDetail({
   const [editingSalary, setEditingSalary] = useState(false);
   const [salaryInput, setSalaryInput] = useState(String(summary.profile.monthly_salary ?? ''));
   const [dueDayInput, setDueDayInput] = useState(String(summary.profile.salary_due_day ?? ''));
+  // تصحيح يدوي لحالة سداد سلفية — انظر Section("السلفيات") أدناه
+  // وEditAdvanceSettlementModal.
+  const [editingAdvance, setEditingAdvance] = useState<Expense | null>(null);
   const [savingSalary, setSavingSalary] = useState(false);
   const [payingSalary, setPayingSalary] = useState(false);
   const [payResult, setPayResult] = useState<{ net: number; withheld: number; commission: number } | null>(null);
@@ -1485,12 +1488,14 @@ function EmployeeDetail({
         </Section>
 
         {/* السلفيات — الجدولة (استقطاعها من الراتب) تُضبَط عند تسجيل السلفية
-            نفسها من صفحة المصروفات العامة (أو تعديلها لاحقاً من هناك)، هنا
-            عرض فقط لحالة كل سلفية. */}
+            نفسها من صفحة المصروفات العامة (أو تعديلها لاحقاً من هناك).
+            حالة السداد نفسها (المبلغ المسدَّد) قابلة للتصحيح اليدوي من هنا
+            مباشرة (زر "تعديل") — لتسجيل سداد نقدي خارج الاستقطاع التلقائي
+            من الراتب، أو تصحيح خطأ. */}
         <Section icon={<HandCoins className="h-4 w-4 text-brand-600" />} title={t('السلفيات')} total={formatMoney(summary.advanceTotal)}>
           <SimpleTable
             emptyLabel={t('لا توجد سلفيات مسجَّلة لهذا الموظف')}
-            headers={[t('التاريخ'), t('البيان'), t('المبلغ'), t('الاستقطاع')]}
+            headers={[t('التاريخ'), t('البيان'), t('المبلغ'), t('الاستقطاع'), ...(canEdit ? [t('إجراء')] : [])]}
             rows={summary.advanceEntries.map((e) => {
               const mode = e.advance_deduction_mode ?? 'none';
               const remaining = e.amount - (e.advance_settled_amount ?? 0);
@@ -1508,10 +1513,34 @@ function EmployeeDetail({
                     <span className="ms-1 text-slate-400">({tt(`متبقٍ ${formatMoney(remaining)}`, `${formatMoney(remaining)} remaining`)})</span>
                   </span>
                 ),
+                ...(canEdit
+                  ? [
+                      <button
+                        key={`${e.id}-edit`}
+                        type="button"
+                        onClick={() => setEditingAdvance(e)}
+                        title={t('تعديل السداد')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>,
+                    ]
+                  : []),
               ];
             })}
           />
         </Section>
+
+        {editingAdvance && (
+          <EditAdvanceSettlementModal
+            advance={editingAdvance}
+            onClose={() => setEditingAdvance(null)}
+            onSaved={() => {
+              setEditingAdvance(null);
+              onChanged();
+            }}
+          />
+        )}
 
         {/* العهدة */}
         <Section icon={<PiggyBank className="h-4 w-4 text-brand-600" />} title={t('العهدة')}>
@@ -1904,6 +1933,82 @@ function Section({
         {action}
       </div>
       {children}
+    </div>
+  );
+}
+
+// تصحيح يدوي لحالة سداد سلفية — يُدخِل المبلغ المسدَّد مباشرة (بدل انتظار
+// الاستقطاع التلقائي من الرواتب القادمة، أو لتصحيح خطأ)، مع زر سريع
+// لتحديدها "مسدَّدة بالكامل". القيمة الفعلية المحفوظة تُقيَّد على الخادم
+// أيضاً بين 0 والمبلغ الأصلي (انظر PATCH /expenses/:id).
+function EditAdvanceSettlementModal({ advance, onClose, onSaved }: { advance: Expense; onClose: () => void; onSaved: () => void }) {
+  const { t, tt } = useI18n();
+  const [settledInput, setSettledInput] = useState(String(advance.advance_settled_amount ?? 0));
+  const [saving, setSaving] = useState(false);
+  const remaining = advance.amount - (Number(settledInput) || 0);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.patch(`/expenses/${advance.id}`, { advance_settled_amount: Number(settledInput) || 0 });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">{t('تعديل حالة السداد')}</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{advance.title} — {formatMoney(advance.amount)}</p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">{t('المبلغ المسدَّد حتى الآن (ر.س)')}</span>
+          <input
+            type="number"
+            min={0}
+            max={advance.amount}
+            step="0.01"
+            value={settledInput}
+            onChange={(e) => setSettledInput(e.target.value)}
+            className="input"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setSettledInput(String(advance.amount))}
+          className="mt-1.5 text-xs font-medium text-brand-600 hover:underline"
+        >
+          {t('تحديد كمسدَّدة بالكامل')}
+        </button>
+        <p className="mt-2 text-xs text-slate-400">
+          {remaining > 0.005
+            ? tt(`سيبقى متبقياً ${formatMoney(remaining)}`, `${formatMoney(remaining)} will remain`)
+            : t('ستُعتبر مسدَّدة بالكامل')}
+        </p>
+
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="flex-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saving ? t('جارِ الحفظ…') : t('حفظ')}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-500">
+            {t('إلغاء')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
