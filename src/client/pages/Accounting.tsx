@@ -10,6 +10,7 @@ import {
   Boxes as InventoryIcon,
   FileBarChart as FinancialStatementsIcon,
   CalendarClock as ExpiryDocumentsIcon,
+  Store as SarvSalesIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
@@ -22,8 +23,19 @@ import Contracts from './Contracts.js';
 import { InventoryTab } from './Inventory.js';
 import { FinancialStatementsTab } from './FinancialStatements.js';
 import { ExpiryDocumentsTab } from './ExpiryDocuments.js';
+import { SarvSalesTab } from './SarvSales.js';
 
-type Tab = 'sales' | 'expenses' | 'employees' | 'commissions' | 'tax' | 'contracts' | 'inventory' | 'financial_statements' | 'expiry_documents';
+type Tab =
+  | 'sales'
+  | 'expenses'
+  | 'employees'
+  | 'commissions'
+  | 'tax'
+  | 'contracts'
+  | 'inventory'
+  | 'financial_statements'
+  | 'expiry_documents'
+  | 'sarv_sales';
 
 // صفحة "المحاسبة" — تجمع "المبيعات والفواتير" و"المصروفات" (كانتا
 // صفحتين مستقلتين في القائمة الجانبية) وتبويبي "الموظفين" (كانت "كشف حساب
@@ -48,6 +60,7 @@ export default function Accounting() {
   const canInventory = can('view_inventory_page');
   const canFinancialStatements = can('view_financial_statements');
   const canExpiryDocuments = can('view_expiry_documents');
+  const canSarvSales = can('view_sarv_sales_page');
   const canSalesTab = canSales || canManageDiscount;
   const availableCount = [
     canSalesTab,
@@ -59,6 +72,7 @@ export default function Accounting() {
     canInventory,
     canFinancialStatements,
     canExpiryDocuments,
+    canSarvSales,
   ].filter(Boolean).length;
   // رابط ملصق أصل مطبوع (?tab=inventory، انظر AssetLabelModal في
   // Inventory.tsx) يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له —
@@ -86,7 +100,9 @@ export default function Accounting() {
                     ? 'inventory'
                     : canFinancialStatements
                       ? 'financial_statements'
-                      : 'expiry_documents',
+                      : canExpiryDocuments
+                        ? 'expiry_documents'
+                        : 'sarv_sales',
   );
 
   return (
@@ -170,6 +186,14 @@ export default function Accounting() {
               <ExpiryDocumentsIcon className="h-4 w-4" /> {t('تواريخ الانتهاء')}
             </button>
           )}
+          {canSarvSales && (
+            <button
+              onClick={() => setTab('sarv_sales')}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'sarv_sales' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+            >
+              <SarvSalesIcon className="h-4 w-4" /> {t('مبيعات منصة سيرف')}
+            </button>
+          )}
         </div>
       )}
 
@@ -182,6 +206,7 @@ export default function Accounting() {
       {tab === 'inventory' && canInventory && <InventoryTab />}
       {tab === 'financial_statements' && canFinancialStatements && <FinancialStatementsTab />}
       {tab === 'expiry_documents' && canExpiryDocuments && <ExpiryDocumentsTab />}
+      {tab === 'sarv_sales' && canSarvSales && <SarvSalesTab />}
     </div>
   );
 }

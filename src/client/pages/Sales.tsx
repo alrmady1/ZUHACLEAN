@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer, BadgePercent } from 'lucide-react';
+import { Plus, X, CheckCircle2, TrendingUp, Sparkles, AlertCircle, Printer, BadgePercent, Store } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Invoice, PaymentMethodOption, Appointment, SalesDiscountSettings, SalesDiscountKind } from '../../shared/types.js';
-import { VAT_RATE, DEFAULT_SALES_DISCOUNT_SETTINGS, OPEN_DISCOUNT_MAX_PERCENT } from '../../shared/types.js';
+import type {
+  Customer,
+  Invoice,
+  PaymentMethodOption,
+  Appointment,
+  SalesDiscountSettings,
+  SalesDiscountKind,
+  PlatformSettlementParty,
+} from '../../shared/types.js';
+import {
+  VAT_RATE,
+  DEFAULT_SALES_DISCOUNT_SETTINGS,
+  OPEN_DISCOUNT_MAX_PERCENT,
+  SARV_DEFAULT_COMMISSION_PERCENT,
+  PLATFORM_SETTLEMENT_PARTY_LABELS_AR,
+} from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
@@ -196,6 +210,9 @@ export default function Sales() {
   const [submitting, setSubmitting] = useState(false);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [isSarvOrder, setIsSarvOrder] = useState(false);
+  const [sarvCommissionRate, setSarvCommissionRate] = useState(String(SARV_DEFAULT_COMMISSION_PERCENT));
+  const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
 
   const [discountSettings, setDiscountSettings] = useState<SalesDiscountSettings>(DEFAULT_SALES_DISCOUNT_SETTINGS);
   const [discountChoice, setDiscountChoice] = useState<DiscountChoice>('none');
@@ -283,6 +300,9 @@ export default function Sales() {
       payment_method: form.get('payment_method') || undefined,
       recorded_by: user?.id,
       recorded_by_name: user?.full_name,
+      sales_channel: isSarvOrder ? 'sarv' : undefined,
+      platform_commission_rate: isSarvOrder ? Number(sarvCommissionRate) || SARV_DEFAULT_COMMISSION_PERCENT : undefined,
+      platform_settled_by: isSarvOrder ? sarvSettledBy : undefined,
     };
     if (discountChoice === 'named' && discountSettings.named_discount_enabled) {
       payload.discount_type = 'named';
@@ -305,6 +325,9 @@ export default function Sales() {
       setOpenDiscountKind('percent');
       setOpenDiscountPercent(0);
       setOpenDiscountAmount(0);
+      setIsSarvOrder(false);
+      setSarvCommissionRate(String(SARV_DEFAULT_COMMISSION_PERCENT));
+      setSarvSettledBy('company');
       refresh();
     } finally {
       setSubmitting(false);
@@ -564,6 +587,45 @@ export default function Sales() {
                   onChange={(e) => setPreviewTotal(Number(e.target.value) || 0)}
                 />
               </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={isSarvOrder}
+                  onChange={(e) => setIsSarvOrder(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+                />
+                <Store className="h-4 w-4 text-brand-600" /> {t('هذا الطلب عبر منصة سيرف')}
+              </label>
+              {isSarvOrder && (
+                <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('نسبة عمولة المنصة (%)')}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      value={sarvCommissionRate}
+                      onChange={(e) => setSarvCommissionRate(e.target.value)}
+                      className="input"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-600">{t('مَن استلم المبلغ من العميل؟')}</span>
+                    <select
+                      value={sarvSettledBy}
+                      onChange={(e) => setSarvSettledBy(e.target.value as PlatformSettlementParty)}
+                      className="input"
+                    >
+                      {(Object.keys(PLATFORM_SETTLEMENT_PARTY_LABELS_AR) as PlatformSettlementParty[]).map((p) => (
+                        <option key={p} value={p}>
+                          {t(PLATFORM_SETTLEMENT_PARTY_LABELS_AR[p])}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-slate-600">{t('حالة السداد')}</span>

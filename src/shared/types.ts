@@ -131,7 +131,8 @@ export type PermissionKey =
   | 'view_employee_contract'
   | 'view_financial_statements'
   | 'view_expiry_documents'
-  | 'view_notifications_page';
+  | 'view_notifications_page'
+  | 'view_sarv_sales_page';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -195,6 +196,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_financial_statements: 'الاطلاع على تبويب القوائم المالية (المحاسبة)',
   view_expiry_documents: 'الاطلاع على تبويب تواريخ الانتهاء (المحاسبة)',
   view_notifications_page: 'الاطلاع على سجل الإشعارات وإرسال رسائل للموظفين (الإعدادات)',
+  view_sarv_sales_page: 'الاطلاع على تبويب مبيعات منصة سيرف (المحاسبة)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -301,6 +303,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // إرسال رسائل مباشرة لجوالات الموظفين — المدير العام ومدير النظام فقط
   // افتراضياً، قابلة للتوسيع لاحقاً من صفحة الصلاحيات نفسها.
   view_notifications_page: GM_ADMIN,
+  // عمولات ومستحقات مالية بين الشركة ومنصة خارجية — المدير العام ومدير
+  // النظام فقط افتراضياً، كبقية تبويبات المحاسبة الحسّاسة.
+  view_sarv_sales_page: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -342,6 +347,31 @@ export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 // `string` (not a fixed union) so admins can add methods beyond the
 // built-in cash/card/bank_transfer from Settings without a code change.
 export type PaymentMethod = string;
+
+// مصدر البيع — Invoice.sales_channel أدناه. 'direct' (الافتراضي/غائب) يعني
+// بيعاً مباشراً عادياً؛ 'sarv' يعني طلباً وصل عبر منصة سيرف الخارجية، التي
+// تأخذ عمولة من قيمة الطلب (انظر SARV_DEFAULT_COMMISSION_PERCENT) — يُختار
+// صراحةً عند تحصيل الدفعة (PayAppointmentModal) أو عند إصدار فاتورة يدوية
+// (Sales.tsx)، قبل اختيار طريقة الدفع مباشرة.
+export type SalesChannel = 'direct' | 'sarv';
+
+// نسبة عمولة منصة سيرف الافتراضية — قابلة للتعديل يدوياً لكل فاتورة على
+// حدة وقت إصدارها (Invoice.platform_commission_rate)، هذه القيمة تُستخدَم
+// فقط كبداية مقترحة في النموذج.
+export const SARV_DEFAULT_COMMISSION_PERCENT = 20;
+
+// من الذي استلم مبلغ الطلب فعلياً من العميل — يحدِّد مَن مدين لمَن محاسبياً:
+// 'company' يعني الشركة استلمت كامل المبلغ مباشرة (نقداً/شبكة...) وعليها
+// تحويل عمولة المنصة لها لاحقاً؛ 'platform' يعني المنصة هي من حصَّلت الدفع
+// من العميل (عبر تطبيقها) وعليها تحويل صافي المستحق للشركة. انظر
+// Invoice.platform_settled_by، وصفحة المحاسبة ← مبيعات منصة سيرف.
+export type PlatformSettlementParty = 'company' | 'platform';
+
+export const PLATFORM_SETTLEMENT_PARTY_LABELS_AR: Record<PlatformSettlementParty, string> = {
+  company: 'استلمناه مباشرة من العميل',
+  platform: 'استلمته المنصة من العميل',
+};
+
 export type ContractType = 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 export type ContractStatus = 'active' | 'completed' | 'cancelled' | 'expired';
 export type VisitFrequency = 'weekly' | 'bi_weekly' | 'monthly';
@@ -1632,6 +1662,20 @@ export interface Invoice {
   // 96 بالضبط — نفس منطق عروض الأسعار. غائب/false للفواتير القديمة، حيث
   // كان discount_amount يُخصَم من المبلغ قبل الضريبة (يُعرَض كما كان).
   discount_includes_vat?: boolean;
+  // طلب عبر منصة سيرف — غائب/'direct' يعني بيعاً مباشراً عادياً، كل
+  // الفواتير القديمة قبل إضافة هذه الميزة ضمنها. انظر SalesChannel أعلاه
+  // وصفحة المحاسبة ← مبيعات منصة سيرف. الحقول الثلاثة التالية ذات معنى
+  // فقط عندما sales_channel === 'sarv'.
+  sales_channel?: SalesChannel;
+  // نسبة العمولة المطبَّقة فعلياً وقت الإصدار (غالباً SARV_DEFAULT_COMMISSION_PERCENT،
+  // قابلة للتعديل) — تُحفَظ هنا بدل الاعتماد على الثابت العام وحده، حتى لا
+  // يتغيّر احتساب فواتير قديمة لو تغيّرت نسبة المنصة مستقبلاً.
+  platform_commission_rate?: number;
+  // = total × platform_commission_rate ÷ 100، محسوبة ومخزَّنة وقت الإصدار.
+  platform_commission_amount?: number;
+  // مَن استلم المبلغ من العميل فعلياً — قابل للتعديل لاحقاً من صفحة مبيعات
+  // منصة سيرف (PATCH /invoices/:id) عند وصول التحويل الفعلي من/إلى المنصة.
+  platform_settled_by?: PlatformSettlementParty;
 }
 
 // نوع الخصم: نسبة مئوية من المبلغ قبل الضريبة، أو مبلغ ثابت بالريال.

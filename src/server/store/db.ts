@@ -1493,7 +1493,18 @@ export const store = {
   },
   invoices: {
     list: () => db.invoices,
+    get: (id: string) => db.invoices.find((i) => i.id === id),
     insert: (i: Invoice) => { db.invoices.push(i); persist(); return i; },
+    // حالياً تُستخدَم فقط لتصحيح platform_settled_by لاحقاً (مبيعات منصة
+    // سيرف) — بقية حقول الفاتورة تبقى ثابتة بعد الإصدار بنفس فلسفة "سجل
+    // مالي دائم" أعلاه.
+    update: (id: string, patch: Partial<Invoice>) => {
+      const idx = db.invoices.findIndex((i) => i.id === id);
+      if (idx === -1) return undefined;
+      db.invoices[idx] = { ...db.invoices[idx], ...patch };
+      persist();
+      return db.invoices[idx];
+    },
     // الفواتير أصلاً بلا حذف (سجل مالي دائم، انظر POST /invoices) — remove
     // مضافة فقط لدعم مسح بيانات تجريبية كاملة قبل الانطلاق الفعلي (بطلب
     // صريح من المدير)، وليست جزءاً من تدفق الاستخدام العادي.

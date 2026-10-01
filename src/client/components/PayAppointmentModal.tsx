@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { X, Wallet, Share2, Landmark, Link2, Copy, Check, MessageCircle } from 'lucide-react';
+import { X, Wallet, Share2, Landmark, Link2, Copy, Check, MessageCircle, Store } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Appointment, Customer, Invoice, PaymentMethodOption, CompanyBankAccount } from '../../shared/types.js';
-import { VAT_RATE, COMPANY_LEGAL_NAME } from '../../shared/types.js';
+import type { Appointment, Customer, Invoice, PaymentMethodOption, CompanyBankAccount, PlatformSettlementParty } from '../../shared/types.js';
+import { VAT_RATE, COMPANY_LEGAL_NAME, SARV_DEFAULT_COMMISSION_PERCENT, PLATFORM_SETTLEMENT_PARTY_LABELS_AR } from '../../shared/types.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from './InvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
@@ -47,6 +47,12 @@ export default function PayAppointmentModal({
   const { user } = useAuth();
   const activeMethods = paymentMethods.filter((m) => m.is_active);
   const [amount, setAmount] = useState(appointment.remaining_amount);
+  // طلب عبر منصة سيرف — يُحدَّد قبل اختيار طريقة الدفع مباشرة (انظر
+  // SalesChannel في shared/types.ts). المنصة تأخذ عمولة من قيمة الطلب،
+  // تُحفَظ على الفاتورة فور إصدارها وتظهر في المحاسبة ← مبيعات منصة سيرف.
+  const [isSarvOrder, setIsSarvOrder] = useState(false);
+  const [sarvCommissionRate, setSarvCommissionRate] = useState(String(SARV_DEFAULT_COMMISSION_PERCENT));
+  const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [issuedInvoice, setIssuedInvoice] = useState<Invoice | null>(null);
@@ -190,6 +196,9 @@ export default function PayAppointmentModal({
         payment_method: method,
         recorded_by: user?.id,
         recorded_by_name: user?.full_name,
+        sales_channel: isSarvOrder ? 'sarv' : undefined,
+        platform_commission_rate: isSarvOrder ? Number(sarvCommissionRate) || SARV_DEFAULT_COMMISSION_PERCENT : undefined,
+        platform_settled_by: isSarvOrder ? sarvSettledBy : undefined,
       });
       onPaid();
       // Work is done and paid — show the tax invoice immediately (with its
@@ -255,6 +264,41 @@ export default function PayAppointmentModal({
               className="input"
             />
           </label>
+
+          {/* طلب عبر منصة سيرف — قبل اختيار طريقة الدفع مباشرة بطلب صريح.
+              عند تفعيله تُحفَظ نسبة العمولة ومَن استلم المبلغ على الفاتورة،
+              فتظهر في المحاسبة ← مبيعات منصة سيرف. */}
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium text-slate-700">
+            <input type="checkbox" checked={isSarvOrder} onChange={(e) => setIsSarvOrder(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400" />
+            <Store className="h-4 w-4 text-brand-600" /> {t('هذا الطلب عبر منصة سيرف')}
+          </label>
+          {isSarvOrder && (
+            <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('نسبة عمولة المنصة (%)')}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={sarvCommissionRate}
+                  onChange={(e) => setSarvCommissionRate(e.target.value)}
+                  className="input"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-600">{t('مَن استلم المبلغ من العميل؟')}</span>
+                <select value={sarvSettledBy} onChange={(e) => setSarvSettledBy(e.target.value as PlatformSettlementParty)} className="input">
+                  {(Object.keys(PLATFORM_SETTLEMENT_PARTY_LABELS_AR) as PlatformSettlementParty[]).map((p) => (
+                    <option key={p} value={p}>
+                      {t(PLATFORM_SETTLEMENT_PARTY_LABELS_AR[p])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
             <select value={method} onChange={(e) => setMethod(e.target.value)} required className="input">

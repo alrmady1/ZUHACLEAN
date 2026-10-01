@@ -27,6 +27,7 @@ import type {
   ContractScheduleItem,
   VisitFrequency,
   Invoice,
+  PlatformSettlementParty,
   Service,
   PaymentMethodOption,
   ServiceCategory,
@@ -80,6 +81,8 @@ import type {
 } from '../../shared/types.js';
 import {
   VAT_RATE,
+  SARV_DEFAULT_COMMISSION_PERCENT,
+  PLATFORM_SETTLEMENT_PARTY_LABELS_AR,
   OPEN_DISCOUNT_MAX_PERCENT,
   CUSTODY_CATEGORY_NAME,
   ADVANCE_CATEGORY_NAME,
@@ -2995,6 +2998,15 @@ api.post('/invoices', (req, res) => {
   const subtotal =
     finalTotal !== undefined ? Math.round((finalTotal / (1 + VAT_RATE)) * 100) / 100 : preDiscountSubtotal;
   const vat_amount = finalTotal !== undefined ? Math.round((finalTotal - subtotal) * 100) / 100 : Math.round(subtotal * VAT_RATE * 100) / 100;
+  const total = Math.round((subtotal + vat_amount) * 100) / 100;
+
+  // طلب عبر منصة سيرف — النسبة والمبلغ يُحتسَبان ويُثبَّتان هنا وقت
+  // الإصدار (انظر تعليق Invoice.platform_commission_rate في shared/types.ts).
+  const isSarvOrder = body.sales_channel === 'sarv';
+  const platformCommissionRate = isSarvOrder ? Number(body.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT) : undefined;
+  const platformCommissionAmount =
+    isSarvOrder && platformCommissionRate !== undefined ? Math.round(total * (platformCommissionRate / 100) * 100) / 100 : undefined;
+
   const invoice: Invoice = {
     id: store.id(),
     invoice_number: body.invoice_number ?? `INV-${Date.now()}`,
@@ -3004,7 +3016,7 @@ api.post('/invoices', (req, res) => {
     contract_id: body.contract_id,
     subtotal,
     vat_amount,
-    total: Math.round((subtotal + vat_amount) * 100) / 100,
+    total,
     payment_status: body.payment_status ?? 'unpaid',
     payment_method: body.payment_method || undefined,
     issue_date: body.issue_date ?? new Date().toISOString().slice(0, 10),
@@ -3018,6 +3030,10 @@ api.post('/invoices', (req, res) => {
     discount_amount: discount ? discountAmount : undefined,
     pre_discount_subtotal: discount ? preDiscountSubtotal : undefined,
     discount_includes_vat: discount ? true : undefined,
+    sales_channel: isSarvOrder ? 'sarv' : undefined,
+    platform_commission_rate: platformCommissionRate,
+    platform_commission_amount: platformCommissionAmount,
+    platform_settled_by: isSarvOrder ? (body.platform_settled_by === 'platform' ? 'platform' : 'company') : undefined,
   };
   store.invoices.insert(invoice);
   const discountNote = discount
@@ -3025,6 +3041,24 @@ api.post('/invoices', (req, res) => {
     : '';
   logActivity(req, `تم إصدار فاتورة "${invoice.invoice_number}" للعميل "${invoice.customer_name_snapshot}" بقيمة ${invoice.total} ر.س${discountNote}`);
   res.status(201).json(invoice);
+});
+
+// تصحيح "مَن استلم المبلغ" لاحقاً لفاتورة سيرف — صفحة المحاسبة ← مبيعات
+// منصة سيرف، عند وصول التحويل الفعلي من/إلى المنصة. لا تمسّ أي حقل آخر.
+api.patch('/invoices/:id', (req, res) => {
+  const target = store.invoices.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  if (target.sales_channel !== 'sarv') return res.status(400).json({ error: 'هذا الحقل خاص بفواتير منصة سيرف فقط' });
+  const body = req.body ?? {};
+  if (body.platform_settled_by !== 'company' && body.platform_settled_by !== 'platform') {
+    return res.status(400).json({ error: "platform_settled_by يجب أن تكون 'company' أو 'platform'" });
+  }
+  const updated = store.invoices.update(target.id, { platform_settled_by: body.platform_settled_by });
+  logActivity(
+    req,
+    `تم تحديث حالة استلام مبلغ فاتورة "${target.invoice_number}" (سيرف) إلى "${PLATFORM_SETTLEMENT_PARTY_LABELS_AR[body.platform_settled_by as PlatformSettlementParty]}"`,
+  );
+  res.json(updated);
 });
 
 // الفواتير سجل مالي دائم عادةً (بلا حذف يومي) — هذا المسار مخصَّص فقط
