@@ -1,6 +1,25 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Navigate } from 'react-router-dom';
-import { Plus, X, Wallet as GeneralIcon, PiggyBank as CustodyIcon, LayoutGrid as OverviewIcon, ChevronLeft, Eye, Pencil, Check, Trash2, Paperclip, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import {
+  Plus,
+  X,
+  Wallet as GeneralIcon,
+  PiggyBank as CustodyIcon,
+  LayoutGrid as OverviewIcon,
+  ChevronLeft,
+  Eye,
+  Pencil,
+  Check,
+  Trash2,
+  Paperclip,
+  FileText,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Printer,
+} from 'lucide-react';
+import DocumentHeader from '../components/DocumentHeader.js';
 import { api } from '../lib/api.js';
 import type {
   Expense,
@@ -38,7 +57,7 @@ import {
 } from '../../shared/types.js';
 
 const ACCOUNTING_CLASSIFICATIONS = Object.keys(EXPENSE_ACCOUNTING_CLASSIFICATION_LABELS_AR) as ExpenseAccountingClassification[];
-import { formatMoney } from '../lib/date.js';
+import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
@@ -424,6 +443,10 @@ function GeneralExpensesTab() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
+  // طباعة كشف مصروفات لفترة وتصنيف مختارين — انظر ExpensePrintOptionsModal
+  // وExpensesPrintDocument أدناه.
+  const [showPrintOptions, setShowPrintOptions] = useState(false);
+  const [printJob, setPrintJob] = useState<{ from: string; to: string; category: string; rows: Expense[] } | null>(null);
   const canEditDelete = can('edit_delete_expenses');
   // السلفية والرواتب كلاهما يحتاج ربط الموظف (custody_holder_id) — انظر
   // تعليق هذا الحقل في shared/types.ts.
@@ -640,7 +663,13 @@ function GeneralExpensesTab() {
         </div>
       </div>
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={() => setShowPrintOptions(true)}
+          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          <Printer className="h-3.5 w-3.5" /> {t('طباعة كشف مصروفات')}
+        </button>
         <label className="flex items-center gap-1.5 text-xs text-slate-500">
           {t('عرض:')}
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as 'all' | ExpenseEntryType)} className="input w-auto py-1 text-xs">
@@ -1054,7 +1083,177 @@ function GeneralExpensesTab() {
           }}
         />
       )}
+
+      {showPrintOptions && (
+        <ExpensePrintOptionsModal
+          categories={mainCategories}
+          onClose={() => setShowPrintOptions(false)}
+          onSubmit={(from, to, category) => {
+            const rows = generalExpenses
+              .filter((e) => e.date >= from && e.date <= to)
+              .filter((e) => !category || e.category === category)
+              .sort((a, b) => a.date.localeCompare(b.date));
+            setPrintJob({ from, to, category, rows });
+            setShowPrintOptions(false);
+          }}
+        />
+      )}
+
+      {printJob && <ExpensesPrintDocument job={printJob} methodName={methodName} onClose={() => setPrintJob(null)} />}
     </div>
+  );
+}
+
+// اختيار الفترة والتصنيف قبل طباعة كشف المصروفات — تصنيف فارغ يعني "كل
+// التصنيفات". الفترة تُقارَن نصياً على date (YYYY-MM-DD) مباشرة، فلا حاجة
+// لتحويل تواريخ.
+function ExpensePrintOptionsModal({
+  categories,
+  onClose,
+  onSubmit,
+}: {
+  categories: ExpenseCategoryItem[];
+  onClose: () => void;
+  onSubmit: (from: string, to: string, category: string) => void;
+}) {
+  const { t } = useI18n();
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const [from, setFrom] = useState(monthStart);
+  const [to, setTo] = useState(today);
+  const [category, setCategory] = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <h2 className="text-base font-bold text-slate-800">{t('طباعة كشف مصروفات')}</h2>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('من تاريخ')}</span>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input" />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('إلى تاريخ')}</span>
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input" />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">{t('التصنيف')}</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
+              <option value="">{t('كل التصنيفات')}</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={() => from && to && onSubmit(from, to, category)}
+            disabled={!from || !to}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            <Printer className="h-3.5 w-3.5" /> {t('طباعة')}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-500">
+            {t('إلغاء')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// كشف المصروفات المطبوع — نفس نمط FinancialStatementsDocument.tsx بالضبط
+// (portal إلى <body> ليخفي CSS الطباعة بقية التطبيق كلياً ويتدفق الجدول
+// الطويل على عدة صفحات بدل أن يُقصّ عند حدود صفحة واحدة).
+function ExpensesPrintDocument({
+  job,
+  methodName,
+  onClose,
+}: {
+  job: { from: string; to: string; category: string; rows: Expense[] };
+  methodName: (id: string) => string;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const total = job.rows.reduce((sum, e) => sum + signedAmount(e), 0);
+
+  return createPortal(
+    <div className="print-document-root fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 print:static print:bg-transparent print:p-0">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:w-auto print:overflow-visible print:rounded-none print:shadow-none">
+        <div className="flex items-center justify-between border-b border-slate-100 p-4 print:hidden">
+          <h2 className="text-sm font-bold text-slate-800">{t('كشف مصروفات')}</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+            >
+              <Printer className="h-3.5 w-3.5" /> {t('طباعة / تصدير PDF')}
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="invoice-print-area space-y-4 overflow-y-auto p-6">
+          <DocumentHeader />
+          <div className="mb-2 text-center">
+            <div className="text-sm font-semibold text-brand-700">{t('كشف مصروفات')}</div>
+            <div className="text-xs text-slate-500" dir="ltr">{formatDateAr(job.from)} — {formatDateAr(job.to)}</div>
+            <div className="text-xs text-slate-400">{job.category ? `${t('التصنيف:')} ${job.category}` : t('كل التصنيفات')}</div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="w-full text-start text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-400">
+                  <th className="p-2.5 text-start font-medium">{t('التاريخ')}</th>
+                  <th className="p-2.5 text-start font-medium">{t('البند')}</th>
+                  <th className="p-2.5 text-start font-medium">{t('التصنيف')}</th>
+                  <th className="p-2.5 text-start font-medium">{t('طريقة الدفع')}</th>
+                  <th className="p-2.5 text-start font-medium">{t('المبلغ')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {job.rows.map((e) => (
+                  <tr key={e.id} className="border-b border-slate-50 last:border-0">
+                    <td className="p-2.5 text-slate-600" dir="ltr">{formatDateAr(e.date)}</td>
+                    <td className="p-2.5 text-slate-700">{e.title}</td>
+                    <td className="p-2.5 text-slate-600">{e.category}{e.sub_category ? ` — ${e.sub_category}` : ''}</td>
+                    <td className="p-2.5 text-slate-600">{methodName(e.payment_method)}</td>
+                    <td className={`p-2.5 font-medium ${isIncome(e) ? 'text-emerald-600' : 'text-slate-700'}`}>{formatMoney(signedAmount(e))}</td>
+                  </tr>
+                ))}
+                {job.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-slate-400">{t('لا توجد مصروفات ضمن هذه الفترة والتصنيف')}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold text-slate-800">
+            <span>{t('الإجمالي')}</span>
+            <span>{formatMoney(total)}</span>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
