@@ -25,7 +25,7 @@ import {
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
-import { fireBookingConversion } from '../lib/googleAds.js';
+import { initGoogleAdsTag, fireBookingConversion } from '../lib/googleAds.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -92,6 +92,14 @@ export default function OrderPage() {
          العرض فقط، بلا تذكّر */
     }
   }
+
+  // يُحقَن هنا فقط (عند فتح هذه الصفحة تحديداً)، لا لكامل التطبيق من
+  // main.tsx — حتى لا يُحتسَب استخدام الموظفين للوحة الداخلية ضمن
+  // زيارات/تحويلات الحساب الإعلاني. انظر تعليق initGoogleAdsTag في
+  // googleAds.ts؛ لا يعمل فعلياً إلا في بيئة الإنتاج.
+  useEffect(() => {
+    initGoogleAdsTag();
+  }, []);
 
   useEffect(() => {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
