@@ -65,6 +65,11 @@ const HERO_STEP_TITLES = ['الخدمة', 'بياناتك', 'التأكيد'];
 
 export default function OrderPage() {
   const [settings, setSettings] = useState<LandingPageSettings>(DEFAULT_LANDING_SETTINGS);
+  // true فقط بعد وصول رد GET /landing-settings فعلياً — قبلها settings
+  // تحمل DEFAULT_LANDING_SETTINGS (بلا hero_image_url)، فصورة الهيرو لا
+  // تُعرَض إطلاقاً حتى هذه اللحظة بدل ظهور صورة احتياطية ثم استبدالها
+  // بالصورة الحقيقية (الوميض الذي كان يظهر سابقاً).
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [services, setServices] = useState<LandingService[]>([]);
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
@@ -102,7 +107,11 @@ export default function OrderPage() {
   }, []);
 
   useEffect(() => {
-    api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
+    api
+      .get<LandingPageSettings>('/landing-settings')
+      .then(setSettings)
+      .catch(() => {})
+      .finally(() => setSettingsLoaded(true));
     api
       .get<LandingService[]>('/landing-services')
       .then((list) => setServices(list.filter((s) => s.is_active)))
@@ -292,8 +301,10 @@ export default function OrderPage() {
         <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:flex-row lg:items-stretch">
           {/* لوحة الصورة/الثقة — صورة فعلية واضحة (لا شفافية خافتة كالتصميم
               القديم) مع تدرّج داكن أسفلها لوضوح النص الأبيض فوقها. */}
-          <div className="relative min-h-[360px] w-full overflow-hidden rounded-3xl shadow-2xl lg:flex-1">
-            <img src={settings.hero_image_url || '/hero-worker.jpeg'} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <div className="relative min-h-[360px] w-full overflow-hidden rounded-3xl shadow-2xl lg:flex-1" style={{ backgroundColor: NAVY }}>
+            {settingsLoaded && (
+              <img src={settings.hero_image_url || '/hero-worker.jpeg'} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            )}
             <div
               className="absolute inset-0"
               style={{ background: `linear-gradient(180deg, ${NAVY}05 0%, ${NAVY}B3 60%, ${NAVY}F0 100%)` }}
