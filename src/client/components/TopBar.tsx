@@ -196,7 +196,11 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
             {hasUnseenNotification && <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />}
           </button>
           {showNotifications && (
-            <div className="absolute end-0 top-full z-30 mt-1 w-80 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+            // ثابت بالنسبة للشاشة (لا للزر) على الجوال — زر الجرس قد يقع في
+            // منتصف شريط ضيق، فموضع مبني على الزر (absolute end-0 بعرض
+            // ثابت 320px) يفيض خارج الشاشة. من sm فصاعداً يعود للموضع
+            // المعتاد الملاصق للزر.
+            <div className="fixed inset-x-4 top-16 z-30 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-1 sm:max-h-none sm:w-80">
               <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">{t('الإشعارات')}</div>
               {notifications.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-400">{t('لا توجد تنبيهات بعد')}</div>
