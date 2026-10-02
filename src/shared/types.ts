@@ -1565,6 +1565,10 @@ export interface Appointment {
   // تلقائياً من العقود المتكررة (لا "مضيف" واحد لها).
   created_by?: string;
   created_by_name?: string;
+  // موعد وصل عبر منصة سيرف — يُحدَّد عند الحجز، ويُقترَح تلقائياً عند السداد
+  // (PayAppointmentModal) فتُسجَّل فاتورته ضمن المحاسبة ← مبيعات منصة سيرف.
+  // غائب = موعد مباشر.
+  sales_channel?: SalesChannel;
   // غائب = 'service' (موعد خدمة عادي، كل السجلات القديمة). 'visit' =
   // زيارة معاينة عميل قبل تحديد الخدمة والسعر — انظر AppointmentKind.
   kind?: AppointmentKind;

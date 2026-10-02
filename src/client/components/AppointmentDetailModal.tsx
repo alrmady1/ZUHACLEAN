@@ -499,6 +499,11 @@ export default function AppointmentDetailModal({
                 {t('تم إضافة الموعد بواسطة:')} {appointment.created_by_name}
               </p>
             )}
+            {appointment.sales_channel === 'sarv' && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+                {t('عبر منصة سيرف')}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {canDeleteAppointment && (

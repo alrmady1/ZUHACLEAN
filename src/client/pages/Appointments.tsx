@@ -34,6 +34,7 @@ import {
   OverdueIndicator,
 } from '../components/Badge.js';
 import NewAppointmentModal from '../components/NewAppointmentModal.js';
+import { APPOINTMENT_CREATED_EVENT } from '../lib/appointmentEvents.js';
 import PayAppointmentModal from '../components/PayAppointmentModal.js';
 import AppointmentDetailModal from '../components/AppointmentDetailModal.js';
 import CustomerRatingModal from '../components/CustomerRatingModal.js';
@@ -138,6 +139,8 @@ export default function Appointments() {
     api.get<Rating[]>('/ratings').then(setRatings);
     api.get<CustomerRating[]>('/customer-ratings').then(setCustomerRatings);
     api.get<Invoice[]>('/invoices').then(setInvoices);
+    window.addEventListener(APPOINTMENT_CREATED_EVENT, refresh);
+    return () => window.removeEventListener(APPOINTMENT_CREATED_EVENT, refresh);
   }, []);
 
   const canSeeAllSchedules = can('view_all_supervisors_appointments');

@@ -1704,6 +1704,7 @@ api.post('/appointments', (req, res) => {
     // زيارة معاينة (لا خدمة أو سعر محدد بعد) بدل موعد خدمة عادي — انظر
     // AppointmentKind في shared/types.ts. غائب/'service' لا يغيّر شيئاً.
     kind: body.kind === 'visit' ? 'visit' : undefined,
+    sales_channel: body.sales_channel === 'sarv' ? 'sarv' : undefined,
     marketer_code: marketerCodeResult.marketer_code,
     marketer_id: marketerCodeResult.marketer_id,
     marketer_discount_amount: marketerCodeResult.marketer_discount_amount,

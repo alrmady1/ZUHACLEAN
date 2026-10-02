@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle } from 'lucide-react';
+import { X, Plus, Map as MapIcon, User, Sparkles, Clock, Users as TeamIcon, ChevronDown, Check, AlertTriangle, Store } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Customer, Service, Profile, Appointment, LeaveRecord, RiyadhZone, NeighborhoodZoneAssignment, CommissionEligibility, PreferredTimeOfDay, ServicePricingModel, QuoteItem } from '../../shared/types.js';
 import { SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
@@ -261,6 +261,7 @@ export default function NewAppointmentModal({
   // الموعد بذلك المسوّق مباشرة عند احتساب العمولات (انظر Settings.tsx ←
   // تبويب العمولات، وresolveMarketerCode في src/server/routes/api.ts).
   // التحليل هنا للمعاينة فقط — الخادم هو من يعتمد الخصم فعلياً عند الحفظ.
+  const [isSarvOrder, setIsSarvOrder] = useState(false);
   const [marketerCode, setMarketerCode] = useState('');
   const [marketerEligibility, setMarketerEligibility] = useState<CommissionEligibility[]>([]);
 
@@ -530,6 +531,7 @@ export default function NewAppointmentModal({
         notes: form.get('notes') || undefined,
         created_by: user?.id,
         kind: isVisit ? 'visit' : undefined,
+        sales_channel: !isVisit && isSarvOrder ? 'sarv' : undefined,
         assignments: technicianId
           ? [{ id: crypto.randomUUID(), technician_id: technicianId, technician_name: technicians.find((tech) => tech.id === technicianId)?.full_name }]
           : [],
@@ -1030,6 +1032,18 @@ export default function NewAppointmentModal({
               </div>
             )}
           </Section>
+
+          {!isVisit && (
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={isSarvOrder}
+                onChange={(e) => setIsSarvOrder(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+              />
+              <Store className="h-4 w-4 text-brand-600" /> {t('هذا الموعد عبر منصة سيرف')}
+            </label>
+          )}
 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('ملاحظات وتعليمات خاصة بالموعد')}</span>

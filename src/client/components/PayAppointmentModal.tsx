@@ -50,7 +50,7 @@ export default function PayAppointmentModal({
   // طلب عبر منصة سيرف — يُحدَّد قبل اختيار طريقة الدفع مباشرة (انظر
   // SalesChannel في shared/types.ts). المنصة تأخذ عمولة من قيمة الطلب،
   // تُحفَظ على الفاتورة فور إصدارها وتظهر في المحاسبة ← مبيعات منصة سيرف.
-  const [isSarvOrder, setIsSarvOrder] = useState(false);
+  const [isSarvOrder, setIsSarvOrder] = useState(appointment.sales_channel === 'sarv');
   const [sarvCommissionRate, setSarvCommissionRate] = useState(String(SARV_DEFAULT_COMMISSION_PERCENT));
   const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');

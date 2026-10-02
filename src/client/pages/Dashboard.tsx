@@ -26,6 +26,7 @@ import { formatMoney, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { playBellSound } from '../lib/sound.js';
+import { APPOINTMENT_CREATED_EVENT } from '../lib/appointmentEvents.js';
 
 // كل هذه المدة (بالمللي ثانية) نفحص وجود مواعيد جديدة لم يرها أحد بعد —
 // أبسط طريقة لتنبيه الجميع بموعد جديد بدون بنية اتصال لحظي (WebSocket) لا
@@ -84,7 +85,11 @@ export default function Dashboard() {
     api.get<Invoice[]>('/invoices').then(setInvoices);
     api.get<PaymentMethodOption[]>('/payment-methods').then(setPaymentMethods);
     const interval = setInterval(refreshAppointments, NEW_APPOINTMENT_POLL_MS);
-    return () => clearInterval(interval);
+    window.addEventListener(APPOINTMENT_CREATED_EVENT, refreshAppointments);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(APPOINTMENT_CREATED_EVENT, refreshAppointments);
+    };
   }, []);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import type { Lang } from '../lib/date.js';
 import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useDarkMode } from '../lib/theme.js';
 import NewAppointmentModal from './NewAppointmentModal.js';
+import { notifyAppointmentCreated } from '../lib/appointmentEvents.js';
 import { phoneMatchesQuery } from '../../shared/phone.js';
 
 // آخر وقت فتح فيه المستخدم قائمة الإشعارات على هذا الجهاز — لتحديد أيها
@@ -275,7 +276,10 @@ export default function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
           supervisors={supervisors}
           technicians={technicians}
           onClose={() => setShowQuickAdd(false)}
-          onCreated={() => api.get<Customer[]>('/customers').then(setCustomers)}
+          onCreated={() => {
+            api.get<Customer[]>('/customers').then(setCustomers);
+            notifyAppointmentCreated();
+          }}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
         />
       )}
