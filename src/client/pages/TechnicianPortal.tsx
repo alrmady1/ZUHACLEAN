@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, Camera, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
+import { MapPin, Camera, Video, Image as ImageIcon, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
 import StatCard from '../components/StatCard.js';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer } from '../../shared/types.js';
@@ -8,6 +8,7 @@ import { formatDateAr, formatTimeAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+import { uploadAppointmentVideo } from '../lib/video.js';
 import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 import DayClock from '../components/DayClock.js';
 import PersonalInfoTab from '../components/PersonalInfoTab.js';
@@ -25,6 +26,8 @@ function AppointmentCard({
   const { t } = useI18n();
   const { can } = useAuth();
   const canAddPhotos = can('add_before_after_photos');
+  const beforeVideoInput = useRef<HTMLInputElement>(null);
+  const afterVideoInput = useRef<HTMLInputElement>(null);
   const beforeCameraInput = useRef<HTMLInputElement>(null);
   const beforeGalleryInput = useRef<HTMLInputElement>(null);
   const afterCameraInput = useRef<HTMLInputElement>(null);
@@ -47,6 +50,20 @@ function AppointmentCard({
         await api.post(`/appointments/${appt.id}/photos`, { stage, data_url });
       }
       onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadVideo(stage: 'before' | 'after', files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      await uploadAppointmentVideo(appt.id, stage, file);
+      onChange();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : t('فشل رفع الفيديو'));
     } finally {
       setBusy(false);
     }
@@ -152,6 +169,40 @@ function AppointmentCard({
             </div>
           )}
         </div>
+        <button
+          disabled={busy}
+          onClick={() => beforeVideoInput.current?.click()}
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+        >
+          <Video className="h-3.5 w-3.5" /> {t('فيديو قبل')}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => afterVideoInput.current?.click()}
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+        >
+          <Video className="h-3.5 w-3.5" /> {t('فيديو بعد')}
+        </button>
+        <input
+          ref={beforeVideoInput}
+          type="file"
+          accept="video/*"
+          hidden
+          onChange={(e) => {
+            uploadVideo('before', e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={afterVideoInput}
+          type="file"
+          accept="video/*"
+          hidden
+          onChange={(e) => {
+            uploadVideo('after', e.target.files);
+            e.target.value = '';
+          }}
+        />
         <input
           ref={beforeCameraInput}
           type="file"
@@ -211,14 +262,18 @@ function AppointmentCard({
                 {appt.photos
                   .filter((p) => p.stage === 'before')
                   .map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => onOpenPhoto(p.data_url)}
-                      className="aspect-square overflow-hidden rounded-lg border border-slate-200"
-                    >
-                      <img src={p.data_url} alt="" className="h-full w-full object-cover" />
-                    </button>
+                    p.media_type === 'video' ? (
+                      <video key={p.id} src={p.data_url} controls preload="metadata" playsInline className="aspect-square w-full rounded-lg border border-slate-200 bg-black object-cover" />
+                    ) : (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => onOpenPhoto(p.data_url)}
+                        className="aspect-square overflow-hidden rounded-lg border border-slate-200"
+                      >
+                        <img src={p.data_url} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    )
                   ))}
               </div>
             </div>
@@ -230,14 +285,18 @@ function AppointmentCard({
                 {appt.photos
                   .filter((p) => p.stage === 'after')
                   .map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => onOpenPhoto(p.data_url)}
-                      className="aspect-square overflow-hidden rounded-lg border border-slate-200"
-                    >
-                      <img src={p.data_url} alt="" className="h-full w-full object-cover" />
-                    </button>
+                    p.media_type === 'video' ? (
+                      <video key={p.id} src={p.data_url} controls preload="metadata" playsInline className="aspect-square w-full rounded-lg border border-slate-200 bg-black object-cover" />
+                    ) : (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => onOpenPhoto(p.data_url)}
+                        className="aspect-square overflow-hidden rounded-lg border border-slate-200"
+                      >
+                        <img src={p.data_url} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    )
                   ))}
               </div>
             </div>

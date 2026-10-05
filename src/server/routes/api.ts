@@ -4,6 +4,8 @@ import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
   uploadAppointmentPhoto,
+  createAppointmentVideoUploadUrl,
+  finalizeAppointmentVideo,
   uploadLeavePhoto,
   uploadLandingImage,
   uploadExpenseInvoice,
@@ -1868,6 +1870,43 @@ api.post('/appointments/:id/photos', async (req, res) => {
   } catch (err) {
     console.error('❌ فشل رفع الصورة إلى Supabase Storage:', err);
     res.status(500).json({ error: 'فشل رفع الصورة' });
+  }
+});
+
+// فيديو قبل/بعد العمل — خطوتان لأن الملف أكبر من حد طلب Vercel: (1) رابط رفع
+// موقَّع يرفع إليه المتصفح مباشرة، (2) تأكيد بالمسار لتسجيله على الموعد.
+const VIDEO_STAGES = ['before', 'after', 'site'];
+
+api.post('/appointments/:id/video-upload-url', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  const { stage, file_name } = req.body ?? {};
+  if (!VIDEO_STAGES.includes(stage)) return res.status(400).json({ error: 'stage غير صالحة' });
+  try {
+    res.json(await createAppointmentVideoUploadUrl(appt.id, stage, String(file_name ?? '')));
+  } catch (err) {
+    console.error('❌ فشل إنشاء رابط رفع الفيديو:', err);
+    res.status(500).json({ error: 'فشل تجهيز رفع الفيديو' });
+  }
+});
+
+api.post('/appointments/:id/videos', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  const { stage, path } = req.body ?? {};
+  if (!VIDEO_STAGES.includes(stage) || typeof path !== 'string' || !path.startsWith(`${appt.id}/`) || path.includes('..')) {
+    return res.status(400).json({ error: 'stage و path مطلوبان' });
+  }
+  try {
+    const url = await finalizeAppointmentVideo(path);
+    appt.photos.push({ id: store.id(), stage, data_url: url, media_type: 'video', taken_at: new Date().toISOString() });
+    store.appointments.update(appt.id, { photos: appt.photos });
+    const stageLabel = stage === 'before' ? 'قبل العمل' : stage === 'after' ? 'بعد العمل' : 'الموقع الحالي';
+    logActivity(req, `تم إضافة فيديو ${stageLabel} لموعد "${appt.customer_name_snapshot ?? ''}"`);
+    res.status(201).json(appt);
+  } catch (err) {
+    console.error('❌ فشل تسجيل الفيديو:', err);
+    res.status(500).json({ error: 'تعذّر تسجيل الفيديو — تأكد من اكتمال الرفع' });
   }
 });
 

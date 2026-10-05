@@ -65,6 +65,28 @@ export async function uploadAppointmentPhoto(
   return data.signedUrl;
 }
 
+// الفيديو أكبر من أن يمر عبر دالة Vercel (حد الطلب ~4.5MB)، فيرفعه المتصفح
+// مباشرة إلى Supabase عبر رابط رفع موقَّع قصير العمر نُصدره هنا، ثم يؤكد
+// للخادم بالمسار فنخزّن رابط العرض الطويل الأمد (finalizeAppointmentVideo).
+export async function createAppointmentVideoUploadUrl(
+  appointmentId: string,
+  stage: string,
+  fileName: string,
+): Promise<{ path: string; uploadUrl: string }> {
+  await ensureBucket();
+  const ext = (/\.([a-z0-9]{2,5})$/i.exec(fileName)?.[1] ?? 'mp4').toLowerCase();
+  const path = `${appointmentId}/${stage}-video-${Date.now()}-${randomUUID()}.${ext}`;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error) throw error;
+  return { path, uploadUrl: data.signedUrl };
+}
+
+export async function finalizeAppointmentVideo(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, TEN_YEARS_IN_SECONDS);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 // نفس منطق uploadAppointmentPhoto أعلاه بالضبط، لكن لصورة داعمة مرفقة
 // بإجازة سنوية (مثل تقرير طبي) بدل صور قبل/بعد الموعد — تُخزَّن في نفس
 // الحاوية (bucket) تحت مسار "leaves/" منفصل عن مجلدات المواعيد.

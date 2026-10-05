@@ -1504,9 +1504,14 @@ export interface AppointmentPhoto {
   // (kind: 'visit')، بديلاً عن قبل/بعد التي لا معنى لها قبل تنفيذ خدمة
   // فعلية أصلاً.
   stage: 'before' | 'after' | 'site';
+  // رابط الملف في التخزين — صورة أو فيديو بحسب media_type.
   data_url: string;
+  // غائب = صورة (كل السجلات القديمة).
+  media_type?: 'image' | 'video';
   taken_at: string;
 }
+
+export const APPOINTMENT_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 export interface Payment {
   id: string;

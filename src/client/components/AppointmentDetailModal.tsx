@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown, AlertTriangle } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown, AlertTriangle, Video } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome, Rating, CustomerRating } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR, SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
@@ -13,6 +13,7 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+import { uploadAppointmentVideo } from '../lib/video.js';
 import { findDayOffConflicts } from '../../shared/weekdays.js';
 import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 
@@ -142,6 +143,8 @@ export default function AppointmentDetailModal({
   const [editDuration, setEditDuration] = useState<number | ''>(appointment.expected_duration_minutes);
   const [showEditServiceDropdown, setShowEditServiceDropdown] = useState(false);
   const editServiceBoxRef = useRef<HTMLDivElement>(null);
+  const beforeVideoInput = useRef<HTMLInputElement>(null);
+  const afterVideoInput = useRef<HTMLInputElement>(null);
   const beforeCameraInput = useRef<HTMLInputElement>(null);
   const beforeGalleryInput = useRef<HTMLInputElement>(null);
   const afterCameraInput = useRef<HTMLInputElement>(null);
@@ -455,6 +458,20 @@ export default function AppointmentDetailModal({
         await api.post(`/appointments/${appointment.id}/photos`, { stage, data_url });
       }
       onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadVideo(stage: 'before' | 'after', files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      await uploadAppointmentVideo(appointment.id, stage, file);
+      onChanged();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : t('فشل رفع الفيديو'));
     } finally {
       setBusy(false);
     }
@@ -1143,7 +1160,11 @@ export default function AppointmentDetailModal({
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {appointment.photos.map((p) => (
                     <div key={p.id} className="relative aspect-square">
-                      <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
+                      {p.media_type === 'video' ? (
+                        <video src={p.data_url} controls preload="metadata" playsInline className="h-full w-full rounded-xl bg-black object-cover" />
+                      ) : (
+                        <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
+                      )}
                       {canDeletePhotos && (
                         <button
                           type="button"
@@ -1242,6 +1263,40 @@ export default function AppointmentDetailModal({
                     </div>
                   )}
                 </div>
+                <button
+                  disabled={busy}
+                  onClick={() => beforeVideoInput.current?.click()}
+                  className="flex items-center gap-1.5 rounded-xl bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 disabled:opacity-50"
+                >
+                  <Video className="h-3.5 w-3.5" /> {t('+ فيديو قبل العمل')}
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => afterVideoInput.current?.click()}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 disabled:opacity-50"
+                >
+                  <Video className="h-3.5 w-3.5" /> {t('+ فيديو بعد العمل')}
+                </button>
+                <input
+                  ref={beforeVideoInput}
+                  type="file"
+                  accept="video/*"
+                  hidden
+                  onChange={(e) => {
+                    uploadVideo('before', e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                <input
+                  ref={afterVideoInput}
+                  type="file"
+                  accept="video/*"
+                  hidden
+                  onChange={(e) => {
+                    uploadVideo('after', e.target.files);
+                    e.target.value = '';
+                  }}
+                />
                 <input
                   ref={beforeCameraInput}
                   type="file"
@@ -1306,7 +1361,11 @@ export default function AppointmentDetailModal({
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {visiblePhotos.map((p) => (
                     <div key={p.id} className="relative aspect-square">
-                      <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
+                      {p.media_type === 'video' ? (
+                        <video src={p.data_url} controls preload="metadata" playsInline className="h-full w-full rounded-xl bg-black object-cover" />
+                      ) : (
+                        <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
+                      )}
                       {canDeletePhotos && (
                         <button
                           type="button"
