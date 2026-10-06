@@ -766,8 +766,22 @@ let db!: DbShape;
 // point in the module (the `store` export) is defined synchronously as
 // before — its methods just close over `db`, which becomes valid the
 // moment this resolves.
+//
+// On Vercel this runs at the start of EVERY request (see api/index.ts) while
+// other requests of the same instance may still be in flight. A request that
+// mutated `db` and queued its save must never have its `db` swapped for a
+// snapshot that was read from Postgres *before* that save committed —
+// otherwise the next save writes the stale snapshot back and the new record
+// (e.g. an advance, an appointment) silently vanishes. writeSeq/pendingSaves
+// detect "a local write happened since this reload started (or is still being
+// saved)", in which case the in-memory copy is newer and the reload is dropped.
+let writeSeq = 0;
+let pendingSaves = 0;
 export async function initStore(): Promise<void> {
-  db = await load();
+  const seqAtStart = writeSeq;
+  const fresh = await load();
+  if (db && (writeSeq !== seqAtStart || pendingSaves > 0)) return;
+  db = fresh;
 }
 
 // Fire-and-forget from every call site: the in-memory `db` mutation already
@@ -787,9 +801,19 @@ export async function initStore(): Promise<void> {
 // guarantees writes commit to Postgres in the same order they were queued.
 let persistTail: Promise<void> = Promise.resolve();
 function persist() {
-  persistTail = persistTail.then(() => save(db)).catch((err) => {
-    console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err);
-  });
+  writeSeq++;
+  pendingSaves++;
+  // نحفظ الكائن الذي طُبِّق عليه التعديل فعلاً — لا ما قد يحلّ محله في
+  // `db` لاحقاً بعد إعادة تحميل (initStore).
+  const target = db;
+  persistTail = persistTail
+    .then(() => save(target))
+    .catch((err) => {
+      console.error('❌ فشل حفظ البيانات في قاعدة البيانات:', err);
+    })
+    .finally(() => {
+      pendingSaves--;
+    });
   runBackupIfDue(db);
 }
 

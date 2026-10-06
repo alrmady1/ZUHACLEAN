@@ -6,6 +6,7 @@ import { ADVANCE_CATEGORY_NAME, CUSTODY_CATEGORY_NAME, ADVANCE_DEDUCTION_MODE_LA
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
+import { isAdvanceCurrent } from '../../shared/advances.js';
 
 // نفس شكل GET /commission-report (فقط الحقول المستخدَمة هنا) — انظر
 // computeCommissionReport في src/server/routes/api.ts. company_revenue
@@ -43,7 +44,12 @@ export default function AccountingTab({ showSupervisorExtras }: { showSupervisor
 
   if (!user) return null;
 
-  const myAdvances = expenses.filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === user.id);
+  // سلفيات هذا الشهر والمرحَّلة غير المسدَّدة فقط — المسدَّدة من أشهر سابقة
+  // تُطوى تحت "السلفيات المسدَّدة سابقاً" ولا تُحتسب في الحساب الحالي.
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const allMyAdvances = expenses.filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === user.id);
+  const myAdvances = allMyAdvances.filter((e) => isAdvanceCurrent(e, thisMonth));
+  const myPastSettledAdvances = allMyAdvances.filter((e) => !isAdvanceCurrent(e, thisMonth));
   const custodyGiven = expenses
     .filter((e) => e.category === CUSTODY_CATEGORY_NAME && e.custody_holder_id === user.id)
     .reduce((s, e) => s + e.amount, 0);
@@ -90,6 +96,22 @@ export default function AccountingTab({ showSupervisorExtras }: { showSupervisor
           </div>
         ) : (
           <p className="text-sm text-slate-400">{t('لا توجد سلفيات مسجَّلة')}</p>
+        )}
+        {myPastSettledAdvances.length > 0 && (
+          <details className="mt-3 border-t border-slate-100 pt-3">
+            <summary className="cursor-pointer text-xs font-medium text-slate-500">
+              {t('السلفيات المسدَّدة سابقاً')} ({myPastSettledAdvances.length})
+            </summary>
+            <div className="mt-2 divide-y divide-slate-100">
+              {myPastSettledAdvances.map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 py-2 text-xs text-slate-500">
+                  <span>{formatDateAr(a.date)}</span>
+                  <span>{formatMoney(a.amount)}</span>
+                  <span className="font-semibold text-emerald-600">{t('مسدَّدة بالكامل')}</span>
+                </div>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 

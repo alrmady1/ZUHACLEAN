@@ -24,6 +24,8 @@ import {
   FileText,
   Paperclip,
   Timer,
+  History,
+  ArrowRight,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
@@ -59,6 +61,7 @@ import { PaymentStatusBadge } from '../components/Badge.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { compressImageToDataUrl } from '../lib/image.js';
+import { isAdvanceCurrent, isAdvanceSettled } from '../../shared/advances.js';
 
 // العمر بالسنوات الكاملة من تاريخ الميلاد — يُحتسَب دائماً ديناميكياً
 // (لا يُخزَّن كرقم ثابت يصبح خاطئاً مع مرور الوقت).
@@ -218,6 +221,7 @@ export function EmployeeAccountsTab() {
   const [commissionReport, setCommissionReport] = useState<CommissionReportLite | null>(null);
   const [eligibility, setEligibility] = useState<CommissionEligibility[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showSettledAdvances, setShowSettledAdvances] = useState(false);
   // إضافة موظف جديد مباشرة من هنا — نفس نموذج زهى ← الإعدادات ← المستخدمون
   // (EmployeeFormModal مشترك بين الصفحتين)، بلا تكرار منطق الحفظ. هذا
   // التبويب نفسه مقيَّد أصلاً بصلاحية view_employee_accounts (المدير العام
@@ -251,8 +255,11 @@ export function EmployeeAccountsTab() {
         const salaryEntries = expenses
           .filter((e) => e.category === SALARY_CATEGORY_NAME && e.custody_holder_id === p.id)
           .sort(byDateDesc);
+        // سلفيات هذا الشهر والمرحَّلة غير المسدَّدة فقط — المسدَّدة من أشهر
+        // سابقة لا تظهر في حسابات الموظف/الراتب وتنتقل لصفحة "سجل السلفيات
+        // المسدَّدة" (SettledAdvancesPage).
         const advanceEntries = expenses
-          .filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === p.id)
+          .filter((e) => e.category === ADVANCE_CATEGORY_NAME && e.custody_holder_id === p.id && isAdvanceCurrent(e, currentMonth()))
           .sort(byDateDesc);
         const custodyGiven = expenses
           .filter((e) => e.category === CUSTODY_CATEGORY_NAME && e.custody_holder_id === p.id)
@@ -313,6 +320,10 @@ export function EmployeeAccountsTab() {
   const canDelete = user ? CAN_DELETE_CUSTODY_ROLES.includes(user.role) : false;
   const supervisorsForNewEmployee = allProfiles.filter((p) => p.role === 'supervisor' || p.role === 'admin_supervisor');
 
+  if (showSettledAdvances) {
+    return <SettledAdvancesPage expenses={expenses} profiles={allProfiles} onBack={() => setShowSettledAdvances(false)} />;
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -323,6 +334,12 @@ export function EmployeeAccountsTab() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setShowSettledAdvances(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <History className="h-4 w-4" /> {t('سجل السلفيات المسدَّدة')}
+          </button>
           <button
             onClick={() => setShowAddEmployee(true)}
             className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
@@ -2009,6 +2026,60 @@ function EditAdvanceSettlementModal({ advance, onClose, onSaved }: { advance: Ex
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// صفحة داخلية: كل السلفيات المسدَّدة بالكامل لكل الموظفين (أرشيف) — ما
+// سُدِّد في أشهر سابقة لا يعود يظهر في حساب الموظف أو راتبه القادم.
+function SettledAdvancesPage({ expenses, profiles, onBack }: { expenses: Expense[]; profiles: Profile[]; onBack: () => void }) {
+  const { t, tt } = useI18n();
+  const [employeeId, setEmployeeId] = useState('');
+  const rows = useMemo(
+    () =>
+      expenses
+        .filter((e) => e.category === ADVANCE_CATEGORY_NAME && isAdvanceSettled(e) && (!employeeId || e.custody_holder_id === employeeId))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [expenses, employeeId],
+  );
+  const total = rows.reduce((sum, e) => sum + e.amount, 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <button onClick={onBack} className="mb-1 flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+            <ArrowRight className="h-3.5 w-3.5" /> {t('العودة لحسابات الموظفين')}
+          </button>
+          <h2 className="text-lg font-bold text-slate-800">{t('سجل السلفيات المسدَّدة')}</h2>
+          <p className="text-sm text-slate-400">{t('السلفيات التي استُقطعت بالكامل من الرواتب — لا تظهر في حساب الموظف أو راتبه القادم')}</p>
+        </div>
+        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input w-auto text-sm">
+          <option value="">{t('كل الموظفين')}</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.full_name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="text-xl font-bold text-slate-800">{formatMoney(total)}</div>
+        <div className="text-xs text-slate-400">{tt(`إجمالي ${rows.length} سلفية مسدَّدة`, `Total of ${rows.length} settled advances`)}</div>
+      </div>
+
+      <SimpleTable
+        emptyLabel={t('لا توجد سلفيات مسدَّدة بعد')}
+        headers={[t('الموظف'), t('التاريخ'), t('البيان'), t('المبلغ'), t('الاستقطاع')]}
+        rows={rows.map((e) => [
+          e.custody_holder_name ?? '—',
+          formatDateAr(e.date),
+          e.title,
+          formatMoney(e.amount),
+          t(ADVANCE_DEDUCTION_MODE_LABELS_AR[e.advance_deduction_mode ?? 'none']),
+        ])}
+      />
     </div>
   );
 }
