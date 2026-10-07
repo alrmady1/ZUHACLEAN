@@ -1738,9 +1738,17 @@ api.post('/appointments', (req, res) => {
     appointment.kind === 'visit'
       ? [...new Set([...appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds), ...leadNotifyProfileIds()])]
       : appointmentNotifyProfileIds(appointment.supervisor_id, technicianIds);
-  const when = new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(appointment.scheduled_at),
-  );
+  // بلا timeZone صريح، Intl.DateTimeFormat يُنسِّق بتوقيت عملية Node.js
+  // نفسها — على Vercel هذا UTC دائماً، لا توقيت الرياض (+3)، فكان وقت
+  // الموعد الظاهر في نص التنبيه يسبق الوقت الفعلي بثلاث ساعات. calendar:
+  // 'gregory' صريحة أيضاً لنفس سبب formatGregorianDate في DayClock.tsx —
+  // بعض بيئات ICU تعرض التقويم الهجري افتراضياً مع locale "ar-SA".
+  const when = new Intl.DateTimeFormat('ar-SA', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Riyadh',
+    calendar: 'gregory',
+  }).format(new Date(appointment.scheduled_at));
   sendPushToProfiles(notifyIds, {
     title: appointment.kind === 'visit' ? 'زيارة معاينة جديدة' : 'موعد جديد',
     body: `${appointment.customer_name_snapshot ?? 'عميل'} — ${when}`,
