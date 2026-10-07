@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   CalendarDays,
@@ -126,6 +127,7 @@ export default function Appointments() {
   const [viewingAppt, setViewingAppt] = useState<Appointment | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calSubView, setCalSubView] = useState<'month' | 'week' | 'day'>('month');
+  const [searchParams, setSearchParams] = useSearchParams();
 
   function refresh() {
     api.get<Appointment[]>('/appointments').then(setAppointments);
@@ -142,6 +144,26 @@ export default function Appointments() {
     window.addEventListener(APPOINTMENT_CREATED_EVENT, refresh);
     return () => window.removeEventListener(APPOINTMENT_CREATED_EVENT, refresh);
   }, []);
+
+  // رابط مباشر من تنبيه فوري (Web Push — انظر sendPushToProfiles في
+  // api.ts) بصيغة ?appt=<id> يفتح تفاصيل ذلك الموعد تلقائياً فور توفّر
+  // قائمة المواعيد، بدل فتح الصفحة فقط وترك المستخدم يبحث عنه يدوياً.
+  // يُزال المعامل من الرابط فور الفتح حتى لا يُعاد فتح نفس الموعد عند أي
+  // تنقّل لاحق داخل الصفحة نفسها (تغيير تبويب/فلتر وغيره).
+  useEffect(() => {
+    const apptId = searchParams.get('appt');
+    if (!apptId || appointments.length === 0) return;
+    const target = appointments.find((a) => a.id === apptId);
+    if (target) setViewingAppt(target);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('appt');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [appointments, searchParams, setSearchParams]);
 
   const canSeeAllSchedules = can('view_all_supervisors_appointments');
   const canBook = can('create_appointments');

@@ -4,6 +4,7 @@
 // useI18n().t('النص العربي').
 export const AR_TO_EN: Record<string, string> = {
   "زهى | نظام التشغيل والصيانة": "Zaha | Operations and Maintenance System",
+  "مواعيد ليلية": "Night Appointments",
   "الموظفين": "Employees",
   "إضافة موظف": "Add Employee",
   "موظف جديد": "New Employee",

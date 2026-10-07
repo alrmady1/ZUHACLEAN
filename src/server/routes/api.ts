@@ -1744,7 +1744,10 @@ api.post('/appointments', (req, res) => {
   sendPushToProfiles(notifyIds, {
     title: appointment.kind === 'visit' ? 'زيارة معاينة جديدة' : 'موعد جديد',
     body: `${appointment.customer_name_snapshot ?? 'عميل'} — ${when}`,
-    url: '/appointments',
+    // ?appt=<id> يفتح تفاصيل هذا الموعد مباشرة عند الضغط على التنبيه
+    // (انظر useEffect المخصَّص لهذا في Appointments.tsx)، بدل فتح قائمة
+    // المواعيد العامة فقط.
+    url: `/appointments?appt=${appointment.id}`,
     tag: `appointment-${appointment.id}`,
   }).catch((err) => console.error('❌ فشل إرسال تنبيه الموعد الجديد:', err));
 });
@@ -1832,7 +1835,7 @@ api.patch('/appointments/:id', (req, res) => {
     sendPushToProfiles(leadNotifyProfileIds(), {
       title: 'اكتملت زيارة معاينة',
       body: `${updated.customer_name_snapshot ?? 'عميل'} — ${VISIT_OUTCOME_LABELS_AR[patch.visit_outcome as VisitOutcome] ?? patch.visit_outcome}`,
-      url: '/appointments',
+      url: `/appointments?appt=${updated.id}`,
       tag: `visit-${updated.id}`,
     }).catch((err) => console.error('❌ فشل إرسال تنبيه اكتمال الزيارة:', err));
   }
