@@ -1511,15 +1511,28 @@ export default function AppointmentDetailModal({
                         {paymentMethods.find((m) => m.id === p.method)?.name ?? p.method} — {formatDateAr(p.recorded_at)}
                       </div>
                     </div>
-                    {canEditPayments && (
-                      <button
-                        onClick={() => setEditingPayment(p)}
-                        title={t('تعديل المبلغ')}
-                        className="flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {p.receipt_url && (
+                        <a
+                          href={p.receipt_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={t('عرض صورة إيصال الدفع')}
+                          className="flex items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {canEditPayments && (
+                        <button
+                          onClick={() => setEditingPayment(p)}
+                          title={t('تعديل المبلغ')}
+                          className="flex items-center gap-1 rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-brand-600"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

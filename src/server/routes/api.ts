@@ -9,6 +9,7 @@ import {
   uploadLeavePhoto,
   uploadLandingImage,
   uploadExpenseInvoice,
+  uploadPaymentReceipt,
   uploadEmployeeIdPhoto,
   uploadVehicleRegistrationPhoto,
   uploadAssetPurchaseInvoice,
@@ -1924,11 +1925,12 @@ api.delete('/appointments/:id/photos/:photoId', (req, res) => {
 });
 
 // Technician: record a field payment
-api.post('/appointments/:id/payments', (req, res) => {
+api.post('/appointments/:id/payments', async (req, res) => {
   const appt = store.appointments.get(req.params.id);
   if (!appt) return res.status(404).json({ error: 'not found' });
-  const { amount, method } = req.body ?? {};
-  appt.payments.push({ id: store.id(), amount, method, recorded_at: new Date().toISOString() });
+  const { amount, method, receipt_data_url } = req.body ?? {};
+  const receipt_url = receipt_data_url ? await uploadPaymentReceipt(appt.id, receipt_data_url) : undefined;
+  appt.payments.push({ id: store.id(), amount, method, recorded_at: new Date().toISOString(), receipt_url });
   const total_paid = appt.payments.reduce((s, p) => s + p.amount, 0);
   const remaining_amount = Math.max(appt.amount - total_paid, 0);
   const payment_status = remaining_amount === 0 ? 'paid' : total_paid > 0 ? 'partial' : 'unpaid';

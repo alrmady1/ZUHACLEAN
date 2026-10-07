@@ -1523,6 +1523,11 @@ export interface Payment {
   // payment_schedule) — فقط لدفعات العقود (Contract.payments)، لا معنى
   // لها لدفعات المواعيد. انظر ContractScheduleItem أدناه.
   schedule_item_id?: string;
+  // صورة إيصال الدفع (اختياري) — تظهر إمكانية رفعها في PayAppointmentModal
+  // فقط عند اختيار طريقة دفع "شبكة" (id === 'card')، إثباتاً لعملية
+  // الدفع عبر جهاز الدفع، كما يرفق إيصال أي مصروف عام (Expense.
+  // invoice_file_url). غائبة لأي دفعة أخرى أو لم تُرفَق لها صورة.
+  receipt_url?: string;
 }
 
 // بند واحد من جدول دفعات العقد (خطة أقساط مبنية على نسب من القيمة
