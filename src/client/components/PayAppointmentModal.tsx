@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { X, Wallet, Share2, Landmark, Link2, Copy, Check, MessageCircle, Store } from 'lucide-react';
+import { X, Wallet, Share2, Landmark, Link2, Copy, Check, MessageCircle, Store, Paperclip } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Invoice, PaymentMethodOption, CompanyBankAccount, PlatformSettlementParty } from '../../shared/types.js';
 import { VAT_RATE, COMPANY_LEGAL_NAME, SARV_DEFAULT_COMMISSION_PERCENT, PLATFORM_SETTLEMENT_PARTY_LABELS_AR } from '../../shared/types.js';
@@ -8,6 +8,7 @@ import InvoiceDocument from './InvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { generateBankAccountImage, shareOrDownloadImage } from '../lib/bankAccountShare.js';
+import { compressImageToDataUrl } from '../lib/image.js';
 import { waLink } from '../lib/whatsapp.js';
 
 // تسمية عرض مختصرة لكل حالة تمارا — TAMARA_STATUS_LABELS[undefined] غير
@@ -54,6 +55,10 @@ export default function PayAppointmentModal({
   const [sarvCommissionRate, setSarvCommissionRate] = useState(String(SARV_DEFAULT_COMMISSION_PERCENT));
   const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
+  // صورة إيصال الدفع — تظهر فقط عند اختيار طريقة الدفع "شبكة" (id ===
+  // 'card')، إثباتاً لعملية الدفع عبر جهاز الدفع. اختيارية، نفس منطق
+  // "ملف الفاتورة" عند تسجيل مصروف عام (Expenses.tsx) بالضبط.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [issuedInvoice, setIssuedInvoice] = useState<Invoice | null>(null);
   const [bankAccount, setBankAccount] = useState<CompanyBankAccount | null>(null);
@@ -178,8 +183,11 @@ export default function PayAppointmentModal({
     setSubmitting(true);
     try {
       // 1) Record the collection against the appointment itself (drives the
-      //    السعر والدفع badge in the schedule table).
-      await api.post(`/appointments/${appointment.id}/payments`, { amount, method });
+      //    السعر والدفع badge in the schedule table). إيصال الدفع (إن
+      //    وُجد، ولطريقة "شبكة" فقط) يُضغَط ويُرفَع هنا أيضاً.
+      const receipt_data_url =
+        method === 'card' && receiptFile ? await compressImageToDataUrl(receiptFile) : undefined;
+      await api.post(`/appointments/${appointment.id}/payments`, { amount, method, receipt_data_url });
       // 2) Issue a formal VAT invoice for the same amount, so paying from
       //    the schedule always leaves a proper invoice behind. Service
       //    prices are VAT-inclusive, so back out the pre-tax subtotal —
@@ -334,6 +342,23 @@ export default function PayAppointmentModal({
                 </button>
               )}
             </div>
+          )}
+
+          {method === 'card' && (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-600">{t('صورة إيصال الدفع (اختياري)')}</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
+              />
+              {receiptFile && (
+                <span className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                  <Paperclip className="h-3 w-3" /> {receiptFile.name}
+                </span>
+              )}
+            </label>
           )}
         </div>
 
