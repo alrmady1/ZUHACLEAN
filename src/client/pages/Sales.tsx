@@ -249,7 +249,12 @@ export default function Sales() {
   const completedPeriodAppts = useMemo(() => periodAppts.filter((a) => a.status === 'completed'), [periodAppts]);
   const totalSales = completedPeriodAppts.reduce((s, a) => s + a.amount, 0);
   const servicesCompletedCount = completedPeriodAppts.length;
-  const remainingUnderCollection = periodAppts.reduce((s, a) => s + a.remaining_amount, 0);
+  // الطلبات الملغاة لا تُحتسَب ضمن "المتبقي تحت التحصيل" — إلغاء الطلب
+  // يعني عدم استحقاق قيمته أصلاً، فلا يبقى أي شيء "معلَّق" على العميل
+  // بسببه (بخلاف بقية الحالات التي لا تزال خدمة مستحقة فعلياً).
+  const remainingUnderCollection = periodAppts
+    .filter((a) => a.status !== 'cancelled')
+    .reduce((s, a) => s + a.remaining_amount, 0);
 
   const collectedActual = useMemo(() => {
     let total = 0;
