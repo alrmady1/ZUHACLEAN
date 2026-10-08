@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Flame } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Appointment, DistrictGeocode, LocationGeocode } from '../../shared/types.js';
+import type { Customer, Appointment, LocationGeocode } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 
 // Leaflet + Leaflet.heat محمَّلان عالمياً عبر <script> في index.html —
@@ -28,8 +28,8 @@ const HEAT_GRADIENT = {
 // (موقع العلامة الدقيق — يظهر حتى في روابط "مكان" التي لا تحمل @lat,lng
 // إطلاقاً)، ثم @lat,lng (مركز نافذة العرض، أقل دقة)، ثم q=/ll=. روابط
 // جوجل المختصرة (goo.gl/maps، maps.app.goo.gl) لا تحمل إحداثيات قابلة
-// للقراءة مباشرة من الرابط نفسه — ترجع null هنا فيبقى العميل بلا نقطة
-// دقيقة (يُحتسَب فقط ضمن كثافة حيّه كما في السابق).
+// للقراءة مباشرة من الرابط نفسه — ترجع null هنا، وتُحلّ عندئذٍ عبر الخادم
+// (انظر /location-geocodes/resolve أدناه).
 function parseLatLngFromUrl(url: string): [number, number] | null {
   const patterns = [
     /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
@@ -44,36 +44,29 @@ function parseLatLngFromUrl(url: string): [number, number] | null {
   return null;
 }
 
-// تبويب "الخريطة الحرارية" داخل صفحة العملاء — يعرض المناطق (الأحياء كما
-// كُتبت في Customer.district) الأكثر طلباً للخدمة، بحسب عدد المواعيد
-// المكتملة لعملاء كل حيّ. لا إحداثيات مخزَّنة لكل عميل على حدة (رابط
-// الموقع Customer.location_url نص حر بصيغ غير موحَّدة — روابط جوجل
-// المختصرة تحديداً لا تحمل إحداثيات قابلة للقراءة مباشرة)، فيُحلَّل موقع
-// كل حيّ فريد جغرافياً مرة واحدة فقط عبر Nominatim (نفس ما يفعله تبويب
-// "مناطق الرياض")، ويُخزَّن مشتركاً بين الجميع في districtGeocodes حتى لا
-// يُعاد البحث لاحقاً.
+// تبويب "الخريطة الحرارية" داخل صفحة العملاء. الكثافة والعلامات على
+// الخريطة نفسها تعكس موقع العميل الدقيق (المبنى) فقط — مستخرَج من رابط
+// موقعه المحفوظ (Customer.location_url)، كاملاً أو مختصراً (الأخير يُحلّ
+// عبر الخادم، انظر /location-geocodes/resolve) — بلا أي تقريب على مستوى
+// الحيّ. القائمة الجانبية "الأحياء الأكثر طلباً" نص فقط (عدد لكل حيّ كما
+// كُتب في بطاقة العميل)، لا تحتاج إحداثيات ولا تُعرَض على الخريطة.
 export default function CustomerHeatMapTab({ customers, appointments }: { customers: Customer[]; appointments: Appointment[] }) {
   const { t, tt } = useI18n();
-  const [geocodes, setGeocodes] = useState<DistrictGeocode[]>([]);
-  const [resolving, setResolving] = useState(false);
-  const [unresolved, setUnresolved] = useState<string[]>([]);
   const [locationGeocodes, setLocationGeocodes] = useState<LocationGeocode[]>([]);
   const [resolvingLocations, setResolvingLocations] = useState(false);
   const [unresolvedLocationCount, setUnresolvedLocationCount] = useState(0);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const heatLayer = useRef<any>(null);
-  const markers = useRef<any[]>([]);
   const exactMarkers = useRef<any[]>([]);
 
   useEffect(() => {
-    api.get<DistrictGeocode[]>('/district-geocodes').then(setGeocodes);
     api.get<LocationGeocode[]>('/location-geocodes').then(setLocationGeocodes);
   }, []);
 
-  // عدد المواعيد المكتملة لكل حيّ — "تم خدمة العملاء فيها" و"الأكثر طلباً"
-  // حرفياً: appointment.status === 'completed' فقط، مربوطة بحيّ العميل
-  // صاحب الموعد (Customer.district) بعد trim.
+  // عدد المواعيد المكتملة لكل حيّ — للقائمة الجانبية النصّية فقط ("الأحياء
+  // الأكثر طلباً")، appointment.status === 'completed' فقط، مربوطة بحيّ
+  // العميل صاحب الموعد (Customer.district) بعد trim.
   const countByDistrict = useMemo(() => {
     const customersById = new Map(customers.map((c) => [c.id, c]));
     const map = new Map<string, number>();
@@ -91,13 +84,10 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
     [countByDistrict],
   );
 
-  const geocodeByDistrict = useMemo(() => new Map(geocodes.map((g) => [g.district, g])), [geocodes]);
-
   // عملاء لهم موعد مكتمل واحد على الأقل ولهم رابط موقع — إحداثياتهم
   // الدقيقة تُستخرَج مباشرة من الرابط لو كان كاملاً، وإلا من ذاكرة حلّ
   // الروابط المختصرة (locationGeocodes، انظر الـ effect أدناه). هؤلاء فقط
-  // يحصلون على نقطة مضبوطة بدقة على الخريطة (بدل مركز الحيّ التقريبي
-  // فقط)، تلبيةً لطلب تحديد "مكان العميل بالضبط بحسب رابط اللوكيشن".
+  // يظهرون على الخريطة (حرارة + علامة) — بلا أي تمثيل على مستوى الحيّ.
   const completedCountByCustomer = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of appointments) {
@@ -128,7 +118,7 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
   // روابط الموقع المختصرة (لم تُحلَّل مباشرة من نصها ولا موجودة بعد في
   // الذاكرة المؤقتة) — تحتاج حلاً عبر الخادم (/location-geocodes/resolve،
   // يتبع تحويلة الرابط لأن المتصفح لا يستطيع ذلك بسبب CORS). واحد تلو
-  // الآخر مع تأخير بسيط بين كل طلب، تماماً كأسلوب تحليل الأحياء أعلاه.
+  // الآخر مع تأخير بسيط بين كل طلب.
   const unresolvedLocationUrlsKey = useMemo(() => {
     const urls = new Set<string>();
     for (const c of customers) {
@@ -171,56 +161,6 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
     };
   }, [unresolvedLocationUrlsKey]);
 
-  // تحليل جغرافي تدريجي (حيّ واحد كل ~1.1 ثانية — حدود استخدام Nominatim
-  // المجانية) للأحياء الجديدة فقط (غير الموجودة أصلاً في الذاكرة المؤقتة
-  // المحفوظة). يعمل مرة واحدة فقط لكل حيّ جديد يظهر — النتيجة تُحفَظ على
-  // الخادم فتُستخدَم فوراً بلا بحث إضافي في أي زيارة لاحقة لهذه الصفحة من
-  // أي جهاز.
-  const districtsKey = Array.from(countByDistrict.keys()).sort().join('|');
-  useEffect(() => {
-    const toResolve = Array.from(countByDistrict.keys()).filter((d) => !geocodeByDistrict.has(d));
-    if (toResolve.length === 0) {
-      setUnresolved((prev) => prev.filter((d) => countByDistrict.has(d)));
-      return;
-    }
-    let cancelled = false;
-    async function run() {
-      setResolving(true);
-      const failed: string[] = [];
-      for (const district of toResolve) {
-        if (cancelled) return;
-        try {
-          const q = encodeURIComponent(`${district}, الرياض, السعودية`);
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1`);
-          const data: { lat: string; lon: string }[] = await res.json();
-          if (data[0]) {
-            const saved = await api.post<DistrictGeocode>('/district-geocodes', {
-              district,
-              lat: Number(data[0].lat),
-              lng: Number(data[0].lon),
-            });
-            if (!cancelled) setGeocodes((prev) => [...prev.filter((g) => g.district !== district), saved]);
-          } else {
-            failed.push(district);
-          }
-        } catch {
-          failed.push(district);
-        }
-        // احترام حدود استخدام Nominatim المجانية (طلب واحد بالثانية كحد أقصى).
-        await new Promise((r) => setTimeout(r, 1100));
-      }
-      if (!cancelled) {
-        setUnresolved(failed);
-        setResolving(false);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [districtsKey]);
-
   // تهيئة الخريطة مرة واحدة فقط عند أول ظهور لهذا التبويب.
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
@@ -231,9 +171,9 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
     mapInstance.current = map;
   }, []);
 
-  // إعادة رسم طبقة الخريطة الحرارية وعلامات الأحياء كلما تغيّرت الأعداد أو
-  // اكتمل تحليل مواقع جديدة. داخل map.whenReady() + invalidateSize() عمداً
-  // — بدونها يفشل leaflet.heat أحياناً بخطأ canvas "source width is 0" لو
+  // إعادة رسم طبقة الخريطة الحرارية وعلامات العملاء الدقيقة كلما تغيّرت
+  // مواقعهم المحلولة. داخل map.whenReady() + invalidateSize() عمداً —
+  // بدونها يفشل leaflet.heat أحياناً بخطأ canvas "source width is 0" لو
   // رُسمت الطبقة قبل أن يكمل Leaflet حساب أبعاد الحاوية فعلياً (تأكَّد هذا
   // بتجربة مباشرة).
   useEffect(() => {
@@ -241,14 +181,13 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
     if (!map) return;
     map.whenReady(() => {
       map.invalidateSize();
-      const counts = Array.from(countByDistrict.values());
+      const counts = exactCustomerPoints.map((p) => p.count);
       const maxCount = counts.length > 0 ? Math.max(...counts) : 1;
-      const points: [number, number, number][] = [];
-      for (const [district, count] of countByDistrict) {
-        const g = geocodeByDistrict.get(district);
-        if (!g) continue;
-        points.push([g.lat, g.lng, Math.max(count / maxCount, 0.15)]);
-      }
+      const points: [number, number, number][] = exactCustomerPoints.map(({ coords, count }) => [
+        coords[0],
+        coords[1],
+        Math.max(count / maxCount, 0.15),
+      ]);
 
       if (heatLayer.current) map.removeLayer(heatLayer.current);
       if (points.length > 0) {
@@ -257,25 +196,8 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
           .addTo(map);
       }
 
-      for (const m of markers.current) map.removeLayer(m);
-      markers.current = [];
-      for (const [district, count] of countByDistrict) {
-        const g = geocodeByDistrict.get(district);
-        if (!g) continue;
-        const marker = L.circleMarker([g.lat, g.lng], {
-          radius: 5,
-          color: '#0F2A3D',
-          fillColor: '#0F2A3D',
-          fillOpacity: 0.8,
-          weight: 1,
-        }).addTo(map);
-        marker.bindTooltip(tt(`${district} — ${count} موعد مكتمل`, `${district} — ${count} completed jobs`));
-        markers.current.push(marker);
-      }
-
-      // نقاط دقيقة (أحمر بحدّ أبيض) فوق كثافة الحيّ — لكل عميل استُخرجت
-      // إحداثيات موقعه الفعلي من رابط اللوكيشن المحفوظ، تمييزاً عن علامة
-      // الحيّ التقريبية (الكحلية) أعلاه.
+      // نقطة دقيقة (أحمر بحدّ أبيض) فوق كل بقعة حرارة — موقع العميل الفعلي
+      // كما استُخرج من رابط اللوكيشن المحفوظ.
       for (const m of exactMarkers.current) map.removeLayer(m);
       exactMarkers.current = [];
       for (const { customer, coords, count } of exactCustomerPoints) {
@@ -292,7 +214,7 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
         exactMarkers.current.push(marker);
       }
     });
-  }, [countByDistrict, geocodeByDistrict, exactCustomerPoints, tt]);
+  }, [exactCustomerPoints, tt]);
 
   const totalCompleted = rankedDistricts.reduce((s, [, c]) => s + c, 0);
 
@@ -301,20 +223,10 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <p className="text-xs text-slate-400">
           {tt(
-            'كثافة كل حيّ تعكس عدد المواعيد المكتملة لعملائه — الحي كما كُتب في بطاقة العميل، مُحدَّد جغرافياً تلقائياً (OpenStreetMap)',
-            "Each neighborhood's intensity reflects its customers' completed appointment count — the district as written on the customer's card, geocoded automatically (OpenStreetMap)",
+            'كل نقطة على الخريطة هي موقع عميل دقيق (المبنى) مستخرَج من رابط موقعه المحفوظ — كاملاً أو مختصراً — بلا أي تقريب على مستوى الحيّ، وكثافتها تعكس عدد مواعيده المكتملة',
+            "Each point on the map is a customer's exact location (the building), extracted from their saved location link — full or shortened — with no district-level approximation, and its intensity reflects their completed appointment count",
           )}
         </p>
-        <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
-          <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-red-500" />
-          {tt(
-            'النقاط الحمراء: موقع العميل الدقيق (المبنى) مستخرَج من رابط موقعه المحفوظ، سواء كان الرابط كاملاً أو مختصراً',
-            "Red dots: a customer's exact location (the building), extracted from their saved location link — full or shortened alike",
-          )}
-        </p>
-        {resolving && (
-          <p className="mt-1 text-xs font-medium text-brand-600">{t('جارِ تحديد مواقع الأحياء الجديدة على الخريطة…')}</p>
-        )}
         {resolvingLocations && (
           <p className="mt-1 text-xs font-medium text-brand-600">{t('جارِ تحديد مواقع العملاء الدقيقة من روابطهم المحفوظة…')}</p>
         )}
@@ -350,26 +262,13 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
         </div>
       </div>
 
-      {unresolved.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            {tt(
-              'تعذّر تحديد موقع هذه الأحياء تلقائياً (تحقق من التهجئة في بطاقة العميل):',
-              'Could not locate these neighborhoods automatically (check the spelling on the customer card):',
-            )}{' '}
-            {unresolved.join('، ')}
-          </div>
-        </div>
-      )}
-
       {unresolvedLocationCount > 0 && (
         <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             {tt(
-              `تعذّر استخراج الموقع الدقيق من روابط ${unresolvedLocationCount} عميل (رابط غير صالح أو لا يحمل إحداثيات) — ظهروا على مستوى الحيّ فقط`,
-              `Could not extract an exact location from ${unresolvedLocationCount} customers' links (invalid or no coordinates found) — they still appear at district level only`,
+              `تعذّر استخراج الموقع الدقيق من روابط ${unresolvedLocationCount} عميل (رابط غير صالح أو لا يحمل إحداثيات) — لم يظهروا على الخريطة`,
+              `Could not extract an exact location from ${unresolvedLocationCount} customers' links (invalid or no coordinates found) — they do not appear on the map`,
             )}
           </div>
         </div>
