@@ -10,6 +10,40 @@ declare const L: any;
 
 const RIYADH_CENTER: [number, number] = [24.7136, 46.6753];
 
+// تدرّج "jet" الكلاسيكي (أزرق ← سماوي ← أخضر ← أصفر ← أحمر) — نفس نمط
+// الخرائط الحرارية الرياضية (طلب المستخدم مطابقته حرفياً)، بديل صريح عن
+// تدرّج leaflet.heat الافتراضي حتى لا يتغيّر المظهر تلقائياً لو تغيّر
+// إعداد المكتبة الافتراضي مستقبلاً.
+const HEAT_GRADIENT = {
+  0.0: '#0000ff',
+  0.25: '#00ffff',
+  0.5: '#00ff00',
+  0.75: '#ffff00',
+  1.0: '#ff0000',
+};
+
+// يحاول استخراج إحداثيات دقيقة (خط العرض، خط الطول) من رابط خرائط جوجل
+// كامل — نفس الدالة الموجودة في Settings.tsx (FacilityLocationMap)
+// لمواقع المرافق، مكرَّرة هنا لأنها غير مُصدَّرة من هناك. !3d/!4d أولاً
+// (موقع العلامة الدقيق — يظهر حتى في روابط "مكان" التي لا تحمل @lat,lng
+// إطلاقاً)، ثم @lat,lng (مركز نافذة العرض، أقل دقة)، ثم q=/ll=. روابط
+// جوجل المختصرة (goo.gl/maps، maps.app.goo.gl) لا تحمل إحداثيات قابلة
+// للقراءة مباشرة من الرابط نفسه — ترجع null هنا فيبقى العميل بلا نقطة
+// دقيقة (يُحتسَب فقط ضمن كثافة حيّه كما في السابق).
+function parseLatLngFromUrl(url: string): [number, number] | null {
+  const patterns = [
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return [Number(m[1]), Number(m[2])];
+  }
+  return null;
+}
+
 // تبويب "الخريطة الحرارية" داخل صفحة العملاء — يعرض المناطق (الأحياء كما
 // كُتبت في Customer.district) الأكثر طلباً للخدمة، بحسب عدد المواعيد
 // المكتملة لعملاء كل حيّ. لا إحداثيات مخزَّنة لكل عميل على حدة (رابط
@@ -27,6 +61,7 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
   const mapInstance = useRef<any>(null);
   const heatLayer = useRef<any>(null);
   const markers = useRef<any[]>([]);
+  const exactMarkers = useRef<any[]>([]);
 
   useEffect(() => {
     api.get<DistrictGeocode[]>('/district-geocodes').then(setGeocodes);
@@ -53,6 +88,26 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
   );
 
   const geocodeByDistrict = useMemo(() => new Map(geocodes.map((g) => [g.district, g])), [geocodes]);
+
+  // عملاء لهم موعد مكتمل واحد على الأقل ولهم رابط موقع يمكن استخراج
+  // إحداثيات دقيقة منه — هؤلاء فقط يحصلون على نقطة مضبوطة بدقة على
+  // الخريطة (بدل مركز الحيّ التقريبي فقط)، تلبيةً لطلب تحديد "مكان العميل
+  // بالضبط بحسب رابط اللوكيشن".
+  const exactCustomerPoints = useMemo(() => {
+    const completedCountByCustomer = new Map<string, number>();
+    for (const a of appointments) {
+      if (a.status !== 'completed') continue;
+      completedCountByCustomer.set(a.customer_id, (completedCountByCustomer.get(a.customer_id) ?? 0) + 1);
+    }
+    const points: { customer: Customer; coords: [number, number]; count: number }[] = [];
+    for (const c of customers) {
+      const count = completedCountByCustomer.get(c.id);
+      if (!count || !c.location_url) continue;
+      const coords = parseLatLngFromUrl(c.location_url);
+      if (coords) points.push({ customer: c, coords, count });
+    }
+    return points;
+  }, [customers, appointments]);
 
   // تحليل جغرافي تدريجي (حيّ واحد كل ~1.1 ثانية — حدود استخدام Nominatim
   // المجانية) للأحياء الجديدة فقط (غير الموجودة أصلاً في الذاكرة المؤقتة
@@ -135,7 +190,9 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
 
       if (heatLayer.current) map.removeLayer(heatLayer.current);
       if (points.length > 0) {
-        heatLayer.current = (L as any).heatLayer(points, { radius: 40, blur: 30, maxZoom: 14 }).addTo(map);
+        heatLayer.current = (L as any)
+          .heatLayer(points, { radius: 40, blur: 30, maxZoom: 14, gradient: HEAT_GRADIENT })
+          .addTo(map);
       }
 
       for (const m of markers.current) map.removeLayer(m);
@@ -153,8 +210,27 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
         marker.bindTooltip(tt(`${district} — ${count} موعد مكتمل`, `${district} — ${count} completed jobs`));
         markers.current.push(marker);
       }
+
+      // نقاط دقيقة (أحمر بحدّ أبيض) فوق كثافة الحيّ — لكل عميل استُخرجت
+      // إحداثيات موقعه الفعلي من رابط اللوكيشن المحفوظ، تمييزاً عن علامة
+      // الحيّ التقريبية (الكحلية) أعلاه.
+      for (const m of exactMarkers.current) map.removeLayer(m);
+      exactMarkers.current = [];
+      for (const { customer, coords, count } of exactCustomerPoints) {
+        const marker = L.circleMarker(coords, {
+          radius: 7,
+          color: '#ffffff',
+          weight: 2,
+          fillColor: '#ff0000',
+          fillOpacity: 0.95,
+        }).addTo(map);
+        marker.bindTooltip(
+          tt(`${customer.name} — ${count} موعد مكتمل (موقع دقيق)`, `${customer.name} — ${count} completed jobs (exact location)`),
+        );
+        exactMarkers.current.push(marker);
+      }
     });
-  }, [countByDistrict, geocodeByDistrict, tt]);
+  }, [countByDistrict, geocodeByDistrict, exactCustomerPoints, tt]);
 
   const totalCompleted = rankedDistricts.reduce((s, [, c]) => s + c, 0);
 
@@ -165,6 +241,13 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
           {tt(
             'كثافة كل حيّ تعكس عدد المواعيد المكتملة لعملائه — الحي كما كُتب في بطاقة العميل، مُحدَّد جغرافياً تلقائياً (OpenStreetMap)',
             "Each neighborhood's intensity reflects its customers' completed appointment count — the district as written on the customer's card, geocoded automatically (OpenStreetMap)",
+          )}
+        </p>
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
+          <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-red-500" />
+          {tt(
+            'النقاط الحمراء: موقع العميل الدقيق، مستخرَج من رابط موقعه المحفوظ (يظهر فقط لو كان الرابط كاملاً وليس مختصراً)',
+            "Red dots: a customer's exact location, extracted from their saved location link (shown only when the link is a full one, not a shortened link)",
           )}
         </p>
         {resolving && (
