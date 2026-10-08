@@ -934,6 +934,18 @@ export interface DistrictGeocode {
   resolved_at: string;
 }
 
+// نتيجة حلّ رابط موقع عميل (Customer.location_url) إلى إحداثيات دقيقة —
+// مفتاحها نص الرابط نفسه (بعكس DistrictGeocode التي مفتاحها اسم الحيّ)،
+// لأن كل عميل يحمل رابطه الخاص. تُستخدَم لتخزين نتيجة حلّ الروابط
+// المختصرة (goo.gl/maps، maps.app.goo.gl) التي لا تحمل إحداثيات قابلة
+// للقراءة من نصها مباشرة — انظر CustomerHeatMapTab.tsx.
+export interface LocationGeocode {
+  url: string;
+  lat: number;
+  lng: number;
+  resolved_at: string;
+}
+
 // نقطة بداية الفريق الميداني على خريطة مناطق الرياض (الإعدادات ← مناطق
 // الرياض) — سجل واحد (singleton) بنفس نمط LandingPageSettings/
 // CommissionConfig أدناه، وليس قائمة: نقطة انطلاق واحدة فقط (سكن العمال
