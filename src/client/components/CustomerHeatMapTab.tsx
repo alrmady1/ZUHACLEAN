@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Flame } from 'lucide-react';
 import { api } from '../lib/api.js';
-import type { Customer, Appointment, DistrictGeocode } from '../../shared/types.js';
+import type { Customer, Appointment, DistrictGeocode, LocationGeocode } from '../../shared/types.js';
 import { useI18n } from '../lib/i18n.js';
 
 // Leaflet + Leaflet.heat محمَّلان عالمياً عبر <script> في index.html —
@@ -57,6 +57,9 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
   const [geocodes, setGeocodes] = useState<DistrictGeocode[]>([]);
   const [resolving, setResolving] = useState(false);
   const [unresolved, setUnresolved] = useState<string[]>([]);
+  const [locationGeocodes, setLocationGeocodes] = useState<LocationGeocode[]>([]);
+  const [resolvingLocations, setResolvingLocations] = useState(false);
+  const [unresolvedLocationCount, setUnresolvedLocationCount] = useState(0);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const heatLayer = useRef<any>(null);
@@ -65,6 +68,7 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
 
   useEffect(() => {
     api.get<DistrictGeocode[]>('/district-geocodes').then(setGeocodes);
+    api.get<LocationGeocode[]>('/location-geocodes').then(setLocationGeocodes);
   }, []);
 
   // عدد المواعيد المكتملة لكل حيّ — "تم خدمة العملاء فيها" و"الأكثر طلباً"
@@ -89,25 +93,83 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
 
   const geocodeByDistrict = useMemo(() => new Map(geocodes.map((g) => [g.district, g])), [geocodes]);
 
-  // عملاء لهم موعد مكتمل واحد على الأقل ولهم رابط موقع يمكن استخراج
-  // إحداثيات دقيقة منه — هؤلاء فقط يحصلون على نقطة مضبوطة بدقة على
-  // الخريطة (بدل مركز الحيّ التقريبي فقط)، تلبيةً لطلب تحديد "مكان العميل
-  // بالضبط بحسب رابط اللوكيشن".
-  const exactCustomerPoints = useMemo(() => {
-    const completedCountByCustomer = new Map<string, number>();
+  // عملاء لهم موعد مكتمل واحد على الأقل ولهم رابط موقع — إحداثياتهم
+  // الدقيقة تُستخرَج مباشرة من الرابط لو كان كاملاً، وإلا من ذاكرة حلّ
+  // الروابط المختصرة (locationGeocodes، انظر الـ effect أدناه). هؤلاء فقط
+  // يحصلون على نقطة مضبوطة بدقة على الخريطة (بدل مركز الحيّ التقريبي
+  // فقط)، تلبيةً لطلب تحديد "مكان العميل بالضبط بحسب رابط اللوكيشن".
+  const completedCountByCustomer = useMemo(() => {
+    const m = new Map<string, number>();
     for (const a of appointments) {
       if (a.status !== 'completed') continue;
-      completedCountByCustomer.set(a.customer_id, (completedCountByCustomer.get(a.customer_id) ?? 0) + 1);
+      m.set(a.customer_id, (m.get(a.customer_id) ?? 0) + 1);
     }
+    return m;
+  }, [appointments]);
+
+  const geocodeByUrl = useMemo(() => new Map(locationGeocodes.map((g) => [g.url, g])), [locationGeocodes]);
+
+  const exactCustomerPoints = useMemo(() => {
     const points: { customer: Customer; coords: [number, number]; count: number }[] = [];
     for (const c of customers) {
       const count = completedCountByCustomer.get(c.id);
       if (!count || !c.location_url) continue;
-      const coords = parseLatLngFromUrl(c.location_url);
-      if (coords) points.push({ customer: c, coords, count });
+      const direct = parseLatLngFromUrl(c.location_url);
+      if (direct) {
+        points.push({ customer: c, coords: direct, count });
+        continue;
+      }
+      const resolved = geocodeByUrl.get(c.location_url);
+      if (resolved) points.push({ customer: c, coords: [resolved.lat, resolved.lng], count });
     }
     return points;
-  }, [customers, appointments]);
+  }, [customers, completedCountByCustomer, geocodeByUrl]);
+
+  // روابط الموقع المختصرة (لم تُحلَّل مباشرة من نصها ولا موجودة بعد في
+  // الذاكرة المؤقتة) — تحتاج حلاً عبر الخادم (/location-geocodes/resolve،
+  // يتبع تحويلة الرابط لأن المتصفح لا يستطيع ذلك بسبب CORS). واحد تلو
+  // الآخر مع تأخير بسيط بين كل طلب، تماماً كأسلوب تحليل الأحياء أعلاه.
+  const unresolvedLocationUrlsKey = useMemo(() => {
+    const urls = new Set<string>();
+    for (const c of customers) {
+      if (!completedCountByCustomer.get(c.id) || !c.location_url) continue;
+      if (parseLatLngFromUrl(c.location_url)) continue;
+      if (geocodeByUrl.has(c.location_url)) continue;
+      urls.add(c.location_url);
+    }
+    return Array.from(urls).sort().join('|');
+  }, [customers, completedCountByCustomer, geocodeByUrl]);
+
+  useEffect(() => {
+    const toResolve = unresolvedLocationUrlsKey ? unresolvedLocationUrlsKey.split('|') : [];
+    if (toResolve.length === 0) {
+      setUnresolvedLocationCount(0);
+      return;
+    }
+    let cancelled = false;
+    async function run() {
+      setResolvingLocations(true);
+      let failedCount = 0;
+      for (const url of toResolve) {
+        if (cancelled) return;
+        try {
+          const resolved = await api.post<LocationGeocode>('/location-geocodes/resolve', { url });
+          if (!cancelled) setLocationGeocodes((prev) => [...prev.filter((g) => g.url !== url), resolved]);
+        } catch {
+          failedCount += 1;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (!cancelled) {
+        setUnresolvedLocationCount(failedCount);
+        setResolvingLocations(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [unresolvedLocationUrlsKey]);
 
   // تحليل جغرافي تدريجي (حيّ واحد كل ~1.1 ثانية — حدود استخدام Nominatim
   // المجانية) للأحياء الجديدة فقط (غير الموجودة أصلاً في الذاكرة المؤقتة
@@ -246,12 +308,15 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
         <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
           <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-red-500" />
           {tt(
-            'النقاط الحمراء: موقع العميل الدقيق، مستخرَج من رابط موقعه المحفوظ (يظهر فقط لو كان الرابط كاملاً وليس مختصراً)',
-            "Red dots: a customer's exact location, extracted from their saved location link (shown only when the link is a full one, not a shortened link)",
+            'النقاط الحمراء: موقع العميل الدقيق (المبنى) مستخرَج من رابط موقعه المحفوظ، سواء كان الرابط كاملاً أو مختصراً',
+            "Red dots: a customer's exact location (the building), extracted from their saved location link — full or shortened alike",
           )}
         </p>
         {resolving && (
           <p className="mt-1 text-xs font-medium text-brand-600">{t('جارِ تحديد مواقع الأحياء الجديدة على الخريطة…')}</p>
+        )}
+        {resolvingLocations && (
+          <p className="mt-1 text-xs font-medium text-brand-600">{t('جارِ تحديد مواقع العملاء الدقيقة من روابطهم المحفوظة…')}</p>
         )}
       </div>
 
@@ -294,6 +359,18 @@ export default function CustomerHeatMapTab({ customers, appointments }: { custom
               'Could not locate these neighborhoods automatically (check the spelling on the customer card):',
             )}{' '}
             {unresolved.join('، ')}
+          </div>
+        </div>
+      )}
+
+      {unresolvedLocationCount > 0 && (
+        <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            {tt(
+              `تعذّر استخراج الموقع الدقيق من روابط ${unresolvedLocationCount} عميل (رابط غير صالح أو لا يحمل إحداثيات) — ظهروا على مستوى الحيّ فقط`,
+              `Could not extract an exact location from ${unresolvedLocationCount} customers' links (invalid or no coordinates found) — they still appear at district level only`,
+            )}
           </div>
         </div>
       )}

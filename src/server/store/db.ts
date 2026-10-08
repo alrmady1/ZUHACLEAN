@@ -41,6 +41,7 @@ import type {
   RiyadhZone,
   NeighborhoodZoneAssignment,
   DistrictGeocode,
+  LocationGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
   TranslationOverride,
@@ -176,6 +177,10 @@ interface DbShape {
   // "الخريطة الحرارية" بصفحة العملاء. انظر DistrictGeocode في
   // src/shared/types.ts.
   districtGeocodes: DistrictGeocode[];
+  // ذاكرة تخزين مؤقت لنتائج حلّ روابط موقع العملاء المختصرة إلى إحداثيات
+  // دقيقة — تُستخدَم أيضاً في "الخريطة الحرارية". انظر LocationGeocode في
+  // src/shared/types.ts.
+  locationGeocodes: LocationGeocode[];
   // نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) على نفس الخريطة —
   // انظر WorkersHousingLocation في src/shared/types.ts.
   workersHousingLocation: WorkersHousingLocation;
@@ -515,6 +520,7 @@ function seed(): DbShape {
     riyadhZones: defaultRiyadhZones(now),
     neighborhoodZoneAssignments: defaultNeighborhoodAssignments(),
     districtGeocodes: [],
+    locationGeocodes: [],
     workersHousingLocation: { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: now },
     companyBankAccount: { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: now },
     commissionConfig: { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() },
@@ -694,6 +700,7 @@ async function load(): Promise<DbShape> {
     if (!parsed.riyadhZones) parsed.riyadhZones = defaultRiyadhZones(new Date().toISOString());
     if (!parsed.neighborhoodZoneAssignments) parsed.neighborhoodZoneAssignments = defaultNeighborhoodAssignments();
     if (!parsed.districtGeocodes) parsed.districtGeocodes = [];
+    if (!parsed.locationGeocodes) parsed.locationGeocodes = [];
     if (!parsed.workersHousingLocation) parsed.workersHousingLocation = { ...DEFAULT_WORKERS_HOUSING_LOCATION, updated_at: new Date().toISOString() };
     if (!parsed.companyBankAccount) parsed.companyBankAccount = { ...DEFAULT_COMPANY_BANK_ACCOUNT, updated_at: new Date().toISOString() };
     if (!parsed.commissionConfig) parsed.commissionConfig = { ...DEFAULT_COMMISSION_CONFIG, updated_at: new Date().toISOString() };
@@ -1391,6 +1398,18 @@ export const store = {
       const idx = db.districtGeocodes.findIndex((x) => x.district === g.district);
       if (idx === -1) db.districtGeocodes.push(g);
       else db.districtGeocodes[idx] = g;
+      persist();
+      return g;
+    },
+  },
+  locationGeocodes: {
+    list: () => db.locationGeocodes,
+    get: (url: string) => db.locationGeocodes.find((x) => x.url === url),
+    // نص الرابط نفسه هو المفتاح — يستبدل أي نتيجة سابقة لنفس الرابط بدل تكرارها.
+    upsert: (g: LocationGeocode) => {
+      const idx = db.locationGeocodes.findIndex((x) => x.url === g.url);
+      if (idx === -1) db.locationGeocodes.push(g);
+      else db.locationGeocodes[idx] = g;
       persist();
       return g;
     },

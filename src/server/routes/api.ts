@@ -71,6 +71,7 @@ import type {
   RiyadhZone,
   NeighborhoodZoneAssignment,
   DistrictGeocode,
+  LocationGeocode,
   WorkersHousingLocation,
   CompanyBankAccount,
   Vehicle,
@@ -4126,6 +4127,74 @@ api.post('/district-geocodes', (req, res) => {
   const entry: DistrictGeocode = { district, lat, lng, resolved_at: new Date().toISOString() };
   store.districtGeocodes.upsert(entry);
   res.status(201).json(entry);
+});
+
+// ---------------------------------------------------------------------------
+// حلّ روابط موقع العملاء (Customer.location_url) إلى إحداثيات دقيقة —
+// تُستخدَم في "الخريطة الحرارية" لوضع نقطة على مكان العميل بالضبط (المبنى)
+// بدل مركز الحيّ التقريبي فقط. الروابط الكاملة (تحمل @lat,lng أو !3d!4d في
+// نصها) تُحلَّل مباشرة في المتصفح بلا حاجة لهذا المسار إطلاقاً. أما الروابط
+// المختصرة (goo.gl/maps، maps.app.goo.gl) فلا تحمل إحداثيات قابلة للقراءة
+// من نصها — الوجهة النهائية معروفة فقط لخادم جوجل، فيجب اتباع التحويلة
+// (HTTP redirect) من الخادم هنا (CORS يمنع هذا من المتصفح مباشرة). النتيجة
+// تُخزَّن مشتركة بين الجميع في locationGeocodes (مفتاحها نص الرابط نفسه)
+// فلا يُعاد حلّ نفس الرابط لاحقاً.
+// ---------------------------------------------------------------------------
+const LOCATION_URL_COORD_PATTERNS = [
+  /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+  /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+  /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+  /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+];
+function extractLatLngFromText(text: string): { lat: number; lng: number } | null {
+  for (const re of LOCATION_URL_COORD_PATTERNS) {
+    const m = text.match(re);
+    if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
+  }
+  return null;
+}
+
+api.get('/location-geocodes', (_req, res) => res.json(store.locationGeocodes.list()));
+
+api.post('/location-geocodes/resolve', async (req, res) => {
+  const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  if (!url) return res.status(400).json({ error: 'url مطلوب' });
+
+  const cached = store.locationGeocodes.get(url);
+  if (cached) return res.json(cached);
+
+  const direct = extractLatLngFromText(url);
+  if (direct) {
+    const entry: LocationGeocode = { url, ...direct, resolved_at: new Date().toISOString() };
+    store.locationGeocodes.upsert(entry);
+    return res.status(201).json(entry);
+  }
+
+  // اتباع تحويلة الرابط المختصر — User-Agent متصفح حقيقي لأن جوجل قد يرفض
+  // أو يُغيّر استجابته لطلبات بلا هذا الترويسة. مهلة 8 ثوانٍ كحدّ أقصى حتى
+  // لا يتعلّق الطلب لو كان الرابط غير صالح أو الشبكة بطيئة.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      },
+    });
+    let coords = extractLatLngFromText(response.url || url);
+    if (!coords) coords = extractLatLngFromText(await response.text());
+    if (!coords) return res.status(422).json({ error: 'تعذّر استخراج الإحداثيات من هذا الرابط' });
+    const entry: LocationGeocode = { url, ...coords, resolved_at: new Date().toISOString() };
+    store.locationGeocodes.upsert(entry);
+    res.status(201).json(entry);
+  } catch {
+    res.status(422).json({ error: 'تعذّر الوصول إلى الرابط' });
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 // نقطة انطلاق الفريق الميداني (سكن العمال افتراضياً) — نفس خريطة مناطق
