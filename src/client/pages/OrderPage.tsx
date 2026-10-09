@@ -541,6 +541,20 @@ export default function OrderPage() {
         </section>
       )}
 
+      {/* رقم الهاتف بسطر مستقل وبحجم كبير تحت شريط تابي وتمارا — نقرة واحدة
+          تفتح الاتصال المباشر (tel:). مستقل عن إعداد إظهار الشريط أعلاه. */}
+      <section className="px-5 pb-2 pt-4 text-center sm:px-10">
+        <a
+          href={`tel:${COMPANY_PHONE}`}
+          dir="ltr"
+          aria-label={`اتصل بنا ${COMPANY_PHONE}`}
+          className="mx-auto block w-fit rounded-3xl bg-white px-8 py-3 text-4xl font-extrabold tracking-wide shadow-md transition hover:shadow-lg sm:px-12 sm:text-6xl"
+          style={{ color: NAVY }}
+        >
+          {COMPANY_PHONE}
+        </a>
+      </section>
+
       {/* ============================== الخدمات ============================== */}
       <section id="services" className="mx-auto max-w-6xl px-5 py-16 sm:px-10">
         <div className="mb-10 text-center">
