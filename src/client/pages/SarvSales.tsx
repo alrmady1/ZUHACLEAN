@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Store } from 'lucide-react';
+import { Store, Printer } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Invoice, PaymentMethodOption, PlatformSettlementParty } from '../../shared/types.js';
 import { PLATFORM_SETTLEMENT_PARTY_LABELS_AR } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
+import { sarvCommissionAmount } from '../../shared/sarv.js';
+import SarvInvoiceDocument from '../components/SarvInvoiceDocument.js';
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -27,6 +29,7 @@ export function SarvSalesTab() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState<Invoice | null>(null);
 
   function refresh() {
     setLoading(true);
@@ -52,7 +55,7 @@ export function SarvSalesTab() {
     let totalCommission = 0;
     for (const i of sarvInvoices) {
       totalSales += i.total;
-      totalCommission += i.platform_commission_amount ?? 0;
+      totalCommission += sarvCommissionAmount(i);
     }
     return { totalSales, totalCommission, netDue: totalSales - totalCommission };
   }, [sarvInvoices]);
@@ -106,6 +109,7 @@ export function SarvSalesTab() {
                   <th className="p-3 text-start font-medium">{t('نسبة العمولة')}</th>
                   <th className="p-3 text-start font-medium">{t('قيمة العمولة')}</th>
                   <th className="p-3 text-start font-medium">{t('مَن استلم المبلغ؟')}</th>
+                  <th className="p-3 text-start font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -123,7 +127,7 @@ export function SarvSalesTab() {
                     <td className="p-3 text-slate-600">
                       {i.platform_commission_rate != null ? tt(`${i.platform_commission_rate}%`, `${i.platform_commission_rate}%`) : '—'}
                     </td>
-                    <td className="p-3 text-slate-600">{i.platform_commission_amount != null ? formatMoney(i.platform_commission_amount) : '—'}</td>
+                    <td className="p-3 text-slate-600">{formatMoney(sarvCommissionAmount(i))}</td>
                     <td className="p-3">
                       <select
                         value={i.platform_settled_by ?? 'company'}
@@ -138,6 +142,15 @@ export function SarvSalesTab() {
                         ))}
                       </select>
                     </td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => setPrinting(i)}
+                        title={t('طباعة فاتورة سيرف')}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                      >
+                        <Printer className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -145,6 +158,8 @@ export function SarvSalesTab() {
           </div>
         )}
       </div>
+
+      {printing && <SarvInvoiceDocument invoice={printing} paymentMethods={paymentMethods} onClose={() => setPrinting(null)} />}
     </div>
   );
 }

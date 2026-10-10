@@ -3059,7 +3059,7 @@ api.post('/invoices', (req, res) => {
   const isSarvOrder = body.sales_channel === 'sarv';
   const platformCommissionRate = isSarvOrder ? Number(body.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT) : undefined;
   const platformCommissionAmount =
-    isSarvOrder && platformCommissionRate !== undefined ? Math.round(total * (platformCommissionRate / 100) * 100) / 100 : undefined;
+    isSarvOrder && platformCommissionRate !== undefined ? Math.round(subtotal * (platformCommissionRate / 100) * 100) / 100 : undefined;
 
   const invoice: Invoice = {
     id: store.id(),

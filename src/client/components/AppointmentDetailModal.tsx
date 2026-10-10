@@ -15,6 +15,7 @@ import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
 import { compressImageToDataUrl } from '../lib/image.js';
 import { uploadAppointmentMedia } from '../lib/video.js';
 import MediaUploadButton from './MediaUploadButton.js';
+import SarvInvoiceDocument from './SarvInvoiceDocument.js';
 import { findDayOffConflicts } from '../../shared/weekdays.js';
 import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 
@@ -124,6 +125,7 @@ export default function AppointmentDetailModal({
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [showSarvInvoice, setShowSarvInvoice] = useState(false);
   const [editingTeam, setEditingTeam] = useState(false);
   const [teamSupervisorId, setTeamSupervisorId] = useState(appointment.supervisor_id ?? '');
   const [teamTechnicianId, setTeamTechnicianId] = useState(appointment.assignments[0]?.technician_id ?? '');
@@ -1282,6 +1284,14 @@ export default function AppointmentDetailModal({
                     <Printer className="h-3.5 w-3.5" /> {t('إعادة طباعة الفاتورة')}
                   </button>
                 )}
+                {invoice?.sales_channel === 'sarv' && appointment.status === 'completed' && canReprintInvoice && (
+                  <button
+                    onClick={() => setShowSarvInvoice(true)}
+                    className="flex items-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> {t('طباعة فاتورة سيرف')}
+                  </button>
+                )}
                 {invoice && appointment.status === 'completed' && customer?.phone && !serviceRating && (
                   <a
                     href={waLink(
@@ -1441,6 +1451,10 @@ export default function AppointmentDetailModal({
           paymentMethods={paymentMethods}
           onClose={() => setShowInvoice(false)}
         />
+      )}
+
+      {showSarvInvoice && invoice && (
+        <SarvInvoiceDocument invoice={invoice} paymentMethods={paymentMethods} onClose={() => setShowSarvInvoice(false)} />
       )}
     </div>
   );

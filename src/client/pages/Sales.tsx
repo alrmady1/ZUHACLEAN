@@ -21,6 +21,7 @@ import {
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney } from '../lib/date.js';
 import InvoiceDocument from '../components/InvoiceDocument.js';
+import SarvInvoiceDocument from '../components/SarvInvoiceDocument.js';
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 
@@ -210,6 +211,7 @@ export default function Sales() {
   const [submitting, setSubmitting] = useState(false);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [viewingSarvInvoice, setViewingSarvInvoice] = useState<Invoice | null>(null);
   const [isSarvOrder, setIsSarvOrder] = useState(false);
   const [sarvCommissionRate, setSarvCommissionRate] = useState(String(SARV_DEFAULT_COMMISSION_PERCENT));
   const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
@@ -542,6 +544,14 @@ export default function Sales() {
                       >
                         <Printer className="h-3.5 w-3.5" /> {t('عرض / طباعة')}
                       </button>
+                      {i.sales_channel === 'sarv' && (
+                        <button
+                          onClick={() => setViewingSarvInvoice(i)}
+                          className="mt-1 flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline"
+                        >
+                          <Store className="h-3.5 w-3.5" /> {t('طباعة فاتورة سيرف')}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -775,6 +785,10 @@ export default function Sales() {
           paymentMethods={paymentMethods}
           onClose={() => setViewingInvoice(null)}
         />
+      )}
+
+      {viewingSarvInvoice && (
+        <SarvInvoiceDocument invoice={viewingSarvInvoice} paymentMethods={paymentMethods} onClose={() => setViewingSarvInvoice(null)} />
       )}
     </div>
   );
