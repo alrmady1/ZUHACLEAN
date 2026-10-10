@@ -16,6 +16,7 @@ import { compressImageToDataUrl } from '../lib/image.js';
 import { uploadAppointmentMedia } from '../lib/video.js';
 import MediaUploadButton from './MediaUploadButton.js';
 import SarvInvoiceDocument from './SarvInvoiceDocument.js';
+import MediaLightbox, { MediaThumb, type LightboxItem } from './MediaLightbox.js';
 import { findDayOffConflicts } from '../../shared/weekdays.js';
 import { findLeaveConflicts, findHolidayWorkConflicts } from '../../shared/leaves.js';
 
@@ -73,6 +74,11 @@ function computeServicesDuration(chosen: Service[], quantities: Record<string, n
 }
 
 const STATUS_ORDER: AppointmentStatus[] = ['pending_review', 'scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
+const toLightboxItem = (p: { data_url: string; media_type?: 'image' | 'video' }): LightboxItem => ({
+  url: p.data_url,
+  isVideo: p.media_type === 'video',
+});
+
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
   { value: 'all', label: 'الكل' },
   { value: 'before', label: 'قبل العمل' },
@@ -126,6 +132,7 @@ export default function AppointmentDetailModal({
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showSarvInvoice, setShowSarvInvoice] = useState(false);
+  const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [editingTeam, setEditingTeam] = useState(false);
   const [teamSupervisorId, setTeamSupervisorId] = useState(appointment.supervisor_id ?? '');
   const [teamTechnicianId, setTeamTechnicianId] = useState(appointment.assignments[0]?.technician_id ?? '');
@@ -1152,13 +1159,13 @@ export default function AppointmentDetailModal({
 
               {appointment.photos.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {appointment.photos.map((p) => (
+                  {appointment.photos.map((p, idx) => (
                     <div key={p.id} className="relative aspect-square">
-                      {p.media_type === 'video' ? (
-                        <video src={p.data_url} controls preload="metadata" playsInline className="h-full w-full rounded-xl bg-black object-cover" />
-                      ) : (
-                        <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
-                      )}
+                      <MediaThumb
+                        item={{ url: p.data_url, isVideo: p.media_type === 'video' }}
+                        alt={p.stage}
+                        onOpen={() => setLightbox({ items: appointment.photos.map(toLightboxItem), index: idx })}
+                      />
                       {canDeletePhotos && (
                         <button
                           type="button"
@@ -1221,13 +1228,13 @@ export default function AppointmentDetailModal({
 
               {visiblePhotos.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {visiblePhotos.map((p) => (
+                  {visiblePhotos.map((p, idx) => (
                     <div key={p.id} className="relative aspect-square">
-                      {p.media_type === 'video' ? (
-                        <video src={p.data_url} controls preload="metadata" playsInline className="h-full w-full rounded-xl bg-black object-cover" />
-                      ) : (
-                        <img src={p.data_url} alt={p.stage} className="h-full w-full rounded-xl object-cover" />
-                      )}
+                      <MediaThumb
+                        item={{ url: p.data_url, isVideo: p.media_type === 'video' }}
+                        alt={p.stage}
+                        onOpen={() => setLightbox({ items: visiblePhotos.map(toLightboxItem), index: idx })}
+                      />
                       {canDeletePhotos && (
                         <button
                           type="button"
@@ -1452,6 +1459,8 @@ export default function AppointmentDetailModal({
           onClose={() => setShowInvoice(false)}
         />
       )}
+
+      {lightbox && <MediaLightbox items={lightbox.items} startIndex={lightbox.index} onClose={() => setLightbox(null)} />}
 
       {showSarvInvoice && invoice && (
         <SarvInvoiceDocument invoice={invoice} paymentMethods={paymentMethods} onClose={() => setShowSarvInvoice(false)} />

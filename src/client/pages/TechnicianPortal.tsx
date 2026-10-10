@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapPin, Camera, X, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
+import { MapPin, Camera, ChevronRight, ChevronLeft, LayoutGrid, List, ChevronDown, Clock, CheckCircle2, CalendarClock } from 'lucide-react';
 import StatCard from '../components/StatCard.js';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer } from '../../shared/types.js';
@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { uploadAppointmentMedia } from '../lib/video.js';
 import MediaUploadButton from '../components/MediaUploadButton.js';
+import MediaLightbox, { MediaThumb, type LightboxItem } from '../components/MediaLightbox.js';
 import { WEEKDAYS_HEADER, getMonthGridDays } from '../lib/calendarGrid.js';
 import DayClock from '../components/DayClock.js';
 import PersonalInfoTab from '../components/PersonalInfoTab.js';
@@ -17,11 +18,11 @@ import AccountingTab from '../components/AccountingTab.js';
 function AppointmentCard({
   appt,
   onChange,
-  onOpenPhoto,
+  onOpenMedia,
 }: {
   appt: Appointment;
   onChange: () => void;
-  onOpenPhoto: (url: string) => void;
+  onOpenMedia: (items: LightboxItem[], index: number) => void;
 }) {
   const { t } = useI18n();
   const { can } = useAuth();
@@ -90,57 +91,27 @@ function AppointmentCard({
       </div>
       )}
 
-      {/* صور مصغّرة لما تم رفعه فعلياً — الأزرار أعلاه كانت تعرض العدد فقط
-          بلا أي طريقة لاستعراض الصور نفسها؛ النقر على أي مصغّرة يفتحها
-          بالحجم الكامل عبر onOpenPhoto. */}
+      {/* صور وفيديوهات مصغّرة لما تم رفعه فعلياً — النقر على أي منها يفتح
+          معاينتها بالحجم الكامل (مع تصفّح بقية وسائط نفس المرحلة). */}
       {appt.photos.length > 0 && (
         <div className="mt-3 space-y-2">
-          {beforeCount > 0 && (
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-slate-400">{t('صورة قبل')}</div>
-              <div className="grid grid-cols-5 gap-1.5">
-                {appt.photos
-                  .filter((p) => p.stage === 'before')
-                  .map((p) => (
-                    p.media_type === 'video' ? (
-                      <video key={p.id} src={p.data_url} controls preload="metadata" playsInline className="aspect-square w-full rounded-lg border border-slate-200 bg-black object-cover" />
-                    ) : (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => onOpenPhoto(p.data_url)}
-                        className="aspect-square overflow-hidden rounded-lg border border-slate-200"
-                      >
-                        <img src={p.data_url} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    )
+          {(['before', 'after'] as const).map((stage) => {
+            const media = appt.photos.filter((p) => p.stage === stage);
+            if (media.length === 0) return null;
+            const items = media.map((p) => ({ url: p.data_url, isVideo: p.media_type === 'video' }));
+            return (
+              <div key={stage}>
+                <div className="mb-1 text-[11px] font-medium text-slate-400">{stage === 'before' ? t('صورة قبل') : t('صورة بعد')}</div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {media.map((p, idx) => (
+                    <div key={p.id} className="aspect-square overflow-hidden rounded-lg border border-slate-200">
+                      <MediaThumb item={items[idx]} onOpen={() => onOpenMedia(items, idx)} />
+                    </div>
                   ))}
+                </div>
               </div>
-            </div>
-          )}
-          {afterCount > 0 && (
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-slate-400">{t('صورة بعد')}</div>
-              <div className="grid grid-cols-5 gap-1.5">
-                {appt.photos
-                  .filter((p) => p.stage === 'after')
-                  .map((p) => (
-                    p.media_type === 'video' ? (
-                      <video key={p.id} src={p.data_url} controls preload="metadata" playsInline className="aspect-square w-full rounded-lg border border-slate-200 bg-black object-cover" />
-                    ) : (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => onOpenPhoto(p.data_url)}
-                        className="aspect-square overflow-hidden rounded-lg border border-slate-200"
-                      >
-                        <img src={p.data_url} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    )
-                  ))}
-              </div>
-            </div>
-          )}
+            );
+          })}
         </div>
       )}
     </div>
@@ -185,7 +156,7 @@ export default function TechnicianPortal() {
   const [asTechnician, setAsTechnician] = useState<string | undefined>(
     user?.role === 'technician' ? user.id : undefined,
   );
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   // خيارات عرض المواعيد: "ساعة" (الافتراضي — قرص ساعة تفاعلي لمواعيد يوم
   // واحد، انظر DayClock.tsx)، "الكل" (قائمة زمنية كاملة)، أو جدول "يومي"،
   // أو جدول "شهري" — الأخيران يستخدمان نفس بطاقة الموعد الكاملة (صور،
@@ -278,7 +249,7 @@ export default function TechnicianPortal() {
               />
               {expandedId === appt.id && (
                 <div className="mt-2">
-                  <AppointmentCard appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+                  <AppointmentCard appt={appt} onChange={refresh} onOpenMedia={(items, index) => setLightbox({ items, index })} />
                 </div>
               )}
             </div>
@@ -289,7 +260,7 @@ export default function TechnicianPortal() {
     return (
       <div className="space-y-3">
         {list.map((appt) => (
-          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+          <AppointmentCard key={appt.id} appt={appt} onChange={refresh} onOpenMedia={(items, index) => setLightbox({ items, index })} />
         ))}
       </div>
     );
@@ -426,7 +397,7 @@ export default function TechnicianPortal() {
             (() => {
               const selected = appointments.find((a) => a.id === clockSelectedId);
               return selected ? (
-                <AppointmentCard appt={selected} onChange={refresh} onOpenPhoto={setLightboxUrl} />
+                <AppointmentCard appt={selected} onChange={refresh} onOpenMedia={(items, index) => setLightbox({ items, index })} />
               ) : null;
             })()}
         </div>
@@ -517,22 +488,7 @@ export default function TechnicianPortal() {
         </>
       )}
 
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <img src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
-          <button
-            type="button"
-            onClick={() => setLightboxUrl(null)}
-            aria-label={t('إغلاق')}
-            className="absolute end-4 top-4 rounded-full bg-white/90 p-2 text-slate-700 hover:bg-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      )}
+      {lightbox && <MediaLightbox items={lightbox.items} startIndex={lightbox.index} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
