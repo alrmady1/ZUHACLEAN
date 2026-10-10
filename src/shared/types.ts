@@ -133,7 +133,8 @@ export type PermissionKey =
   | 'view_expiry_documents'
   | 'view_notifications_page'
   | 'view_sarv_sales_page'
-  | 'manage_sarv_settings';
+  | 'manage_sarv_settings'
+  | 'print_sarv_invoice';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -199,6 +200,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_notifications_page: 'الاطلاع على سجل الإشعارات وإرسال رسائل للموظفين (الإعدادات)',
   view_sarv_sales_page: 'الاطلاع على تبويب مبيعات منصة سيرف (المحاسبة)',
   manage_sarv_settings: 'إدارة سداد عمولة منصة سيرف وإرفاق إيصالات التحويل (الإعدادات)',
+  print_sarv_invoice: 'طباعة فاتورة منصة سيرف',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -309,6 +311,9 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // النظام فقط افتراضياً، كبقية تبويبات المحاسبة الحسّاسة.
   view_sarv_sales_page: GM_ADMIN,
   manage_sarv_settings: GM_ADMIN,
+  // فاتورة العمولة الموجَّهة لمنصة سيرف تكشف النسبة والمستحقات — مخفية عن
+  // المشرفين والفنيين افتراضياً، قابلة للمنح من صفحة الصلاحيات.
+  print_sarv_invoice: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير

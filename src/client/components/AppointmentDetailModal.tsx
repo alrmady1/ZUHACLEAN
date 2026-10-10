@@ -1291,7 +1291,7 @@ export default function AppointmentDetailModal({
                     <Printer className="h-3.5 w-3.5" /> {t('إعادة طباعة الفاتورة')}
                   </button>
                 )}
-                {invoice?.sales_channel === 'sarv' && appointment.status === 'completed' && canReprintInvoice && (
+                {invoice?.sales_channel === 'sarv' && appointment.status === 'completed' && can('print_sarv_invoice') && (
                   <button
                     onClick={() => setShowSarvInvoice(true)}
                     className="flex items-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100"

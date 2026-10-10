@@ -544,7 +544,7 @@ export default function Sales() {
                       >
                         <Printer className="h-3.5 w-3.5" /> {t('عرض / طباعة')}
                       </button>
-                      {i.sales_channel === 'sarv' && (
+                      {i.sales_channel === 'sarv' && can('print_sarv_invoice') && (
                         <button
                           onClick={() => setViewingSarvInvoice(i)}
                           className="mt-1 flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline"

@@ -173,13 +173,15 @@ export function SarvSalesTab() {
                       </div>
                     </td>
                     <td className="p-3">
-                      <button
-                        onClick={() => setPrinting(i)}
-                        title={t('طباعة فاتورة سيرف')}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
-                      >
-                        <Printer className="h-4 w-4" />
-                      </button>
+                      {can('print_sarv_invoice') && (
+                        <button
+                          onClick={() => setPrinting(i)}
+                          title={t('طباعة فاتورة سيرف')}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
