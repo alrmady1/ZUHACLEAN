@@ -6,8 +6,8 @@ import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 
 // فاتورة/كشف عمولة موجَّه لمنصة سيرف عن طلب واحد: الإجمالي شامل الضريبة،
-// الضريبة، المبلغ قبل الضريبة، ثم نسبة سيرف ومبلغ عمولتها محسوبة على المبلغ
-// قبل الضريبة. نفس آلية الطباعة في InvoiceDocument (.invoice-print-area).
+// الضريبة، المبلغ قبل الضريبة، ثم نسبة سيرف ومبلغ عمولتها محسوبة من إجمالي
+// المبلغ (شامل الضريبة). نفس آلية الطباعة في InvoiceDocument (.invoice-print-area).
 export default function SarvInvoiceDocument({
   invoice,
   paymentMethods,
@@ -20,7 +20,7 @@ export default function SarvInvoiceDocument({
   const { t } = useI18n();
   const rate = invoice.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT;
   const commission = sarvCommissionAmount(invoice);
-  const netAfterCommission = Math.round((invoice.subtotal - commission) * 100) / 100;
+  const netAfterCommission = Math.round((invoice.total - commission) * 100) / 100;
   const methodName = paymentMethods.find((m) => m.id === invoice.payment_method)?.name ?? invoice.payment_method ?? '—';
   const settledBy = PLATFORM_SETTLEMENT_PARTY_LABELS_AR[invoice.platform_settled_by ?? 'company'];
 
@@ -95,15 +95,15 @@ export default function SarvInvoiceDocument({
               <span>{rate}٪</span>
             </div>
             <div className="mt-1 flex justify-between text-xs text-slate-400">
-              <span>{t('محسوبة على المبلغ قبل الضريبة')}</span>
-              <span>{formatMoney(invoice.subtotal)}</span>
+              <span>{t('محسوبة من إجمالي المبلغ')}</span>
+              <span>{formatMoney(invoice.total)}</span>
             </div>
             <div className="mt-2 flex justify-between border-t border-brand-200 pt-2 text-base font-bold text-brand-700">
-              <span>{t('مستحق لمنصة سيرف (بدون ضريبة)')}</span>
+              <span>{t('مستحق لمنصة سيرف')}</span>
               <span>{formatMoney(commission)}</span>
             </div>
             <div className="mt-2 flex justify-between text-xs text-slate-500">
-              <span>{t('المتبقي للشركة بعد عمولة سيرف (قبل الضريبة)')}</span>
+              <span>{t('المتبقي للشركة بعد عمولة سيرف')}</span>
               <span>{formatMoney(netAfterCommission)}</span>
             </div>
           </div>
