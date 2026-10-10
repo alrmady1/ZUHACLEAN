@@ -8,6 +8,8 @@ import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 import { sarvCommissionAmount } from '../../shared/sarv.js';
 import SarvInvoiceDocument from '../components/SarvInvoiceDocument.js';
+import SarvPaymentModal from '../components/SarvPaymentModal.js';
+import { useAuth } from '../lib/auth.js';
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -25,6 +27,9 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 // حقل آخر في الفاتورة يبقى كما أُدخل أصلاً.
 export function SarvSalesTab() {
   const { t, tt } = useI18n();
+  const { can } = useAuth();
+  const canManagePayments = can('manage_sarv_settings');
+  const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +114,7 @@ export function SarvSalesTab() {
                   <th className="p-3 text-start font-medium">{t('نسبة العمولة')}</th>
                   <th className="p-3 text-start font-medium">{t('قيمة العمولة')}</th>
                   <th className="p-3 text-start font-medium">{t('مَن استلم المبلغ؟')}</th>
+                  <th className="p-3 text-start font-medium">{t('سداد المنصة')}</th>
                   <th className="p-3 text-start font-medium"></th>
                 </tr>
               </thead>
@@ -143,6 +149,30 @@ export function SarvSalesTab() {
                       </select>
                     </td>
                     <td className="p-3">
+                      <div className="flex flex-col items-start gap-1">
+                        {i.platform_commission_paid_at ? (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{t('مسدَّدة للمنصة')}</span>
+                        ) : (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{t('لم تُسدَّد للمنصة')}</span>
+                        )}
+                        {i.platform_commission_paid_at && (
+                          <span className="text-[11px] text-slate-400" dir="ltr">
+                            {formatDateAr(i.platform_commission_paid_at)}
+                          </span>
+                        )}
+                        {i.platform_payment_receipt_url && (
+                          <a href={i.platform_payment_receipt_url} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-brand-600 hover:underline">
+                            {t('عرض الإيصال')}
+                          </a>
+                        )}
+                        {canManagePayments && (
+                          <button onClick={() => setPayingInvoice(i)} className="text-[11px] font-medium text-brand-600 hover:underline">
+                            {i.platform_commission_paid_at ? t('تعديل') : t('تسجيل السداد للمنصة')}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
                       <button
                         onClick={() => setPrinting(i)}
                         title={t('طباعة فاتورة سيرف')}
@@ -158,6 +188,17 @@ export function SarvSalesTab() {
           </div>
         )}
       </div>
+
+      {payingInvoice && (
+        <SarvPaymentModal
+          invoice={payingInvoice}
+          onClose={() => setPayingInvoice(null)}
+          onSaved={(updated) => {
+            setInvoices((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+            setPayingInvoice(null);
+          }}
+        />
+      )}
 
       {printing && <SarvInvoiceDocument invoice={printing} paymentMethods={paymentMethods} onClose={() => setPrinting(null)} />}
     </div>

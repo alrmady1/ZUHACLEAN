@@ -132,7 +132,8 @@ export type PermissionKey =
   | 'view_financial_statements'
   | 'view_expiry_documents'
   | 'view_notifications_page'
-  | 'view_sarv_sales_page';
+  | 'view_sarv_sales_page'
+  | 'manage_sarv_settings';
 
 export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   delete_appointments: 'حذف المواعيد',
@@ -197,6 +198,7 @@ export const PERMISSION_LABELS_AR: Record<PermissionKey, string> = {
   view_expiry_documents: 'الاطلاع على تبويب تواريخ الانتهاء (المحاسبة)',
   view_notifications_page: 'الاطلاع على سجل الإشعارات وإرسال رسائل للموظفين (الإعدادات)',
   view_sarv_sales_page: 'الاطلاع على تبويب مبيعات منصة سيرف (المحاسبة)',
+  manage_sarv_settings: 'إدارة سداد عمولة منصة سيرف وإرفاق إيصالات التحويل (الإعدادات)',
 };
 
 const GM_ADMIN: UserRole[] = ['general_manager', 'admin'];
@@ -306,6 +308,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionKey, UserRole[]> = {
   // عمولات ومستحقات مالية بين الشركة ومنصة خارجية — المدير العام ومدير
   // النظام فقط افتراضياً، كبقية تبويبات المحاسبة الحسّاسة.
   view_sarv_sales_page: GM_ADMIN,
+  manage_sarv_settings: GM_ADMIN,
 };
 
 // من يملك حق فتح صفحة "الصلاحيات" نفسها وتعديل الجدول أعلاه — المدير
@@ -1702,6 +1705,12 @@ export interface Invoice {
   // مَن استلم المبلغ من العميل فعلياً — قابل للتعديل لاحقاً من صفحة مبيعات
   // منصة سيرف (PATCH /invoices/:id) عند وصول التحويل الفعلي من/إلى المنصة.
   platform_settled_by?: PlatformSettlementParty;
+  // سداد عمولة المنصة: تاريخ (YYYY-MM-DD) تحويل الشركة مبلغ سيرف إلى المنصة —
+  // حضوره يعني "مسدَّدة للمنصة"، غيابه يعني لم تُسدَّد بعد. الإيصال (صورة
+  // أو PDF) اختياري ويمكن إضافته لاحقاً. انظر الإعدادات ← منصة سيرف.
+  platform_commission_paid_at?: string;
+  platform_payment_receipt_url?: string;
+  platform_payment_receipt_name?: string;
 }
 
 // نوع الخصم: نسبة مئوية من المبلغ قبل الضريبة، أو مبلغ ثابت بالريال.

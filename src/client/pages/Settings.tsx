@@ -54,6 +54,7 @@ import {
   Paperclip,
   Megaphone as MarketingPlanIcon,
   Bell as NotificationsIcon,
+  Store as SarvSettingsIcon,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { AR_TO_EN, AR_TO_BN, AR_TO_UR } from '../lib/translations.js';
@@ -120,6 +121,7 @@ import LiveChatAdminPanel from '../components/LiveChatAdminPanel.js';
 import EmployeeFormModal from '../components/EmployeeFormModal.js';
 import RiyadhZonesTab from './RiyadhZonesTab.js';
 import NotificationsTab from './NotificationsTab.js';
+import SarvSettingsTab from './SarvSettings.js';
 
 // Leaflet محمَّل عالمياً عبر <script> في index.html — نفس أسلوب
 // RiyadhZonesTab.tsx/CustomerHeatMapTab.tsx بالضبط (بلا حزمة npm ولا
@@ -5571,6 +5573,7 @@ export default function Settings() {
   const canCommissions = can('manage_commissions');
   const canRiyadhZones = can('manage_riyadh_zones');
   const canNotifications = can('view_notifications_page');
+  const canSarvSettings = can('manage_sarv_settings');
 
   type SettingsTab =
     | 'users'
@@ -5589,7 +5592,8 @@ export default function Settings() {
     | 'riyadh_zones'
     | 'marketing_plan'
     | 'activity_log'
-    | 'notifications';
+    | 'notifications'
+    | 'sarv_settings';
   // رابط الجرس في الشريط العلوي (?tab=notifications، انظر TopBar.tsx)
   // يفتح هذا التبويب مباشرة عند توفّره وصلاحية الوصول له — وإلا يُتبَع نفس
   // ترتيب الأولوية المعتاد.
@@ -5614,6 +5618,7 @@ export default function Settings() {
     if (canRiyadhZones) return 'riyadh_zones';
     if (canMarketingPlan) return 'marketing_plan';
     if (canNotifications) return 'notifications';
+    if (canSarvSettings) return 'sarv_settings';
     return 'activity_log';
   });
 
@@ -5766,6 +5771,14 @@ export default function Settings() {
             <NotificationsIcon className="h-4 w-4" /> {t('الإشعارات')}
           </button>
         )}
+        {canSarvSettings && (
+          <button
+            onClick={() => setTab('sarv_settings')}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium ${tab === 'sarv_settings' ? 'bg-brand-50 text-brand-700' : 'text-slate-500'}`}
+          >
+            <SarvSettingsIcon className="h-4 w-4" /> {t('منصة سيرف')}
+          </button>
+        )}
       </div>
 
       {tab === 'users' && canUsers ? (
@@ -5800,6 +5813,8 @@ export default function Settings() {
         <MarketingPlanTab />
       ) : tab === 'notifications' && canNotifications ? (
         <NotificationsTab />
+      ) : tab === 'sarv_settings' && canSarvSettings ? (
+        <SarvSettingsTab />
       ) : canActivityLog ? (
         <ActivityLogTab />
       ) : null}

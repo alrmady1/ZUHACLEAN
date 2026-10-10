@@ -4,6 +4,7 @@ import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import {
   uploadAppointmentPhoto,
+  uploadSarvPaymentReceipt,
   createAppointmentVideoUploadUrl,
   finalizeAppointmentVideo,
   uploadLeavePhoto,
@@ -3111,6 +3112,51 @@ api.patch('/invoices/:id', (req, res) => {
   logActivity(
     req,
     `تم تحديث حالة استلام مبلغ فاتورة "${target.invoice_number}" (سيرف) إلى "${PLATFORM_SETTLEMENT_PARTY_LABELS_AR[body.platform_settled_by as PlatformSettlementParty]}"`,
+  );
+  res.json(updated);
+});
+
+// تسجيل/تعديل/إلغاء سداد عمولة منصة سيرف لفاتورة (الإعدادات ← منصة سيرف).
+// paid: true → مسدَّدة للمنصة بتاريخ paid_at (الافتراضي اليوم، أو تاريخها
+// المسجَّل سابقاً عند مجرّد إضافة إيصال)، مع إيصال اختياري (صورة أو PDF)؛
+// remove_receipt يحذف الإيصال فقط؛ paid: false يُلغي السداد والإيصال معاً.
+api.post('/invoices/:id/platform-payment', async (req, res) => {
+  const target = store.invoices.get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  if (target.sales_channel !== 'sarv') return res.status(400).json({ error: 'هذا الإجراء خاص بفواتير منصة سيرف فقط' });
+  const body = req.body ?? {};
+
+  if (body.paid === false) {
+    const updated = store.invoices.update(target.id, {
+      platform_commission_paid_at: undefined,
+      platform_payment_receipt_url: undefined,
+      platform_payment_receipt_name: undefined,
+    });
+    logActivity(req, `تم إلغاء تسجيل سداد عمولة سيرف لفاتورة "${target.invoice_number}"`);
+    return res.json(updated);
+  }
+  if (body.paid !== true) return res.status(400).json({ error: 'paid مطلوبة (true أو false)' });
+
+  const requestedDate = typeof body.paid_at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.paid_at) ? body.paid_at : undefined;
+  const patch: Partial<Invoice> = {
+    platform_commission_paid_at: requestedDate ?? target.platform_commission_paid_at ?? new Date().toISOString().slice(0, 10),
+  };
+  if (body.receipt_data_url) {
+    try {
+      patch.platform_payment_receipt_url = await uploadSarvPaymentReceipt(target.id, body.receipt_data_url);
+      patch.platform_payment_receipt_name = body.receipt_name ? String(body.receipt_name) : undefined;
+    } catch (err) {
+      console.error('❌ فشل رفع إيصال سداد سيرف:', err);
+      return res.status(500).json({ error: 'فشل رفع الإيصال' });
+    }
+  } else if (body.remove_receipt) {
+    patch.platform_payment_receipt_url = undefined;
+    patch.platform_payment_receipt_name = undefined;
+  }
+  const updated = store.invoices.update(target.id, patch);
+  logActivity(
+    req,
+    `تم تسجيل سداد عمولة سيرف لفاتورة "${target.invoice_number}" بتاريخ ${patch.platform_commission_paid_at}${body.receipt_data_url ? ' مع إيصال تحويل' : ''}`,
   );
   res.json(updated);
 });
