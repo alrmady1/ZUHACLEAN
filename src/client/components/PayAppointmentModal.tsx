@@ -231,7 +231,7 @@ export default function PayAppointmentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+      <form onSubmit={handleSubmit} className="max-h-[92vh] w-full max-w-sm overflow-y-auto overscroll-contain rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <Wallet className="h-5 w-5 text-brand-600" /> {t('تحصيل الدفعة وإصدار الفاتورة')}

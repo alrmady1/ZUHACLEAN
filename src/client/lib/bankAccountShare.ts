@@ -52,11 +52,25 @@ export async function generateBankAccountImage(account: CompanyBankAccount, comp
   ];
   const fields = allFields.filter(([, value]) => value);
 
+  // باركود الحساب الرسمي من تطبيق البنك الأهلي (SNB) — صورة ثابتة في public/
+  // خاصة بهذا الحساب، فلا تُرسم إلا إذا كان البنك المسجَّل هو الأهلي (لو تغيّر
+  // الحساب لبنك آخر تصير الصورة قديمة وتُحجَب تلقائياً). فشل تحميلها لا يُفشل
+  // الصورة، تبقى صالحة بدونها.
+  let qrImage: HTMLImageElement | null = null;
+  if (/الأهلي|SNB|NCB/i.test(account.bank_name)) {
+    try {
+      qrImage = await loadImage('/bank-qr.png');
+    } catch {
+      qrImage = null;
+    }
+  }
+  const qrSectionHeight = qrImage ? 400 : 0;
+
   // ارتفاع ديناميكي حسب عدد الحقول المعبّأة فعلياً.
   const headerHeight = 260;
   const rowHeight = 130;
   const footerHeight = 70;
-  const height = headerHeight + fields.length * rowHeight + footerHeight;
+  const height = headerHeight + fields.length * rowHeight + qrSectionHeight + footerHeight;
 
   const canvas = document.createElement('canvas');
   canvas.width = CARD_WIDTH;
@@ -129,6 +143,28 @@ export async function generateBankAccountImage(account: CompanyBankAccount, comp
     wrapAndDraw(ctx, value, centerX, y + 44, boxWidth - 40, 36);
 
     y += rowHeight;
+  }
+
+  if (qrImage) {
+    const qrBox = 360;
+    const boxX = centerX - qrBox / 2;
+    const boxY = y - 46 + 10;
+    ctx.fillStyle = CREAM_DIM;
+    ctx.font = '600 24px Cairo, Tahoma, sans-serif';
+    ctx.fillText('امسح الباركود لإضافة الحساب في تطبيق البنك', centerX, boxY + 10);
+    const cardTop = boxY + 34;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(boxX + 24, cardTop);
+    ctx.arcTo(boxX + qrBox, cardTop, boxX + qrBox, cardTop + qrBox, 24);
+    ctx.arcTo(boxX + qrBox, cardTop + qrBox, boxX, cardTop + qrBox, 24);
+    ctx.arcTo(boxX, cardTop + qrBox, boxX, cardTop, 24);
+    ctx.arcTo(boxX, cardTop, boxX + qrBox, cardTop, 24);
+    ctx.closePath();
+    ctx.fill();
+    const pad = 16;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImage, boxX + pad, cardTop + pad, qrBox - pad * 2, qrBox - pad * 2);
   }
 
   return new Promise((resolve, reject) => {
