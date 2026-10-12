@@ -1809,6 +1809,17 @@ api.patch('/appointments/:id', (req, res) => {
     patch.remaining_amount = remaining_amount;
     patch.payment_status = remaining_amount === 0 ? 'paid' : existing.total_paid > 0 ? 'partial' : 'unpaid';
   }
+  // الموعد الملغى لا يُستحَق تحصيل أي مبلغ عنه: المتبقي يصير صفراً عند
+  // إلغائه (وبعد أي تعديل سعر وهو ملغى)، ويُعاد حسابه من المبلغ والمدفوع
+  // إن أُعيد الموعد لحالة أخرى.
+  if (existing) {
+    const nextStatus = typeof patch.status === 'string' ? patch.status : existing.status;
+    if (nextStatus === 'cancelled') {
+      patch.remaining_amount = 0;
+    } else if (existing.status === 'cancelled') {
+      patch.remaining_amount = Math.max((typeof patch.amount === 'number' ? patch.amount : existing.amount) - existing.total_paid, 0);
+    }
+  }
   // رفع نتيجة زيارة معاينة (نوع التنظيف المطلوب + السعر ثم الحالة) —
   // ينهي الزيارة نفسها فوراً (لا مراحل لاحقة عليها كموعد خدمة عادي).
   const isVisitOutcome = typeof patch.visit_outcome === 'string';

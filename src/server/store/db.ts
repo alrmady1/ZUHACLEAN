@@ -747,7 +747,15 @@ async function load(): Promise<DbShape> {
       phonesChanged = true;
       return { ...p, phone: normalized };
     });
-    if (phonesChanged) await save(parsed);
+    // تصحيح لمرة واحدة لمواعيد ملغاة قبل أن يصير الإلغاء يصفّر المتبقي —
+    // لا يُستحَق تحصيل أي مبلغ عن موعد ملغى (انظر PATCH /appointments/:id).
+    let cancelledFixed = false;
+    parsed.appointments = parsed.appointments.map((a) => {
+      if (a.status !== 'cancelled' || a.remaining_amount <= 0) return a;
+      cancelledFixed = true;
+      return { ...a, remaining_amount: 0 };
+    });
+    if (phonesChanged || cancelledFixed) await save(parsed);
     return parsed;
   }
   const initial = seed();
