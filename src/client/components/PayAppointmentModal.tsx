@@ -56,7 +56,8 @@ export default function PayAppointmentModal({
   const [sarvSettledBy, setSarvSettledBy] = useState<PlatformSettlementParty>('company');
   const [method, setMethod] = useState(activeMethods[0]?.id ?? '');
   // صورة إيصال الدفع — تظهر فقط عند اختيار طريقة الدفع "شبكة" (id ===
-  // 'card')، إثباتاً لعملية الدفع عبر جهاز الدفع. اختيارية، نفس منطق
+  // 'card') أو "حوالة بنكية" (id === 'bank_transfer' — صورة أو PDF)،
+  // إثباتاً لعملية الدفع/التحويل. اختيارية، نفس منطق
   // "ملف الفاتورة" عند تسجيل مصروف عام (Expenses.tsx) بالضبط.
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -184,9 +185,9 @@ export default function PayAppointmentModal({
     try {
       // 1) Record the collection against the appointment itself (drives the
       //    السعر والدفع badge in the schedule table). إيصال الدفع (إن
-      //    وُجد، ولطريقة "شبكة" فقط) يُضغَط ويُرفَع هنا أيضاً.
+      //    وُجد، ولطريقتَي "شبكة" و"حوالة بنكية" فقط) يُضغَط ويُرفَع هنا أيضاً.
       const receipt_data_url =
-        method === 'card' && receiptFile ? await compressImageToDataUrl(receiptFile) : undefined;
+        (method === 'card' || method === 'bank_transfer') && receiptFile ? await compressImageToDataUrl(receiptFile) : undefined;
       await api.post(`/appointments/${appointment.id}/payments`, { amount, method, receipt_data_url });
       // 2) Issue a formal VAT invoice for the same amount, so paying from
       //    the schedule always leaves a proper invoice behind. Service
@@ -309,7 +310,13 @@ export default function PayAppointmentModal({
 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">{t('طريقة الدفع')}</span>
-            <select value={method} onChange={(e) => setMethod(e.target.value)} required className="input">
+            <select value={method} onChange={(e) => {
+                setMethod(e.target.value);
+                setReceiptFile(null);
+              }}
+              required
+              className="input"
+            >
               <option value="">{t('اختر طريقة الدفع')}</option>
               {activeMethods.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -344,12 +351,14 @@ export default function PayAppointmentModal({
             </div>
           )}
 
-          {method === 'card' && (
+          {(method === 'card' || method === 'bank_transfer') && (
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-600">{t('صورة إيصال الدفع (اختياري)')}</span>
+              <span className="mb-1 block font-medium text-slate-600">
+                {method === 'bank_transfer' ? t('إيصال التحويل البنكي (صورة أو PDF، اختياري)') : t('صورة إيصال الدفع (اختياري)')}
+              </span>
               <input
                 type="file"
-                accept="image/*"
+                accept={method === 'bank_transfer' ? 'image/*,application/pdf' : 'image/*'}
                 onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
                 className="input file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-600"
               />
