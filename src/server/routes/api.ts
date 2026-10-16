@@ -1981,6 +1981,34 @@ api.patch('/appointments/:id/payments/:paymentId', (req, res) => {
   res.json(updated);
 });
 
+// إضافة/استبدال/حذف إيصال دفعة مسجَّلة سابقاً (حوالة بنكية أو شبكة) — لمن لم
+// يرفق الإيصال وقت التحصيل. لا يمسّ مبلغ الدفعة ولا طريقتها.
+api.post('/appointments/:id/payments/:paymentId/receipt', async (req, res) => {
+  const appt = store.appointments.get(req.params.id);
+  if (!appt) return res.status(404).json({ error: 'not found' });
+  const payment = appt.payments.find((p) => p.id === req.params.paymentId);
+  if (!payment) return res.status(404).json({ error: 'payment not found' });
+  const { receipt_data_url, remove } = req.body ?? {};
+  if (receipt_data_url) {
+    try {
+      payment.receipt_url = await uploadPaymentReceipt(appt.id, receipt_data_url);
+    } catch (err) {
+      console.error('❌ فشل رفع إيصال الدفعة:', err);
+      return res.status(500).json({ error: 'فشل رفع الإيصال' });
+    }
+  } else if (remove) {
+    payment.receipt_url = undefined;
+  } else {
+    return res.status(400).json({ error: 'receipt_data_url أو remove مطلوب' });
+  }
+  const updated = store.appointments.update(appt.id, { payments: appt.payments });
+  logActivity(
+    req,
+    `تم ${receipt_data_url ? 'إرفاق' : 'حذف'} إيصال دفعة ${payment.amount} ر.س لموعد "${appt.customer_name_snapshot ?? ''}"`,
+  );
+  res.json(updated);
+});
+
 // ---------------------------------------------------------------------------
 // طلب دفع عبر تمارا (Pay by Instalments) — بديل غير متزامن عن التحصيل
 // اليدوي أعلاه: ينشئ جلسة دفع لدى تمارا لباقي مبلغ الموعد ويرجع رابطاً

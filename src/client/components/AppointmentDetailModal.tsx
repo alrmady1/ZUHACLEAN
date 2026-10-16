@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown, AlertTriangle } from 'lucide-react';
+import { X, MapPin, Phone, Camera, Image as ImageIcon, Wallet, Clock, Pencil, MessageCircle, Printer, Trash2, Users as TeamIcon, Map as MapIcon, Check, Star, ChevronDown, AlertTriangle, Paperclip } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Appointment, Customer, Profile, PaymentMethodOption, AppointmentStatus, Payment, Invoice, LeaveRecord, Service, VisitOutcome, Rating, CustomerRating } from '../../shared/types.js';
 import { CAN_EDIT_LOCATION_ROLES, CAN_DELETE_PHOTOS_ROLES, VISIT_OUTCOME_LABELS_AR, SERVICE_PRICING_UNIT_LABELS_AR } from '../../shared/types.js';
@@ -129,6 +129,7 @@ export default function AppointmentDetailModal({
   const [photoTab, setPhotoTab] = useState<'all' | 'before' | 'after'>('all');
   const [showPay, setShowPay] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showSarvInvoice, setShowSarvInvoice] = useState(false);
@@ -1400,6 +1401,16 @@ export default function AppointmentDetailModal({
                           <ImageIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
+                      {(p.method === 'bank_transfer' || p.method === 'card') && (!p.receipt_url || canEditPayments) && (
+                        <button
+                          onClick={() => setReceiptPayment(p)}
+                          title={p.receipt_url ? t('تغيير الإيصال') : t('إضافة إيصال')}
+                          className={`flex items-center gap-1 rounded-lg p-1.5 hover:bg-slate-50 ${p.receipt_url ? 'text-slate-400 hover:text-brand-600' : 'text-amber-600'}`}
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          {!p.receipt_url && <span className="text-[11px] font-medium">{t('إضافة إيصال')}</span>}
+                        </button>
+                      )}
                       {canEditPayments && (
                         <button
                           onClick={() => setEditingPayment(p)}
@@ -1424,6 +1435,19 @@ export default function AppointmentDetailModal({
           existing={{ appointmentId: appointment.id, stars: customerRating?.stars ?? 0, notes: customerRating?.notes }}
           onClose={() => setShowRateCustomer(false)}
           onSaved={(r) => setCustomerRating(r)}
+        />
+      )}
+
+      {receiptPayment && (
+        <PaymentReceiptModal
+          appointmentId={appointment.id}
+          payment={receiptPayment}
+          canRemove={canEditPayments}
+          onClose={() => setReceiptPayment(null)}
+          onSaved={() => {
+            setReceiptPayment(null);
+            onChanged();
+          }}
         />
       )}
 
@@ -1465,6 +1489,96 @@ export default function AppointmentDetailModal({
       {showSarvInvoice && invoice && (
         <SarvInvoiceDocument invoice={invoice} paymentMethods={paymentMethods} onClose={() => setShowSarvInvoice(false)} />
       )}
+    </div>
+  );
+}
+
+// إضافة إيصال (صورة أو PDF) لدفعة حوالة بنكية/شبكة سُجِّلت دون إيصال، أو
+// استبداله/حذفه (الاستبدال والحذف لمن يملك صلاحية تعديل الدفعات فقط).
+function PaymentReceiptModal({
+  appointmentId,
+  payment,
+  canRemove,
+  onClose,
+  onSaved,
+}: {
+  appointmentId: string;
+  payment: Payment;
+  canRemove: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save(body: Record<string, unknown>) {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/appointments/${appointmentId}/payments/${payment.id}/receipt`, body);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('تعذّر الحفظ'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!file) return;
+    await save({ receipt_data_url: await compressImageToDataUrl(file) });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">{payment.receipt_url ? t('تغيير الإيصال') : t('إضافة إيصال')}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3 text-sm">
+          <div className="text-xs text-slate-400">{formatMoney(payment.amount)} — {formatDateAr(payment.recorded_at)}</div>
+          {payment.receipt_url && (
+            <a href={payment.receipt_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+              <Paperclip className="h-3.5 w-3.5" /> {t('عرض الإيصال الحالي')}
+            </a>
+          )}
+          <label className="block">
+            <span className="mb-1 block font-medium text-slate-600">{t('إيصال التحويل البنكي (صورة أو PDF، اختياري)')}</span>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-600"
+            />
+          </label>
+          {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={!file || submitting}
+            onClick={handleSave}
+            className="flex-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? t('جارِ الحفظ…') : t('حفظ الإيصال')}
+          </button>
+          {payment.receipt_url && canRemove && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => window.confirm(t('حذف الإيصال المرفق؟')) && save({ remove: true })}
+              className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {t('حذف الإيصال')}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
