@@ -26,7 +26,14 @@ import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
 import { initGoogleAdsTag, fireBookingConversion } from '../lib/googleAds.js';
-import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder, trackBookingSubmitted } from '../lib/tiktokPixel.js';
+import {
+  useTikTokPageView,
+  trackPlaceAnOrder,
+  trackBookingSubmitted,
+  trackOrderViewContent,
+  trackAddToCart,
+  trackOrderInitiateCheckout,
+} from '../lib/tiktokPixel.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -114,6 +121,10 @@ export default function OrderPage() {
 
   // TikTok Pixel + حدث Contact — للصفحات العامة فقط (انظر tiktokPixel.ts).
   useTikTokPageView();
+  // ViewContent مرة واحدة عند فتح الصفحة (بلا خدمة مختارة بعد).
+  useEffect(() => {
+    trackOrderViewContent();
+  }, []);
 
   useEffect(() => {
     api
@@ -203,18 +214,14 @@ export default function OrderPage() {
     const s = services.find((x) => x.title === title);
     return { id: s?.id ?? title, name: title };
   }
-  // اختيار/فتح خدمة (من بطاقات الهيرو أو قسم "خدماتنا") = ViewContent.
   function chooseService(title: string) {
     setServiceName(title);
-    trackViewContent(trackedService(title));
-  }
-  // بدء تعبئة بيانات الحجز (أول كتابة في الاسم/الجوال) = InitiateCheckout.
-  function onFormTyping() {
-    trackInitiateCheckout(serviceName ? trackedService(serviceName) : undefined);
   }
 
+  // اختيار من قسم "خدماتنا" يقفز مباشرة لخطوة "بياناتك" = نفس AddToCart.
   function pickService(n: string) {
     chooseService(n);
+    trackAddToCart({ service: n, serviceId: trackedService(n).id });
     setStep(2);
     scrollToForm();
   }
@@ -223,6 +230,9 @@ export default function OrderPage() {
 
   function goNext() {
     if (!canGoNext) return;
+    // "التالي: بياناتك" = AddToCart، و"التالي: التأكيد" = InitiateCheckout.
+    if (step === 1) trackAddToCart({ service: serviceName, serviceId: trackedService(serviceName).id });
+    else if (step === 2) trackOrderInitiateCheckout({ service: serviceName, serviceId: trackedService(serviceName).id });
     setStep((s) => Math.min(s + 1, HERO_STEP_TITLES.length));
   }
   function goBack() {
@@ -467,7 +477,6 @@ export default function OrderPage() {
                         value={name}
                         onChange={(e) => {
                           setName(e.target.value);
-                          onFormTyping();
                         }}
                         placeholder="مثال: محمد العتيبي"
                         className="input"
@@ -479,7 +488,6 @@ export default function OrderPage() {
                         value={phone}
                         onChange={(e) => {
                           setPhone(e.target.value);
-                          onFormTyping();
                         }}
                         dir="ltr"
                         placeholder="05XXXXXXXX"

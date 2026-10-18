@@ -316,15 +316,47 @@ export async function trackBookingSubmitted(opts: { service: string; phone: stri
   const ttq = await ensurePixel();
   if (!ttq) return;
   if (phoneHash) ttq.identify({ phone_number: phoneHash });
-  const contentId = opts.serviceId ?? opts.service;
-  ttq.track(
-    'Purchase',
-    {
-      value: SERVICE_VALUES[opts.service] ?? 0,
-      currency: CURRENCY,
-      content_type: 'product',
-      contents: [{ content_id: contentId, content_name: opts.service, quantity: 1 }],
-    },
-    opts.orderId ? { event_id: opts.orderId } : undefined,
-  );
+  ttq.track('Purchase', orderEventParams(opts.service, opts.serviceId), opts.orderId ? { event_id: opts.orderId } : undefined);
+}
+
+// نفس بيانات Purchase (القيمة من SERVICE_VALUES + contents) لأحداث مسار
+// الحجز في صفحة /order، حتى يرى TikTok قيمة متّسقة عبر المسار كله.
+function orderEventParams(service: string, serviceId?: string): Record<string, unknown> {
+  const contentId = serviceId ?? service;
+  return {
+    value: SERVICE_VALUES[service] ?? 0,
+    currency: CURRENCY,
+    content_type: 'product',
+    contents: [{ content_id: contentId, content_name: service, quantity: 1 }],
+  };
+}
+
+// ── أحداث مسار الحجز في صفحة /order ──────────────────────────────────────
+// منفصلة عن trackViewContent/trackInitiateCheckout أعلاه، التي ما زال
+// معالج الحجز /order/book يستخدمها بتوقيت مختلف (عند اختيار الخدمة/الكتابة).
+
+// ViewContent مرة واحدة عند فتح صفحة /order — بلا content_id (لا خدمة مختارة بعد).
+export function trackOrderViewContent(): void {
+  if (!import.meta.env.PROD) return;
+  send('ViewContent', { content_type: 'product' }, newEventId('vc'));
+}
+
+let lastCartService: string | null = null;
+
+// AddToCart عند اختيار خدمة والانتقال لخطوة "بياناتك" — مرة لكل خدمة
+// (الرجوع ثم التقدّم بنفس الخدمة لا يكرّره).
+export function trackAddToCart(opts: { service: string; serviceId?: string }): void {
+  if (!import.meta.env.PROD || !opts.service || lastCartService === opts.service) return;
+  lastCartService = opts.service;
+  send('AddToCart', orderEventParams(opts.service, opts.serviceId), newEventId('cart'));
+}
+
+let lastCheckoutService: string | null = null;
+
+// InitiateCheckout عند الانتقال لخطوة "التأكيد" بعد كتابة الاسم والجوال —
+// مرة لكل خدمة كذلك.
+export function trackOrderInitiateCheckout(opts: { service: string; serviceId?: string }): void {
+  if (!import.meta.env.PROD || !opts.service || lastCheckoutService === opts.service) return;
+  lastCheckoutService = opts.service;
+  send('InitiateCheckout', orderEventParams(opts.service, opts.serviceId), newEventId('checkout'));
 }
