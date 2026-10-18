@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { useTikTokPageView } from '../lib/tiktokPixel.js';
 
 // إيموجي تعبيري بدل النجوم — 1 (غير راضٍ إطلاقاً) إلى 5 (سعيد جداً)، بنفس
 // معنى Rating.stars في shared/types.ts تماماً (لم يتغيّر شيء في المعنى أو
@@ -22,6 +23,8 @@ interface AppointmentPublicInfo {
 
 export default function RatePage() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
+  // TikTok Pixel — صفحة عامة يراها العميل (انظر tiktokPixel.ts).
+  useTikTokPageView();
   const [info, setInfo] = useState<AppointmentPublicInfo | null>(null);
   const [loadError, setLoadError] = useState('');
   const [stars, setStars] = useState(0);

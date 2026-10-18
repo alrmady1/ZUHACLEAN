@@ -3993,6 +3993,13 @@ api.delete('/quotes/:id', (req, res) => {
 // view_leads_page). نفس نمط /public/ratings أعلاه: نقطة POST عامة غير
 // محمية + نقاط GET/PATCH/DELETE للاستخدام الداخلي فقط.
 // ---------------------------------------------------------------------------
+// إعداد التتبع للصفحات العامة — معرّف TikTok Pixel من متغير البيئة
+// TIKTOK_PIXEL_ID (القيمة الافتراضية هي معرّف الشركة، ويُعطَّل البكسل بضبط
+// المتغير فارغاً). معرّف البكسل ليس سراً (يظهر في كود الصفحة أصلاً).
+api.get('/public/tracking-config', (_req, res) => {
+  res.json({ tiktok_pixel_id: process.env.TIKTOK_PIXEL_ID ?? 'DBAGSEJC77U5AOV8F5RG' });
+});
+
 api.post('/public/leads', (req, res) => {
   const body = req.body ?? {};
   const name = typeof body.name === 'string' ? body.name.trim() : '';

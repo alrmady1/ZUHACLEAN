@@ -26,6 +26,7 @@ import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
 import { initGoogleAdsTag, fireBookingConversion } from '../lib/googleAds.js';
+import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder } from '../lib/tiktokPixel.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -105,6 +106,9 @@ export default function OrderPage() {
   useEffect(() => {
     initGoogleAdsTag();
   }, []);
+
+  // TikTok Pixel + حدث Contact — للصفحات العامة فقط (انظر tiktokPixel.ts).
+  useTikTokPageView();
 
   useEffect(() => {
     api
@@ -190,8 +194,22 @@ export default function OrderPage() {
 
   // يُختار من بطاقات قسم "خدماتنا" الأدنى في الصفحة — الخدمة معروفة
   // بالفعل حينها، فيُقفز مباشرة لخطوة "بياناتك" بدل تكرار خطوة الاختيار.
+  function trackedService(title: string) {
+    const s = services.find((x) => x.title === title);
+    return { id: s?.id ?? title, name: title };
+  }
+  // اختيار/فتح خدمة (من بطاقات الهيرو أو قسم "خدماتنا") = ViewContent.
+  function chooseService(title: string) {
+    setServiceName(title);
+    trackViewContent(trackedService(title));
+  }
+  // بدء تعبئة بيانات الحجز (أول كتابة في الاسم/الجوال) = InitiateCheckout.
+  function onFormTyping() {
+    trackInitiateCheckout(serviceName ? trackedService(serviceName) : undefined);
+  }
+
   function pickService(n: string) {
-    setServiceName(n);
+    chooseService(n);
     setStep(2);
     scrollToForm();
   }
@@ -222,6 +240,9 @@ export default function OrderPage() {
       // يُطلَق فقط هنا — بعد تأكيد نجاح الحجز فعلياً من الخادم، لا عند
       // مجرد الضغط على زر "إرسال الطلب" أعلاه.
       fireBookingConversion(lead.id);
+      // PlaceAnOrder لـTikTok — من نفس نقطة النجاح فقط؛ رقم الحجز (lead.id)
+      // هو event_id. identify بالجوال المشفّر يسبق الحدث داخل الدالة.
+      void trackPlaceAnOrder({ leadId: lead.id, service: serviceName ? trackedService(serviceName) : undefined, phone });
     } catch {
       setSubmitError('تعذّر إرسال طلبك، حاول مرة أخرى أو تواصل معنا مباشرة عبر واتساب.');
     } finally {
@@ -392,7 +413,7 @@ export default function OrderPage() {
                           <button
                             key={s.id}
                             type="button"
-                            onClick={() => setServiceName(s.title)}
+                            onClick={() => chooseService(s.title)}
                             className="flex flex-col items-start rounded-2xl border p-3.5 text-start transition"
                             style={{ borderColor: active ? GREEN : '#ECE8DE', backgroundColor: active ? `${GREEN}1A` : '#fff' }}
                           >
@@ -424,11 +445,28 @@ export default function OrderPage() {
                   <div className="space-y-3">
                     <label className="block text-sm">
                       <span className="mb-1.5 block font-medium text-slate-600">الاسم</span>
-                      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: محمد العتيبي" className="input" />
+                      <input
+                        value={name}
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          onFormTyping();
+                        }}
+                        placeholder="مثال: محمد العتيبي"
+                        className="input"
+                      />
                     </label>
                     <label className="block text-sm">
                       <span className="mb-1.5 block font-medium text-slate-600">رقم الجوال</span>
-                      <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" placeholder="05XXXXXXXX" className="input" />
+                      <input
+                        value={phone}
+                        onChange={(e) => {
+                          setPhone(e.target.value);
+                          onFormTyping();
+                        }}
+                        dir="ltr"
+                        placeholder="05XXXXXXXX"
+                        className="input"
+                      />
                     </label>
                     <p className="text-xs text-slate-400">سيتم استخدام هذه البيانات للتواصل معك بخصوص طلبك</p>
                   </div>

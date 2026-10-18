@@ -17,7 +17,8 @@ import {
 import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import { COMPANY_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS, PREFERRED_TIME_OF_DAY_LABELS_AR } from '../../shared/types.js';
-import type { LandingPageSettings, LandingService, PreferredTimeOfDay } from '../../shared/types.js';
+import type { Lead, LandingPageSettings, LandingService, PreferredTimeOfDay } from '../../shared/types.js';
+import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder } from '../lib/tiktokPixel.js';
 
 // Leaflet محمَّل عالمياً عبر <script> في index.html (نفس ما تستخدمه
 // RiyadhZonesTab.tsx وCustomerHeatMapTab.tsx) — بلا حزمة npm ولا مفتاح API.
@@ -92,6 +93,18 @@ export default function BookingWizardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [done, setDone] = useState(false);
+
+  // TikTok Pixel + حدث Contact — للصفحات العامة فقط (انظر tiktokPixel.ts).
+  useTikTokPageView();
+
+  function trackedService(title: string) {
+    const s = services.find((x) => x.title === title);
+    return { id: s?.id ?? title, name: title };
+  }
+  // بدء تعبئة بيانات الحجز (أول كتابة في الاسم/الجوال) = InitiateCheckout.
+  function onFormTyping() {
+    trackInitiateCheckout(serviceName ? trackedService(serviceName) : undefined);
+  }
 
   useEffect(() => {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
@@ -219,7 +232,7 @@ export default function BookingWizardPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      await api.post('/public/leads', {
+      const lead = await api.post<Lead>('/public/leads', {
         name: name.trim(),
         phone: phone.trim(),
         area: address.trim() || undefined,
@@ -231,6 +244,8 @@ export default function BookingWizardPage() {
         preferred_time: preferredTime || undefined,
       });
       setDone(true);
+      // PlaceAnOrder لـTikTok — بعد تأكيد الخادم فقط؛ lead.id هو event_id.
+      void trackPlaceAnOrder({ leadId: lead.id, service: serviceName ? trackedService(serviceName) : undefined, phone });
     } catch {
       setSubmitError('تعذّر إرسال طلبك، حاول مرة أخرى أو تواصل معنا مباشرة عبر واتساب.');
     } finally {
@@ -306,13 +321,30 @@ export default function BookingWizardPage() {
                 <span className="mb-1.5 flex items-center gap-1.5 font-medium text-slate-600">
                   <User className="h-4 w-4" /> الاسم
                 </span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: أحمد محمد" className="input" />
+                <input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    onFormTyping();
+                  }}
+                  placeholder="مثال: أحمد محمد"
+                  className="input"
+                />
               </label>
               <label className="block text-sm">
                 <span className="mb-1.5 flex items-center gap-1.5 font-medium text-slate-600">
                   <PhoneIcon className="h-4 w-4" /> رقم الجوال
                 </span>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" placeholder="05XXXXXXXX" className="input" />
+                <input
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    onFormTyping();
+                  }}
+                  dir="ltr"
+                  placeholder="05XXXXXXXX"
+                  className="input"
+                />
               </label>
               <p className="text-xs text-slate-400">سيتم استخدام هذه البيانات للتواصل معك بخصوص الحجز</p>
             </div>
@@ -387,7 +419,10 @@ export default function BookingWizardPage() {
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => setServiceName(s.title)}
+                  onClick={() => {
+                    setServiceName(s.title);
+                    trackViewContent({ id: s.id, name: s.title });
+                  }}
                   className="flex items-start gap-3 rounded-xl border p-3 text-start transition"
                   style={{ borderColor: serviceName === s.title ? GREEN : CREAM, backgroundColor: serviceName === s.title ? CREAM : '#fff' }}
                 >
