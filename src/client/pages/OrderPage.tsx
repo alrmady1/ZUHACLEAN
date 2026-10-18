@@ -72,6 +72,11 @@ export default function OrderPage() {
   // بالصورة الحقيقية (الوميض الذي كان يظهر سابقاً).
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [services, setServices] = useState<LandingService[]>([]);
+  // صور تعذّر تحميلها (مثلاً تخزين الصور متوقف مؤقتاً): الخدمة تعود لأيقونتها،
+  // والهيرو لصورته الاحتياطية الثابتة ثم لخلفية سادة، والإعلان المنبثق لا
+  // يظهر بدل أن يعرض صورة مكسورة.
+  const [brokenServiceImages, setBrokenServiceImages] = useState<Set<string>>(new Set());
+  const [heroImageState, setHeroImageState] = useState<'primary' | 'fallback' | 'none'>('primary');
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -271,6 +276,7 @@ export default function OrderPage() {
             <img
               src={settings.popup_ad_image_url}
               alt=""
+              onError={dismissPopup}
               className="max-h-[85vh] w-full rounded-2xl object-contain shadow-2xl"
             />
           </div>
@@ -323,8 +329,13 @@ export default function OrderPage() {
           {/* لوحة الصورة/الثقة — صورة فعلية واضحة (لا شفافية خافتة كالتصميم
               القديم) مع تدرّج داكن أسفلها لوضوح النص الأبيض فوقها. */}
           <div className="relative min-h-[360px] w-full overflow-hidden rounded-3xl shadow-2xl lg:flex-1" style={{ backgroundColor: NAVY }}>
-            {settingsLoaded && (
-              <img src={settings.hero_image_url || '/hero-worker.jpeg'} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            {settingsLoaded && heroImageState !== 'none' && (
+              <img
+                src={heroImageState === 'primary' && settings.hero_image_url ? settings.hero_image_url : '/hero-worker.jpeg'}
+                alt=""
+                onError={() => setHeroImageState((s) => (s === 'primary' && settings.hero_image_url ? 'fallback' : 'none'))}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
             )}
             <div
               className="absolute inset-0"
@@ -610,8 +621,13 @@ export default function OrderPage() {
                 className="flex flex-col overflow-hidden rounded-2xl border transition hover:shadow-lg"
                 style={{ borderColor: CREAM, backgroundColor: '#fff' }}
               >
-                {s.image_url ? (
-                  <img src={s.image_url} alt={s.title} className="h-[244px] w-full object-cover" />
+                {s.image_url && !brokenServiceImages.has(s.id) ? (
+                  <img
+                    src={s.image_url}
+                    alt={s.title}
+                    onError={() => setBrokenServiceImages((prev) => new Set(prev).add(s.id))}
+                    className="h-[244px] w-full object-cover"
+                  />
                 ) : (
                   <div
                     className="flex h-11 w-11 items-center justify-center rounded-xl m-5 mb-0"
