@@ -26,7 +26,7 @@ import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
 import { initGoogleAdsTag, fireBookingConversion } from '../lib/googleAds.js';
-import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder } from '../lib/tiktokPixel.js';
+import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder, trackBookingSubmitted } from '../lib/tiktokPixel.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -248,6 +248,13 @@ export default function OrderPage() {
       // PlaceAnOrder لـTikTok — من نفس نقطة النجاح فقط؛ رقم الحجز (lead.id)
       // هو event_id. identify بالجوال المشفّر يسبق الحدث داخل الدالة.
       void trackPlaceAnOrder({ leadId: lead.id, service: serviceName ? trackedService(serviceName) : undefined, phone });
+      // Purchase لـTikTok مع قيمة الطلب — من نفس نقطة النجاح فقط.
+      void trackBookingSubmitted({
+        service: serviceName,
+        serviceId: serviceName ? trackedService(serviceName).id : undefined,
+        phone: phone.trim(),
+        orderId: lead.id,
+      });
     } catch {
       setSubmitError('تعذّر إرسال طلبك، حاول مرة أخرى أو تواصل معنا مباشرة عبر واتساب.');
     } finally {

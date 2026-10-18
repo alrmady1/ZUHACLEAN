@@ -273,3 +273,58 @@ export async function trackPlaceAnOrder(order: {
   );
   checkoutStarted = false;
 }
+
+// قيمة تقديرية لكل خدمة بالريال لحدث Purchase — المفاتيح هي عناوين الخدمات
+// كما تظهر في صفحة /order (landing services). خدمة غير موجودة هنا = 0.
+const SERVICE_VALUES: Record<string, number> = {
+  'تنظيف شقق وفلل شامل': 300,
+  'تنظيف مكاتب': 250,
+  'تنظيف عميق بعد التشطيب': 500,
+  'غسيل وتعقيم سجاد وموكيت': 150,
+  'مكافحة حشرات': 200,
+  'تنظيف كنب ومجالس بالبخار': 200,
+  'تنظيف مكيفات سبليت': 100,
+};
+
+const FIRED_PURCHASES_KEY = 'zaha-ops:tiktok-purchases-fired';
+
+// حدث Purchase (الحدث القياسي لمسار الشراء في TikTok) مع قيمة الطلب.
+// يُستدعى فقط بعد نجاح حفظ الحجز من الخادم؛ orderId (رقم الحجز) = event_id
+// ويمنع إعادة الإرسال لنفس الحجز. الجوال بصيغة E.164 ومشفّر SHA-256.
+export async function trackBookingSubmitted(opts: { service: string; phone: string; orderId?: string; serviceId?: string }): Promise<void> {
+  if (!import.meta.env.PROD) return;
+  if (opts.orderId) {
+    let fired: string[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(FIRED_PURCHASES_KEY) ?? '[]');
+      fired = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      /* localStorage محظور */
+    }
+    if (fired.includes(opts.orderId)) return;
+    try {
+      fired.push(opts.orderId);
+      localStorage.setItem(FIRED_PURCHASES_KEY, JSON.stringify(fired.slice(-MAX_STORED_IDS)));
+    } catch {
+      /* localStorage محظور */
+    }
+  }
+
+  const e164 = toE164Saudi(opts.phone);
+  const phoneHash = e164 ? await sha256Hex(e164) : null;
+
+  const ttq = await ensurePixel();
+  if (!ttq) return;
+  if (phoneHash) ttq.identify({ phone_number: phoneHash });
+  const contentId = opts.serviceId ?? opts.service;
+  ttq.track(
+    'Purchase',
+    {
+      value: SERVICE_VALUES[opts.service] ?? 0,
+      currency: CURRENCY,
+      content_type: 'product',
+      contents: [{ content_id: contentId, content_name: opts.service, quantity: 1 }],
+    },
+    opts.orderId ? { event_id: opts.orderId } : undefined,
+  );
+}
