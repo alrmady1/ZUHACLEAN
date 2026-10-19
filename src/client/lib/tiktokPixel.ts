@@ -13,6 +13,9 @@
 // أحداث وهمية من التطوير المحلي ضمن حساب الإعلانات الحقيقي.
 import { useEffect } from 'react';
 import { api } from './api.js';
+// قيمة تقديرية لكل خدمة بالريال (لأحداث Purchase وAddToCart وInitiateCheckout)
+// — في ملف مشترك مع سطر "يبدأ من" في صفحة /order، فتعديل السعر يكون في مكان واحد.
+import { SERVICE_VALUES } from './orderServices.js';
 
 interface Ttq {
   load: (id: string, options?: unknown) => void;
@@ -274,18 +277,6 @@ export async function trackPlaceAnOrder(order: {
   );
   checkoutStarted = false;
 }
-
-// قيمة تقديرية لكل خدمة بالريال لحدث Purchase — المفاتيح هي عناوين الخدمات
-// كما تظهر في صفحة /order (landing services). خدمة غير موجودة هنا = 0.
-const SERVICE_VALUES: Record<string, number> = {
-  'تنظيف شقق وفلل شامل': 300,
-  'تنظيف مكاتب': 250,
-  'تنظيف عميق بعد التشطيب': 500,
-  'غسيل وتعقيم سجاد وموكيت': 150,
-  'مكافحة حشرات': 200,
-  'تنظيف كنب ومجالس بالبخار': 200,
-  'تنظيف مكيفات سبليت': 100,
-};
 
 const FIRED_PURCHASES_KEY = 'zaha-ops:tiktok-purchases-fired';
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Home,
   Building2,
@@ -35,6 +35,7 @@ import {
   trackOrderInitiateCheckout,
   trackContact,
 } from '../lib/tiktokPixel.js';
+import { SERVICE_VALUES, MIN_SERVICE_PRICE, serviceTitleFromSlug, serviceShortLabel } from '../lib/orderServices.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -226,6 +227,28 @@ export default function OrderPage() {
     setStep(2);
     scrollToForm();
   }
+
+  // رابط مباشر لخدمة (إعلانات TikTok): /order?service=sofa — بعد وصول قائمة
+  // الخدمات، تُختار الخدمة ويُقفز لخطوة "بياناتك" تماماً مثل pickService
+  // (AddToCart مرة واحدة بنفس حماية trackAddToCart من التكرار). اسم غير
+  // معروف أو خدمة غير مفعّلة = الصفحة تبدأ عادي من الخطوة الأولى. الرابط
+  // نفسه لا يُعدَّل، فتبقى متغيرات utm_* كما هي. يُطبَّق مرة واحدة فقط.
+  const serviceLinkApplied = useRef(false);
+  useEffect(() => {
+    if (serviceLinkApplied.current || services.length === 0) return;
+    serviceLinkApplied.current = true;
+    const title = serviceTitleFromSlug(new URLSearchParams(window.location.search).get('service'));
+    if (!title || !services.some((s) => s.title === title)) return;
+    pickService(title);
+  }, [services]);
+
+  // سطر "يبدأ من" فوق النموذج — سعر الخدمة المختارة من SERVICE_VALUES، أو
+  // السطر العام (أقل سعر) قبل اختيار خدمة أو لخدمة بلا سعر معرَّف.
+  const selectedPrice = serviceName ? SERVICE_VALUES[serviceName] : undefined;
+  const priceLine =
+    selectedPrice !== undefined
+      ? { label: `${serviceShortLabel(serviceName)} يبدأ من`, price: selectedPrice }
+      : { label: 'أسعار تبدأ من', price: MIN_SERVICE_PRICE };
 
   const canGoNext = step === 1 ? Boolean(serviceName) : step === 2 ? name.trim().length > 1 && phone.trim().length >= 9 : true;
 
@@ -420,6 +443,23 @@ export default function OrderPage() {
                     {step} من {HERO_STEP_TITLES.length}
                   </span>
                 </div>
+
+                {/* سطر "يبدأ من" — يتغير حسب الخدمة المختارة. */}
+                <p
+                  className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-xl px-3 py-2 text-[13px] leading-snug"
+                  style={{ backgroundColor: `${GREEN}14`, color: NAVY }}
+                  aria-live="polite"
+                >
+                  <span>
+                    {priceLine.label}{' '}
+                    <span className="text-[15px] font-extrabold">
+                      {priceLine.price}
+                    </span>{' '}
+                    ريال
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span className="font-semibold">قسّط مع تابي</span>
+                </p>
 
                 <div className="mb-6 mt-4 flex gap-1.5">
                   {HERO_STEP_TITLES.map((_, i) => (
