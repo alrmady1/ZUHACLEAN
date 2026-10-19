@@ -33,6 +33,7 @@ import {
   trackOrderViewContent,
   trackAddToCart,
   trackOrderInitiateCheckout,
+  trackContact,
 } from '../lib/tiktokPixel.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
@@ -319,6 +320,7 @@ export default function OrderPage() {
         <div className="flex items-center gap-3 sm:gap-4">
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            onClick={() => trackContact('whatsapp', 'header')}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition hover:opacity-90 sm:px-4 sm:text-sm"
@@ -328,6 +330,7 @@ export default function OrderPage() {
           </a>
           <a
             href={`tel:${COMPANY_PHONE}`}
+            onClick={() => trackContact('phone', 'header')}
             dir="ltr"
             className="hidden items-center gap-1.5 text-sm font-bold text-white/90 transition hover:text-white sm:flex"
           >
@@ -395,6 +398,7 @@ export default function OrderPage() {
                 </p>
                 <a
                   href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  onClick={() => trackContact('whatsapp', 'order-success')}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-2 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
@@ -562,6 +566,7 @@ export default function OrderPage() {
                 </div>
                 <a
                   href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  onClick={() => trackContact('whatsapp', 'order-form')}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600"
@@ -610,6 +615,7 @@ export default function OrderPage() {
       <section className="px-5 pb-2 pt-4 text-center sm:px-10">
         <a
           href={`tel:${COMPANY_PHONE}`}
+          onClick={() => trackContact('phone', 'phone-banner')}
           dir="ltr"
           aria-label={`اتصل بنا ${COMPANY_PHONE}`}
           className="mx-auto block w-fit rounded-3xl bg-white px-8 py-3 text-4xl font-extrabold tracking-wide shadow-md transition hover:shadow-lg sm:px-12 sm:text-6xl"
@@ -683,6 +689,7 @@ export default function OrderPage() {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <a
             href={`tel:${COMPANY_PHONE}`}
+            onClick={() => trackContact('phone', 'contact-section')}
             dir="ltr"
             className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white"
             style={{ backgroundColor: NAVY }}
@@ -691,6 +698,7 @@ export default function OrderPage() {
           </a>
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            onClick={() => trackContact('whatsapp', 'contact-section')}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold"

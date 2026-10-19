@@ -18,7 +18,7 @@ import { api } from '../lib/api.js';
 import { waLink } from '../lib/whatsapp.js';
 import { COMPANY_NAME, COMPANY_PHONE, DEFAULT_LANDING_SETTINGS, PREFERRED_TIME_OF_DAY_LABELS_AR } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService, PreferredTimeOfDay } from '../../shared/types.js';
-import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder } from '../lib/tiktokPixel.js';
+import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder, trackContact } from '../lib/tiktokPixel.js';
 
 // Leaflet محمَّل عالمياً عبر <script> في index.html (نفس ما تستخدمه
 // RiyadhZonesTab.tsx وCustomerHeatMapTab.tsx) — بلا حزمة npm ولا مفتاح API.
@@ -267,6 +267,7 @@ export default function BookingWizardPage() {
           <div className="mt-6 flex flex-col items-center gap-2">
             <a
               href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+              onClick={() => trackContact('whatsapp', 'booking-success')}
               target="_blank"
               rel="noreferrer"
               className="flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
@@ -290,7 +291,7 @@ export default function BookingWizardPage() {
           <img src="/icon-192.png" alt={COMPANY_NAME} className="h-9 w-9 rounded-xl" />
           <span className="text-base font-extrabold text-white">{COMPANY_NAME}</span>
         </Link>
-        <a href={`tel:${COMPANY_PHONE}`} dir="ltr" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold" style={{ backgroundColor: GREEN, color: NAVY }}>
+        <a href={`tel:${COMPANY_PHONE}`} onClick={() => trackContact('phone', 'booking-header')} dir="ltr" className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold" style={{ backgroundColor: GREEN, color: NAVY }}>
           <PhoneIcon className="h-3.5 w-3.5" /> {COMPANY_PHONE}
         </a>
       </header>

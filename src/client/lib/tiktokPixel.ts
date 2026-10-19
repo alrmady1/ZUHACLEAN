@@ -96,20 +96,11 @@ function ensurePixel(): Promise<Ttq | null> {
 
 // يُستدعى من كل صفحة عامة عند ظهورها (انظر OrderPage وBookingWizardPage
 // وRatePage) — الأولى تُحمّل البكسل، والتالية (تنقّل داخل الـSPA) تُرسل
-// ttq.page() فقط.
+// ttq.page() فقط. حدث Contact يُطلَق من onClick كل زر واتساب/اتصال مباشرة
+// (trackContact أدناه) مع مكان الزر، لا من مستمع عام على الصفحة.
 export function useTikTokPageView(): void {
   useEffect(() => {
     trackPageView();
-    // حدث Contact من مستمع نقر واحد على الصفحة بدل تكراره في كل رابط:
-    // أي رابط واتساب (wa.me / whatsapp.com) أو اتصال (tel:).
-    function onClick(e: MouseEvent) {
-      const anchor = (e.target as Element | null)?.closest?.('a');
-      const href = anchor?.getAttribute('href') ?? '';
-      if (href.startsWith('tel:')) trackContact('phone');
-      else if (/^https?:\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com|wa\.link)\b/i.test(href)) trackContact('whatsapp');
-    }
-    document.addEventListener('click', onClick);
-    return () => document.removeEventListener('click', onClick);
   }, []);
 }
 
@@ -174,9 +165,19 @@ export function trackViewContent(service: TrackedService): void {
   );
 }
 
-// الضغط على زر واتساب أو الاتصال.
-export function trackContact(channel: 'whatsapp' | 'phone'): void {
-  send('Contact', { content_name: channel }, newEventId('contact'));
+// الضغط على أي زر/رابط واتساب أو اتصال في الصفحات العامة. placement = مكان
+// الزر (header، order-form، contact-section…). لا يمنع فتح الرابط؛ send()
+// ينتظر تحميل البكسل إن لم يكتمل بعد بدل إسقاط الحدث.
+export function trackContact(method: 'whatsapp' | 'phone', placement: string): void {
+  if (!import.meta.env.PROD) return;
+  send(
+    'Contact',
+    {
+      content_type: 'product',
+      contents: [{ content_id: `contact-${method}`, content_name: placement, quantity: 1 }],
+    },
+    newEventId('contact'),
+  );
 }
 
 let checkoutStarted = false;
