@@ -3004,8 +3004,8 @@ function LandingPageTab() {
             <span className="block text-sm font-medium text-slate-700">{t('آخر أعمالنا')}</span>
             <span className="mb-3 block text-xs text-slate-400">
               {tt(
-                `صور مصغَّرة تظهر للعميل تحت قسم "خدماتنا"، تُختار من صور قبل/بعد العمل في المواعيد المنفَّذة (حتى ${LANDING_WORKS_GALLERY_MAX} صورة) — لا يظهر القسم إن لم تُختَر صور`,
-                `Thumbnails shown to customers under "Our Services", picked from before/after photos of completed appointments (up to ${LANDING_WORKS_GALLERY_MAX}) — the section is hidden when empty`,
+                `صور مصغَّرة تظهر للعميل فوق قسم "خدماتنا"، تُختار من صور قبل/بعد العمل في المواعيد المنفَّذة (حتى ${LANDING_WORKS_GALLERY_MAX} صورة) — لا يظهر القسم إن لم تُختَر صور`,
+                `Thumbnails shown to customers above "Our Services", picked from before/after photos of completed appointments (up to ${LANDING_WORKS_GALLERY_MAX}) — the section is hidden when empty`,
               )}
             </span>
             {(settings.works_gallery?.length ?? 0) > 0 && (

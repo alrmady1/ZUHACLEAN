@@ -671,6 +671,44 @@ export default function OrderPage() {
         </a>
       </section>
 
+      {/* ============================ آخر أعمالنا ============================ */}
+      {visibleWorks.length > 0 && (
+        <section id="works" className="mx-auto max-w-6xl px-5 pt-14 sm:px-10">
+          <div className="mb-5 text-center">
+            <h2 className="text-2xl font-extrabold sm:text-3xl" style={{ color: NAVY }}>
+              آخر أعمالنا
+            </h2>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2 sm:flex-wrap sm:justify-center sm:overflow-visible">
+            {visibleWorks.map((w, idx) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setWorksLightboxIndex(idx)}
+                aria-label="آخر أعمالنا"
+                className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border shadow-sm transition hover:shadow-lg sm:h-28 sm:w-28"
+                style={{ borderColor: CREAM }}
+              >
+                <img
+                  src={w.image_url}
+                  alt="آخر أعمالنا"
+                  loading="lazy"
+                  onError={() => setBrokenWorks((prev) => new Set(prev).add(w.id))}
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {worksLightboxIndex !== null && (
+        <MediaLightbox
+          items={visibleWorks.map((w) => ({ url: w.image_url, isVideo: false }))}
+          startIndex={worksLightboxIndex}
+          onClose={() => setWorksLightboxIndex(null)}
+        />
+      )}
+
       {/* ============================== الخدمات ============================== */}
       <section id="services" className="mx-auto max-w-6xl px-5 py-16 sm:px-10">
         <div className="mb-10 text-center">
@@ -726,44 +764,6 @@ export default function OrderPage() {
           )}
         </div>
       </section>
-
-      {/* ============================ آخر أعمالنا ============================ */}
-      {visibleWorks.length > 0 && (
-        <section id="works" className="mx-auto max-w-6xl px-5 pb-6 sm:px-10">
-          <div className="mb-5 text-center">
-            <h2 className="text-2xl font-extrabold sm:text-3xl" style={{ color: NAVY }}>
-              آخر أعمالنا
-            </h2>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-2 sm:flex-wrap sm:justify-center sm:overflow-visible">
-            {visibleWorks.map((w, idx) => (
-              <button
-                key={w.id}
-                type="button"
-                onClick={() => setWorksLightboxIndex(idx)}
-                aria-label="آخر أعمالنا"
-                className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border shadow-sm transition hover:shadow-lg sm:h-28 sm:w-28"
-                style={{ borderColor: CREAM }}
-              >
-                <img
-                  src={w.image_url}
-                  alt="آخر أعمالنا"
-                  loading="lazy"
-                  onError={() => setBrokenWorks((prev) => new Set(prev).add(w.id))}
-                  className="h-full w-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      {worksLightboxIndex !== null && (
-        <MediaLightbox
-          items={visibleWorks.map((w) => ({ url: w.image_url, isVideo: false }))}
-          startIndex={worksLightboxIndex}
-          onClose={() => setWorksLightboxIndex(null)}
-        />
-      )}
 
       {/* ============================== تواصل ============================== */}
       <section id="contact" className="mx-auto max-w-2xl px-5 py-16 text-center sm:px-10">
