@@ -72,6 +72,7 @@ import type {
   Appointment,
   ActivityLogEntry,
   LandingPageSettings,
+  LandingWorkImage,
   LandingService,
   MobileAppSettings,
   CommissionConfig,
@@ -91,6 +92,7 @@ import type {
   OfficialHolidayKey,
 } from '../../shared/types.js';
 import {
+  LANDING_WORKS_GALLERY_MAX,
   DEFAULT_LANDING_SETTINGS,
   DEFAULT_MOBILE_APP_SETTINGS,
   DEFAULT_COMMISSION_CONFIG,
@@ -2668,6 +2670,129 @@ function LiveChatSection() {
   );
 }
 
+// اختيار صور "آخر أعمالنا" من صور قبل/بعد العمل داخل المواعيد المكتملة (صور
+// فقط، بلا فيديو). الاختيار يُحفَظ كرابط الصورة نفسها (لا نسخة جديدة)، ويُثبَّت
+// بزر "حفظ الألوان والنصوص" في الإعدادات.
+function WorksPickerModal({
+  selected,
+  onClose,
+  onDone,
+}: {
+  selected: LandingWorkImage[];
+  onClose: () => void;
+  onDone: (next: LandingWorkImage[]) => void;
+}) {
+  const { t, tt } = useI18n();
+  const [appointments, setAppointments] = useState<Appointment[] | null>(null);
+  const [picked, setPicked] = useState<LandingWorkImage[]>(selected);
+  const [broken, setBroken] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.get<Appointment[]>('/appointments').then(setAppointments).catch(() => setAppointments([]));
+  }, []);
+
+  const groups = (appointments ?? [])
+    .filter((a) => a.status === 'completed')
+    .map((a) => ({
+      appt: a,
+      photos: a.photos.filter((p) => p.media_type !== 'video' && (p.stage === 'before' || p.stage === 'after')),
+    }))
+    .filter((g) => g.photos.length > 0)
+    .sort((x, y) => new Date(y.appt.scheduled_at).getTime() - new Date(x.appt.scheduled_at).getTime());
+
+  const isPicked = (id: string) => picked.some((w) => w.id === id);
+  function toggle(id: string, url: string) {
+    setPicked((cur) =>
+      cur.some((w) => w.id === id)
+        ? cur.filter((w) => w.id !== id)
+        : cur.length >= LANDING_WORKS_GALLERY_MAX
+          ? cur
+          : [...cur, { id, image_url: url }],
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">{t('اختيار صور "آخر أعمالنا"')}</h2>
+            <p className="text-xs text-slate-400">
+              {tt(
+                `صور قبل/بعد العمل من المواعيد المكتملة — المختار ${picked.length} من ${LANDING_WORKS_GALLERY_MAX}`,
+                `Before/after photos of completed appointments — ${picked.length} of ${LANDING_WORKS_GALLERY_MAX} selected`,
+              )}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          {appointments === null ? (
+            <div className="py-10 text-center text-sm text-slate-400">{t('جارِ التحميل…')}</div>
+          ) : groups.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-400">{t('لا توجد صور قبل/بعد في مواعيد مكتملة بعد')}</div>
+          ) : (
+            groups.map(({ appt, photos }) => (
+              <div key={appt.id}>
+                <div className="mb-1.5 text-xs font-semibold text-slate-500">
+                  {appt.customer_name_snapshot} — {appt.service_name_snapshot} — {formatDateAr(appt.scheduled_at)}
+                </div>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {photos.map((p) => {
+                    const on = isPicked(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => toggle(p.id, p.data_url)}
+                        className={`relative aspect-square overflow-hidden rounded-lg border-2 bg-slate-100 ${on ? 'border-brand-600' : 'border-transparent'}`}
+                      >
+                        {broken.has(p.id) ? (
+                          <span className="flex h-full items-center justify-center text-[10px] text-slate-400">{t('تعذّر التحميل')}</span>
+                        ) : (
+                          <img
+                            src={p.data_url}
+                            alt=""
+                            loading="lazy"
+                            onError={() => setBroken((b) => new Set(b).add(p.id))}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                        <span className="absolute start-1 top-1 rounded bg-slate-900/60 px-1 text-[10px] text-white">
+                          {p.stage === 'before' ? t('قبل') : t('بعد')}
+                        </span>
+                        {on && (
+                          <span className="absolute end-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white">
+                            <Check className="h-3 w-3" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex gap-2 border-t border-slate-100 p-4">
+          <button
+            type="button"
+            onClick={() => onDone(picked)}
+            className="flex-1 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            {t('تأكيد الاختيار')}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-500">
+            {t('إلغاء')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LandingPageTab() {
   const { t, tt } = useI18n();
   const [settings, setSettings] = useState<LandingPageSettings>(DEFAULT_LANDING_SETTINGS);
@@ -2685,6 +2810,7 @@ function LandingPageTab() {
 
   const [uploadingPopupAd, setUploadingPopupAd] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [showWorksPicker, setShowWorksPicker] = useState(false);
 
   function refreshSettings() {
     api.get<LandingPageSettings>('/landing-settings').then(setSettings);
@@ -2871,6 +2997,52 @@ function LandingPageTab() {
                 {uploadingHeroImage && <span className="mt-1 block text-xs text-slate-400">{t('جارِ رفع الصورة…')}</span>}
               </div>
             </div>
+          </div>
+          {/* صور قسم "آخر أعمالنا" — مصغَّرات تظهر تحت "خدماتنا" في الصفحة
+              العامة؛ تُحفَظ مع بقية الإعدادات بزر "حفظ الألوان والنصوص". */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span className="block text-sm font-medium text-slate-700">{t('آخر أعمالنا')}</span>
+            <span className="mb-3 block text-xs text-slate-400">
+              {tt(
+                `صور مصغَّرة تظهر للعميل تحت قسم "خدماتنا"، تُختار من صور قبل/بعد العمل في المواعيد المنفَّذة (حتى ${LANDING_WORKS_GALLERY_MAX} صورة) — لا يظهر القسم إن لم تُختَر صور`,
+                `Thumbnails shown to customers under "Our Services", picked from before/after photos of completed appointments (up to ${LANDING_WORKS_GALLERY_MAX}) — the section is hidden when empty`,
+              )}
+            </span>
+            {(settings.works_gallery?.length ?? 0) > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {settings.works_gallery!.map((w) => (
+                  <div key={w.id} className="relative h-16 w-16">
+                    <img src={w.image_url} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
+                    <button
+                      type="button"
+                      title={t('حذف الصورة')}
+                      onClick={() => setSettings((s) => ({ ...s, works_gallery: (s.works_gallery ?? []).filter((x) => x.id !== w.id) }))}
+                      className="absolute -end-1.5 -top-1.5 rounded-full bg-red-600 p-0.5 text-white shadow hover:bg-red-700"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowWorksPicker(true)}
+              disabled={(settings.works_gallery?.length ?? 0) >= LANDING_WORKS_GALLERY_MAX}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {t('+ اختيار من صور المواعيد المنفَّذة')}
+            </button>
+            {showWorksPicker && (
+              <WorksPickerModal
+                selected={settings.works_gallery ?? []}
+                onClose={() => setShowWorksPicker(false)}
+                onDone={(works_gallery) => {
+                  setSettings((cur) => ({ ...cur, works_gallery }));
+                  setShowWorksPicker(false);
+                }}
+              />
+            )}
           </div>
           <Field label={t('الشعار المختصر (يظهر أعلى الصفحة بجانب الاسم)')}>
             <input

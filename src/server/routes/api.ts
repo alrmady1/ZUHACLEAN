@@ -87,6 +87,7 @@ import type {
 import {
   VAT_RATE,
   SARV_DEFAULT_COMMISSION_PERCENT,
+  LANDING_WORKS_GALLERY_MAX,
   PLATFORM_SETTLEMENT_PARTY_LABELS_AR,
   OPEN_DISCOUNT_MAX_PERCENT,
   CUSTODY_CATEGORY_NAME,
@@ -4402,6 +4403,15 @@ api.patch('/landing-settings', (req, res) => {
     popup_ad_image_url: body.popup_ad_image_url !== undefined ? body.popup_ad_image_url || undefined : current.popup_ad_image_url,
     hero_image_url: body.hero_image_url !== undefined ? body.hero_image_url || undefined : current.hero_image_url,
     seo_keywords: typeof body.seo_keywords === 'string' ? body.seo_keywords.trim() || undefined : current.seo_keywords,
+    works_gallery: Array.isArray(body.works_gallery)
+      ? body.works_gallery
+          .filter((w: unknown): w is { id: string; image_url: string } => {
+            const x = w as { id?: unknown; image_url?: unknown } | null;
+            return !!x && typeof x.id === 'string' && typeof x.image_url === 'string' && x.image_url.length > 0;
+          })
+          .slice(0, LANDING_WORKS_GALLERY_MAX)
+          .map((w: { id: string; image_url: string }) => ({ id: w.id, image_url: w.image_url }))
+      : current.works_gallery,
   };
   store.landingSettings.set(next);
   logActivity(req, 'تم تعديل إعدادات صفحة الطلبات الخارجية (الألوان/النصوص)');

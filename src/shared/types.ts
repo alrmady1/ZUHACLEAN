@@ -1031,7 +1031,18 @@ export interface LandingPageSettings {
   // افتراضية ثابتة في الكود، فحسابات قديمة بلا هذا الحقل تستمر تعمل بلا
   // أي تغيير مرئي.
   seo_keywords?: string;
+  // صور قسم "آخر أعمالنا" — مصغَّرات تحت قسم "خدماتنا" في الصفحة العامة،
+  // يضيفها/يحذفها فريق العمل من الإعدادات ← الطلبات الخارجية. غائبة أو
+  // فارغة = لا يظهر القسم أصلاً.
+  works_gallery?: LandingWorkImage[];
 }
+
+export interface LandingWorkImage {
+  id: string;
+  image_url: string;
+}
+
+export const LANDING_WORKS_GALLERY_MAX = 12;
 
 export const DEFAULT_LANDING_SETTINGS: LandingPageSettings = {
   colors: DEFAULT_LANDING_COLORS,
