@@ -13,6 +13,9 @@
 // أحداث وهمية من التطوير المحلي ضمن حساب الإعلانات الحقيقي.
 import { useEffect } from 'react';
 import { api } from './api.js';
+// قيمة تقديرية لكل خدمة بالريال (لأحداث Purchase وAddToCart وInitiateCheckout)
+// — في ملف مشترك مع سطر "يبدأ من" في صفحة /order، فتعديل السعر يكون في مكان واحد.
+import { SERVICE_VALUES } from './orderServices.js';
 
 interface Ttq {
   load: (id: string, options?: unknown) => void;
@@ -96,20 +99,11 @@ function ensurePixel(): Promise<Ttq | null> {
 
 // يُستدعى من كل صفحة عامة عند ظهورها (انظر OrderPage وBookingWizardPage
 // وRatePage) — الأولى تُحمّل البكسل، والتالية (تنقّل داخل الـSPA) تُرسل
-// ttq.page() فقط.
+// ttq.page() فقط. حدث Contact يُطلَق من onClick كل زر واتساب/اتصال مباشرة
+// (trackContact أدناه) مع مكان الزر، لا من مستمع عام على الصفحة.
 export function useTikTokPageView(): void {
   useEffect(() => {
     trackPageView();
-    // حدث Contact من مستمع نقر واحد على الصفحة بدل تكراره في كل رابط:
-    // أي رابط واتساب (wa.me / whatsapp.com) أو اتصال (tel:).
-    function onClick(e: MouseEvent) {
-      const anchor = (e.target as Element | null)?.closest?.('a');
-      const href = anchor?.getAttribute('href') ?? '';
-      if (href.startsWith('tel:')) trackContact('phone');
-      else if (/^https?:\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com|wa\.link)\b/i.test(href)) trackContact('whatsapp');
-    }
-    document.addEventListener('click', onClick);
-    return () => document.removeEventListener('click', onClick);
   }, []);
 }
 
@@ -174,9 +168,19 @@ export function trackViewContent(service: TrackedService): void {
   );
 }
 
-// الضغط على زر واتساب أو الاتصال.
-export function trackContact(channel: 'whatsapp' | 'phone'): void {
-  send('Contact', { content_name: channel }, newEventId('contact'));
+// الضغط على أي زر/رابط واتساب أو اتصال في الصفحات العامة. placement = مكان
+// الزر (header، order-form، contact-section…). لا يمنع فتح الرابط؛ send()
+// ينتظر تحميل البكسل إن لم يكتمل بعد بدل إسقاط الحدث.
+export function trackContact(method: 'whatsapp' | 'phone', placement: string): void {
+  if (!import.meta.env.PROD) return;
+  send(
+    'Contact',
+    {
+      content_type: 'product',
+      contents: [{ content_id: `contact-${method}`, content_name: placement, quantity: 1 }],
+    },
+    newEventId('contact'),
+  );
 }
 
 let checkoutStarted = false;
@@ -272,4 +276,79 @@ export async function trackPlaceAnOrder(order: {
     { event_id: order.leadId },
   );
   checkoutStarted = false;
+}
+
+const FIRED_PURCHASES_KEY = 'zaha-ops:tiktok-purchases-fired';
+
+// حدث Purchase (الحدث القياسي لمسار الشراء في TikTok) مع قيمة الطلب.
+// يُستدعى فقط بعد نجاح حفظ الحجز من الخادم؛ orderId (رقم الحجز) = event_id
+// ويمنع إعادة الإرسال لنفس الحجز. الجوال بصيغة E.164 ومشفّر SHA-256.
+export async function trackBookingSubmitted(opts: { service: string; phone: string; orderId?: string; serviceId?: string }): Promise<void> {
+  if (!import.meta.env.PROD) return;
+  if (opts.orderId) {
+    let fired: string[] = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(FIRED_PURCHASES_KEY) ?? '[]');
+      fired = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      /* localStorage محظور */
+    }
+    if (fired.includes(opts.orderId)) return;
+    try {
+      fired.push(opts.orderId);
+      localStorage.setItem(FIRED_PURCHASES_KEY, JSON.stringify(fired.slice(-MAX_STORED_IDS)));
+    } catch {
+      /* localStorage محظور */
+    }
+  }
+
+  const e164 = toE164Saudi(opts.phone);
+  const phoneHash = e164 ? await sha256Hex(e164) : null;
+
+  const ttq = await ensurePixel();
+  if (!ttq) return;
+  if (phoneHash) ttq.identify({ phone_number: phoneHash });
+  ttq.track('Purchase', orderEventParams(opts.service, opts.serviceId), opts.orderId ? { event_id: opts.orderId } : undefined);
+}
+
+// نفس بيانات Purchase (القيمة من SERVICE_VALUES + contents) لأحداث مسار
+// الحجز في صفحة /order، حتى يرى TikTok قيمة متّسقة عبر المسار كله.
+function orderEventParams(service: string, serviceId?: string): Record<string, unknown> {
+  const contentId = serviceId ?? service;
+  return {
+    value: SERVICE_VALUES[service] ?? 0,
+    currency: CURRENCY,
+    content_type: 'product',
+    contents: [{ content_id: contentId, content_name: service, quantity: 1 }],
+  };
+}
+
+// ── أحداث مسار الحجز في صفحة /order ──────────────────────────────────────
+// منفصلة عن trackViewContent/trackInitiateCheckout أعلاه، التي ما زال
+// معالج الحجز /order/book يستخدمها بتوقيت مختلف (عند اختيار الخدمة/الكتابة).
+
+// ViewContent مرة واحدة عند فتح صفحة /order — بلا content_id (لا خدمة مختارة بعد).
+export function trackOrderViewContent(): void {
+  if (!import.meta.env.PROD) return;
+  send('ViewContent', { content_type: 'product' }, newEventId('vc'));
+}
+
+let lastCartService: string | null = null;
+
+// AddToCart عند اختيار خدمة والانتقال لخطوة "بياناتك" — مرة لكل خدمة
+// (الرجوع ثم التقدّم بنفس الخدمة لا يكرّره).
+export function trackAddToCart(opts: { service: string; serviceId?: string }): void {
+  if (!import.meta.env.PROD || !opts.service || lastCartService === opts.service) return;
+  lastCartService = opts.service;
+  send('AddToCart', orderEventParams(opts.service, opts.serviceId), newEventId('cart'));
+}
+
+let lastCheckoutService: string | null = null;
+
+// InitiateCheckout عند الانتقال لخطوة "التأكيد" بعد كتابة الاسم والجوال —
+// مرة لكل خدمة كذلك.
+export function trackOrderInitiateCheckout(opts: { service: string; serviceId?: string }): void {
+  if (!import.meta.env.PROD || !opts.service || lastCheckoutService === opts.service) return;
+  lastCheckoutService = opts.service;
+  send('InitiateCheckout', orderEventParams(opts.service, opts.serviceId), newEventId('checkout'));
 }

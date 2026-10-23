@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Home,
   Building2,
@@ -27,7 +27,16 @@ import { waLink } from '../lib/whatsapp.js';
 import LiveChatWidget from '../components/LiveChatWidget.js';
 import MediaLightbox from '../components/MediaLightbox.js';
 import { initGoogleAdsTag, fireBookingConversion } from '../lib/googleAds.js';
-import { useTikTokPageView, trackViewContent, trackInitiateCheckout, trackPlaceAnOrder } from '../lib/tiktokPixel.js';
+import {
+  useTikTokPageView,
+  trackPlaceAnOrder,
+  trackBookingSubmitted,
+  trackOrderViewContent,
+  trackAddToCart,
+  trackOrderInitiateCheckout,
+  trackContact,
+} from '../lib/tiktokPixel.js';
+import { SERVICE_VALUES, MIN_SERVICE_PRICE, serviceTitleFromSlug, serviceShortLabel } from '../lib/orderServices.js';
 import { COMPANY_NAME, COMPANY_LEGAL_NAME, COMPANY_PHONE, COMPANY_CR_NUMBER, DEFAULT_LANDING_SETTINGS } from '../../shared/types.js';
 import type { Lead, LandingPageSettings, LandingService } from '../../shared/types.js';
 
@@ -120,6 +129,10 @@ export default function OrderPage() {
 
   // TikTok Pixel + حدث Contact — للصفحات العامة فقط (انظر tiktokPixel.ts).
   useTikTokPageView();
+  // ViewContent مرة واحدة عند فتح الصفحة (بلا خدمة مختارة بعد).
+  useEffect(() => {
+    trackOrderViewContent();
+  }, []);
 
   useEffect(() => {
     api
@@ -209,26 +222,47 @@ export default function OrderPage() {
     const s = services.find((x) => x.title === title);
     return { id: s?.id ?? title, name: title };
   }
-  // اختيار/فتح خدمة (من بطاقات الهيرو أو قسم "خدماتنا") = ViewContent.
   function chooseService(title: string) {
     setServiceName(title);
-    trackViewContent(trackedService(title));
-  }
-  // بدء تعبئة بيانات الحجز (أول كتابة في الاسم/الجوال) = InitiateCheckout.
-  function onFormTyping() {
-    trackInitiateCheckout(serviceName ? trackedService(serviceName) : undefined);
   }
 
+  // اختيار من قسم "خدماتنا" يقفز مباشرة لخطوة "بياناتك" = نفس AddToCart.
   function pickService(n: string) {
     chooseService(n);
+    trackAddToCart({ service: n, serviceId: trackedService(n).id });
     setStep(2);
     scrollToForm();
   }
+
+  // رابط مباشر لخدمة (إعلانات TikTok): /order?service=sofa — بعد وصول قائمة
+  // الخدمات، تُختار الخدمة ويُقفز لخطوة "بياناتك" تماماً مثل pickService
+  // (AddToCart مرة واحدة بنفس حماية trackAddToCart من التكرار). اسم غير
+  // معروف أو خدمة غير مفعّلة = الصفحة تبدأ عادي من الخطوة الأولى. الرابط
+  // نفسه لا يُعدَّل، فتبقى متغيرات utm_* كما هي. يُطبَّق مرة واحدة فقط.
+  const serviceLinkApplied = useRef(false);
+  useEffect(() => {
+    if (serviceLinkApplied.current || services.length === 0) return;
+    serviceLinkApplied.current = true;
+    const title = serviceTitleFromSlug(new URLSearchParams(window.location.search).get('service'));
+    if (!title || !services.some((s) => s.title === title)) return;
+    pickService(title);
+  }, [services]);
+
+  // سطر "يبدأ من" فوق النموذج — سعر الخدمة المختارة من SERVICE_VALUES، أو
+  // السطر العام (أقل سعر) قبل اختيار خدمة أو لخدمة بلا سعر معرَّف.
+  const selectedPrice = serviceName ? SERVICE_VALUES[serviceName] : undefined;
+  const priceLine =
+    selectedPrice !== undefined
+      ? { label: `${serviceShortLabel(serviceName)} يبدأ من`, price: selectedPrice }
+      : { label: 'أسعار تبدأ من', price: MIN_SERVICE_PRICE };
 
   const canGoNext = step === 1 ? Boolean(serviceName) : step === 2 ? name.trim().length > 1 && phone.trim().length >= 9 : true;
 
   function goNext() {
     if (!canGoNext) return;
+    // "التالي: بياناتك" = AddToCart، و"التالي: التأكيد" = InitiateCheckout.
+    if (step === 1) trackAddToCart({ service: serviceName, serviceId: trackedService(serviceName).id });
+    else if (step === 2) trackOrderInitiateCheckout({ service: serviceName, serviceId: trackedService(serviceName).id });
     setStep((s) => Math.min(s + 1, HERO_STEP_TITLES.length));
   }
   function goBack() {
@@ -254,6 +288,13 @@ export default function OrderPage() {
       // PlaceAnOrder لـTikTok — من نفس نقطة النجاح فقط؛ رقم الحجز (lead.id)
       // هو event_id. identify بالجوال المشفّر يسبق الحدث داخل الدالة.
       void trackPlaceAnOrder({ leadId: lead.id, service: serviceName ? trackedService(serviceName) : undefined, phone });
+      // Purchase لـTikTok مع قيمة الطلب — من نفس نقطة النجاح فقط.
+      void trackBookingSubmitted({
+        service: serviceName,
+        serviceId: serviceName ? trackedService(serviceName).id : undefined,
+        phone: phone.trim(),
+        orderId: lead.id,
+      });
     } catch {
       setSubmitError('تعذّر إرسال طلبك، حاول مرة أخرى أو تواصل معنا مباشرة عبر واتساب.');
     } finally {
@@ -308,6 +349,7 @@ export default function OrderPage() {
         <div className="flex items-center gap-3 sm:gap-4">
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            onClick={() => trackContact('whatsapp', 'header')}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition hover:opacity-90 sm:px-4 sm:text-sm"
@@ -317,6 +359,7 @@ export default function OrderPage() {
           </a>
           <a
             href={`tel:${COMPANY_PHONE}`}
+            onClick={() => trackContact('phone', 'header')}
             dir="ltr"
             className="hidden items-center gap-1.5 text-sm font-bold text-white/90 transition hover:text-white sm:flex"
           >
@@ -384,6 +427,7 @@ export default function OrderPage() {
                 </p>
                 <a
                   href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  onClick={() => trackContact('whatsapp', 'order-success')}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-2 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white"
@@ -405,6 +449,23 @@ export default function OrderPage() {
                     {step} من {HERO_STEP_TITLES.length}
                   </span>
                 </div>
+
+                {/* سطر "يبدأ من" — يتغير حسب الخدمة المختارة. */}
+                <p
+                  className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-xl px-3 py-2 text-[13px] leading-snug"
+                  style={{ backgroundColor: `${GREEN}14`, color: NAVY }}
+                  aria-live="polite"
+                >
+                  <span>
+                    {priceLine.label}{' '}
+                    <span className="text-[15px] font-extrabold">
+                      {priceLine.price}
+                    </span>{' '}
+                    ريال
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span className="font-semibold">قسّط مع تابي</span>
+                </p>
 
                 <div className="mb-6 mt-4 flex gap-1.5">
                   {HERO_STEP_TITLES.map((_, i) => (
@@ -466,7 +527,6 @@ export default function OrderPage() {
                         value={name}
                         onChange={(e) => {
                           setName(e.target.value);
-                          onFormTyping();
                         }}
                         placeholder="مثال: محمد العتيبي"
                         className="input"
@@ -478,7 +538,6 @@ export default function OrderPage() {
                         value={phone}
                         onChange={(e) => {
                           setPhone(e.target.value);
-                          onFormTyping();
                         }}
                         dir="ltr"
                         placeholder="05XXXXXXXX"
@@ -553,6 +612,7 @@ export default function OrderPage() {
                 </div>
                 <a
                   href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+                  onClick={() => trackContact('whatsapp', 'order-form')}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600"
@@ -601,6 +661,7 @@ export default function OrderPage() {
       <section className="px-5 pb-2 pt-4 text-center sm:px-10">
         <a
           href={`tel:${COMPANY_PHONE}`}
+          onClick={() => trackContact('phone', 'phone-banner')}
           dir="ltr"
           aria-label={`اتصل بنا ${COMPANY_PHONE}`}
           className="mx-auto block w-fit rounded-3xl bg-white px-8 py-3 text-4xl font-extrabold tracking-wide shadow-md transition hover:shadow-lg sm:px-12 sm:text-6xl"
@@ -712,6 +773,7 @@ export default function OrderPage() {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <a
             href={`tel:${COMPANY_PHONE}`}
+            onClick={() => trackContact('phone', 'contact-section')}
             dir="ltr"
             className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white"
             style={{ backgroundColor: NAVY }}
@@ -720,6 +782,7 @@ export default function OrderPage() {
           </a>
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            onClick={() => trackContact('whatsapp', 'contact-section')}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold"

@@ -3,6 +3,7 @@ import { MessageCircle, MessageSquareText, Phone, Headphones, X, Send } from 'lu
 import { api } from '../lib/api.js';
 import type { LiveChatMessage } from '../../shared/types.js';
 import { COMPANY_NAME, COMPANY_PHONE } from '../../shared/types.js';
+import { trackContact } from '../lib/tiktokPixel.js';
 import { waLink } from '../lib/whatsapp.js';
 
 const THREAD_ID_STORAGE_KEY = 'zaha-live-chat-thread-id';
@@ -165,6 +166,7 @@ export default function LiveChatWidget() {
           </button>
           <a
             href={`tel:${COMPANY_PHONE}`}
+            onClick={() => trackContact('phone', 'floating-buttons')}
             dir="ltr"
             title="اتصال"
             className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition hover:scale-105"
@@ -173,6 +175,7 @@ export default function LiveChatWidget() {
           </a>
           <a
             href={waLink(COMPANY_PHONE, WHATSAPP_INTRO)}
+            onClick={() => trackContact('whatsapp', 'floating-buttons')}
             target="_blank"
             rel="noreferrer"
             title="واتساب"
