@@ -5,8 +5,12 @@
 import express from 'express';
 import { api } from '../src/server/routes/api.js';
 import { initStore } from '../src/server/store/db.js';
+import { mediaImageHandler } from '../src/server/routes/media.js';
 
 const app = express();
+// صور الصفحة العامة المخزَّنة مؤقتاً على شبكة Vercel — قبل أي وسيط يحمّل
+// قاعدة البيانات، فلا تلمسها (انظر routes/media.ts).
+app.get('/api/media/img', mediaImageHandler);
 app.use(express.json({ limit: '8mb' }));
 // ويب هوك واتساب (Twilio) يرسل جسم الطلب بصيغة form-urlencoded، وليس JSON.
 app.use(express.urlencoded({ extended: false }));

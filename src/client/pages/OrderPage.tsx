@@ -136,12 +136,12 @@ export default function OrderPage() {
 
   useEffect(() => {
     api
-      .get<LandingPageSettings>('/landing-settings')
+      .get<LandingPageSettings>('/landing-settings?media=cdn')
       .then(setSettings)
       .catch(() => {})
       .finally(() => setSettingsLoaded(true));
     api
-      .get<LandingService[]>('/landing-services')
+      .get<LandingService[]>('/landing-services?media=cdn')
       .then((list) => setServices(list.filter((s) => s.is_active)))
       .catch(() => {});
   }, []);
@@ -692,6 +692,7 @@ export default function OrderPage() {
                   <img
                     src={s.image_url}
                     alt={s.title}
+                    loading="lazy"
                     onError={() => setBrokenServiceImages((prev) => new Set(prev).add(s.id))}
                     className="h-[244px] w-full object-cover"
                   />

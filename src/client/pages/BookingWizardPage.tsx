@@ -107,9 +107,9 @@ export default function BookingWizardPage() {
   }
 
   useEffect(() => {
-    api.get<LandingPageSettings>('/landing-settings').then(setSettings).catch(() => {});
+    api.get<LandingPageSettings>('/landing-settings?media=cdn').then(setSettings).catch(() => {});
     api
-      .get<LandingService[]>('/landing-services')
+      .get<LandingService[]>('/landing-services?media=cdn')
       .then((list) => setServices(list.filter((s) => s.is_active)))
       .catch(() => {});
   }, []);

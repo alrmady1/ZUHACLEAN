@@ -197,6 +197,14 @@ export async function uploadLandingImage(dataUrl: string): Promise<string> {
   return data.signedUrl;
 }
 
+// تنزيل كائن من الحاوية بمفتاح الخادم — يستخدمه مسار /api/media/img حصراً،
+// الذي يقصر المسارات على صور الصفحة العامة (انظر routes/media.ts).
+export async function downloadStorageObject(path: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error || !data) return null;
+  return { buffer: Buffer.from(await data.arrayBuffer()), contentType: data.type || 'application/octet-stream' };
+}
+
 // نفس منطق uploadAppointmentPhoto أعلاه بالضبط، لصورة الهوية/الإقامة
 // المرفقة بملف الموظف الشخصي (صفحة "الموظفين") — تُخزَّن تحت مسار
 // "employees/" منفصل.

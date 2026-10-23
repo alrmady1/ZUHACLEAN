@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { api } from './routes/api.js';
 import { initStore } from './store/db.js';
+import { mediaImageHandler } from './routes/media.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT ?? 3000);
@@ -32,6 +33,7 @@ async function createServer() {
     next();
   });
 
+  app.get('/api/media/img', mediaImageHandler);
   app.use('/api', api);
 
   if (!isProd) {

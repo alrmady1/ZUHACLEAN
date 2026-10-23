@@ -111,6 +111,7 @@ import { normalizeSaudiPhone } from '../../shared/phone.js';
 import { computeAssetDepreciation } from '../../shared/depreciation.js';
 import { annualLeaveEntitlementDays } from '../../shared/leaves.js';
 import { reconcileHolidayOvertimeForAppointment } from '../lib/overtime.js';
+import { toCdnUrl } from './media.js';
 
 export const api = Router();
 
@@ -4383,7 +4384,19 @@ api.post('/whatsapp/webhook', async (req, res) => {
 // نقطتا GET هنا عامتان (بلا حماية) لأن OrderPage.tsx نفسها تستدعيهما بلا
 // تسجيل دخول.
 // ---------------------------------------------------------------------------
-api.get('/landing-settings', (_req, res) => res.json(store.landingSettings.get()));
+// ?media=cdn (الصفحات العامة فقط) يستبدل روابط الصور بمسار /api/media/img
+// المخزَّن مؤقتاً على Vercel؛ بدونه تبقى الروابط الأصلية كما هي (واجهة
+// الإعدادات تحفظ الكائن كاملاً عبر PATCH فلا يجوز أن ترى الروابط المستبدَلة).
+api.get('/landing-settings', (req, res) => {
+  const s = store.landingSettings.get();
+  if (req.query.media !== 'cdn') return res.json(s);
+  res.json({
+    ...s,
+    hero_image_url: toCdnUrl(s.hero_image_url),
+    popup_ad_image_url: toCdnUrl(s.popup_ad_image_url),
+    works_gallery: s.works_gallery?.map((w) => ({ ...w, image_url: toCdnUrl(w.image_url) ?? w.image_url })),
+  });
+});
 
 api.patch('/landing-settings', (req, res) => {
   const body = req.body ?? {};
@@ -4513,7 +4526,10 @@ api.patch('/mobile-app-settings', (req, res) => {
   res.json(updated);
 });
 
-api.get('/landing-services', (_req, res) => res.json(store.landingServices.list()));
+api.get('/landing-services', (req, res) => {
+  const list = store.landingServices.list();
+  res.json(req.query.media === 'cdn' ? list.map((s) => ({ ...s, image_url: toCdnUrl(s.image_url) })) : list);
+});
 
 // مسار حرفي مسجَّل قبل '/landing-services/:id' عمداً — وإلا لطابقه إكسبرس
 // كأنه :id بقيمة "reorder" ولن يصل الطلب لهذا المسار إطلاقاً.
