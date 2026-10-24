@@ -269,15 +269,16 @@ export default function Sales() {
   const dailyMovement = useMemo(() => {
     // الطلبات الملغاة لا تظهر في حركة المبيعات (لا مبيعات فعلية عنها).
     const sorted = periodAppts.filter((a) => a.status !== 'cancelled').sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-    const map = new Map<string, number>();
+    const map = new Map<string, { value: number; count: number }>();
     for (const a of sorted) {
       // كانت مثبَّتة على 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — نفس
       // العلة المصحَّحة في TechnicianPortal.tsx/Appointments.tsx.
       const chartLocale = lang === 'ar' ? 'ar-SA' : lang === 'bn' ? 'bn-BD-u-nu-latn' : lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-US';
       const key = new Date(a.scheduled_at).toLocaleDateString(chartLocale, { day: 'numeric', month: 'short' });
-      map.set(key, (map.get(key) ?? 0) + a.amount);
+      const cur = map.get(key) ?? { value: 0, count: 0 };
+      map.set(key, { value: cur.value + a.amount, count: cur.count + 1 });
     }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+    return Array.from(map.entries()).map(([name, { value, count }]) => ({ name, value, count }));
   }, [periodAppts, lang]);
 
   const paymentBreakdown = useMemo(() => {
@@ -446,7 +447,23 @@ export default function Sales() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v: number) => formatMoney(v)} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0].payload as { value: number; count: number };
+                        return (
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
+                            <div className="mb-1 font-semibold text-slate-700">{label}</div>
+                            <div className="text-blue-600">
+                              {t('المبيعات')}: {formatMoney(row.value)}
+                            </div>
+                            <div className="text-slate-600">
+                              {t('عدد الطلبات')}: {row.count}
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
                     <Bar dataKey="value" name={t('المبيعات')} fill="#2563eb" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
