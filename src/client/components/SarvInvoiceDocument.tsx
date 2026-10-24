@@ -1,7 +1,7 @@
 import { X, Printer } from 'lucide-react';
 import type { Invoice, PaymentMethodOption } from '../../shared/types.js';
 import { COMPANY_LEGAL_NAME, COMPANY_VAT_NUMBER, SARV_DEFAULT_COMMISSION_PERCENT, PLATFORM_SETTLEMENT_PARTY_LABELS_AR } from '../../shared/types.js';
-import { sarvCommissionAmount } from '../../shared/sarv.js';
+import { sarvCommissionAmount, sarvIsManualCommission } from '../../shared/sarv.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
 
@@ -18,8 +18,14 @@ export default function SarvInvoiceDocument({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const rate = invoice.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT;
   const commission = sarvCommissionAmount(invoice);
+  const isManual = sarvIsManualCommission(invoice);
+  // عمولة معدَّلة يدوياً: تُعرَض النسبة الفعلية الناتجة عن القيمة المدخلة.
+  const rate = isManual
+    ? invoice.total > 0
+      ? Math.round((commission / invoice.total) * 1000) / 10
+      : 0
+    : invoice.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT;
   const netAfterCommission = Math.round((invoice.total - commission) * 100) / 100;
   const methodName = paymentMethods.find((m) => m.id === invoice.payment_method)?.name ?? invoice.payment_method ?? '—';
   const settledBy = PLATFORM_SETTLEMENT_PARTY_LABELS_AR[invoice.platform_settled_by ?? 'company'];
@@ -95,7 +101,7 @@ export default function SarvInvoiceDocument({
               <span>{rate}٪</span>
             </div>
             <div className="mt-1 flex justify-between text-xs text-slate-400">
-              <span>{t('محسوبة من إجمالي المبلغ')}</span>
+              <span>{isManual ? t('قيمة معدَّلة يدوياً — النسبة محسوبة من إجمالي المبلغ') : t('محسوبة من إجمالي المبلغ')}</span>
               <span>{formatMoney(invoice.total)}</span>
             </div>
             <div className="mt-2 flex justify-between border-t border-brand-200 pt-2 text-base font-bold text-brand-700">

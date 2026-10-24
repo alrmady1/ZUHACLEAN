@@ -3146,6 +3146,36 @@ api.patch('/invoices/:id', (req, res) => {
   if (!target) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
   if (target.sales_channel !== 'sarv') return res.status(400).json({ error: 'هذا الحقل خاص بفواتير منصة سيرف فقط' });
   const body = req.body ?? {};
+
+  // تعديل قيمة العمولة يدوياً (رقم ≥ 0 وليس أكبر من إجمالي الفاتورة)، أو
+  // null للعودة للحساب الافتراضي (النسبة × الإجمالي). لا يمسّ بقية الحقول.
+  if ('platform_commission_manual_amount' in body) {
+    const raw = body.platform_commission_manual_amount;
+    const rate = target.platform_commission_rate ?? SARV_DEFAULT_COMMISSION_PERCENT;
+    const defaultAmount = Math.round(target.total * (rate / 100) * 100) / 100;
+    let manual: number | undefined;
+    if (raw === null) {
+      manual = undefined;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > target.total) {
+        return res.status(400).json({ error: 'قيمة العمولة يجب أن تكون رقماً بين 0 وإجمالي الفاتورة' });
+      }
+      manual = Math.round(n * 100) / 100;
+    }
+    const updated = store.invoices.update(target.id, {
+      platform_commission_manual_amount: manual,
+      platform_commission_amount: manual ?? defaultAmount,
+    });
+    logActivity(
+      req,
+      manual === undefined
+        ? `تمت إعادة عمولة سيرف لفاتورة "${target.invoice_number}" للحساب الافتراضي (${defaultAmount} ر.س)`
+        : `تم تعديل عمولة سيرف لفاتورة "${target.invoice_number}" يدوياً إلى ${manual} ر.س (الافتراضي ${defaultAmount} ر.س)`,
+    );
+    return res.json(updated);
+  }
+
   if (body.platform_settled_by !== 'company' && body.platform_settled_by !== 'platform') {
     return res.status(400).json({ error: "platform_settled_by يجب أن تكون 'company' أو 'platform'" });
   }

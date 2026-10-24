@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Store, Printer } from 'lucide-react';
+import { Store, Printer, Pencil } from 'lucide-react';
 import { api } from '../lib/api.js';
 import type { Invoice, PaymentMethodOption, PlatformSettlementParty } from '../../shared/types.js';
 import { PLATFORM_SETTLEMENT_PARTY_LABELS_AR } from '../../shared/types.js';
 import { PaymentStatusBadge } from '../components/Badge.js';
 import { formatMoney, formatDateAr } from '../lib/date.js';
 import { useI18n } from '../lib/i18n.js';
-import { sarvCommissionAmount } from '../../shared/sarv.js';
+import { sarvCommissionAmount, sarvIsManualCommission } from '../../shared/sarv.js';
+import SarvCommissionModal from '../components/SarvCommissionModal.js';
 import SarvInvoiceDocument from '../components/SarvInvoiceDocument.js';
 import SarvPaymentModal from '../components/SarvPaymentModal.js';
 import { useAuth } from '../lib/auth.js';
@@ -30,6 +31,7 @@ export function SarvSalesTab() {
   const { can } = useAuth();
   const canManagePayments = can('manage_sarv_settings');
   const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null);
+  const [editingCommission, setEditingCommission] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,9 +133,25 @@ export function SarvSalesTab() {
                       <PaymentStatusBadge status={i.payment_status} />
                     </td>
                     <td className="p-3 text-slate-600">
-                      {i.platform_commission_rate != null ? tt(`${i.platform_commission_rate}%`, `${i.platform_commission_rate}%`) : '—'}
+                      {sarvIsManualCommission(i)
+                        ? `${i.total > 0 ? Math.round((sarvCommissionAmount(i) / i.total) * 1000) / 10 : 0}%`
+                        : tt(`${i.platform_commission_rate ?? 20}%`, `${i.platform_commission_rate ?? 20}%`)}
                     </td>
-                    <td className="p-3 text-slate-600">{formatMoney(sarvCommissionAmount(i))}</td>
+                    <td className="p-3 text-slate-600">
+                      <div className="flex items-center gap-1">
+                        <span>{formatMoney(sarvCommissionAmount(i))}</span>
+                        {canManagePayments && (
+                          <button
+                            onClick={() => setEditingCommission(i)}
+                            title={t('تعديل عمولة سيرف')}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {sarvIsManualCommission(i) && <div className="text-[11px] font-medium text-amber-600">{t('معدَّلة يدوياً')}</div>}
+                    </td>
                     <td className="p-3">
                       <select
                         value={i.platform_settled_by ?? 'company'}
@@ -190,6 +208,17 @@ export function SarvSalesTab() {
           </div>
         )}
       </div>
+
+      {editingCommission && (
+        <SarvCommissionModal
+          invoice={editingCommission}
+          onClose={() => setEditingCommission(null)}
+          onSaved={(updated) => {
+            setInvoices((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+            setEditingCommission(null);
+          }}
+        />
+      )}
 
       {payingInvoice && (
         <SarvPaymentModal
