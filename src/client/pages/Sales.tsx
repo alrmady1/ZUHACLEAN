@@ -267,7 +267,8 @@ export default function Sales() {
   const collectionRate = totalSales > 0 ? Math.round((collectedActual / totalSales) * 100) : 0;
 
   const dailyMovement = useMemo(() => {
-    const sorted = periodAppts.slice().sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+    // الطلبات الملغاة لا تظهر في حركة المبيعات (لا مبيعات فعلية عنها).
+    const sorted = periodAppts.filter((a) => a.status !== 'cancelled').sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
     const map = new Map<string, number>();
     for (const a of sorted) {
       // كانت مثبَّتة على 'ar-SA' دائماً بغضّ النظر عن اللغة الحالية — نفس
@@ -446,7 +447,7 @@ export default function Sales() {
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip formatter={(v: number) => formatMoney(v)} />
-                    <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" name={t('المبيعات')} fill="#2563eb" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
