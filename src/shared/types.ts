@@ -1539,6 +1539,9 @@ export interface AppointmentPhoto {
   data_url: string;
   // غائب = صورة (كل السجلات القديمة).
   media_type?: 'image' | 'video';
+  // مصغّرة صغيرة للصورة، أو لقطة عرض (poster) للفيديو — تُستخدَم في الشبكات
+  // بدل تحميل الملف الكامل (توفير حصة النقل). غائبة على كل ما رُفع قبلها.
+  thumb_url?: string;
   taken_at: string;
 }
 

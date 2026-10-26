@@ -98,7 +98,7 @@ function AppointmentCard({
           {(['before', 'after'] as const).map((stage) => {
             const media = appt.photos.filter((p) => p.stage === stage);
             if (media.length === 0) return null;
-            const items = media.map((p) => ({ url: p.data_url, isVideo: p.media_type === 'video' }));
+            const items = media.map((p) => ({ url: p.data_url, isVideo: p.media_type === 'video', thumbUrl: p.thumb_url }));
             return (
               <div key={stage}>
                 <div className="mb-1 text-[11px] font-medium text-slate-400">{stage === 'before' ? t('صورة قبل') : t('صورة بعد')}</div>

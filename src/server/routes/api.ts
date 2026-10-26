@@ -1,4 +1,4 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { store, pendingWrites } from '../store/db.js';
 import type { StoredProfile } from '../store/db.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -16,6 +16,8 @@ import {
   uploadAssetPurchaseInvoice,
   uploadEmployeeContractFile,
   uploadDocumentExpiryAttachment,
+  isStorageQuotaError,
+  STORAGE_QUOTA_MESSAGE,
 } from '../lib/storage.js';
 import { sendPushToProfiles, appointmentNotifyProfileIds, leadNotifyProfileIds, generalManagerNotifyProfileIds } from '../lib/push.js';
 import { handleIncomingWhatsappMessage } from '../lib/whatsappBot.js';
@@ -114,6 +116,14 @@ import { reconcileHolidayOvertimeForAppointment } from '../lib/overtime.js';
 import { toCdnUrl } from './media.js';
 
 export const api = Router();
+
+// رد موحَّد لفشل رفع إلى التخزين: لو كان السبب توقف مشروع Supabase لتجاوز حصة
+// النقل (402) تُعاد رسالة واضحة بدل "فشل الرفع" العامة.
+function uploadFailed(res: Response, err: unknown, fallback: string) {
+  if (isStorageQuotaError(err)) return res.status(503).json({ error: STORAGE_QUOTA_MESSAGE });
+  return res.status(500).json({ error: fallback });
+}
+
 
 // على Vercel (بلا خادم) يُجمَّد تنفيذ الدالة بعد إرسال الاستجابة مباشرة —
 // أي كتابة persist() لم تكتمل بعد قد تُفقَد بصمت. بدل تحويل كل مسار في
@@ -350,7 +360,7 @@ api.post('/vehicles', async (req, res) => {
       registrationPhotoUrl = await uploadVehicleRegistrationPhoto(vehicleId, body.registration_photo_data_url);
     } catch (err) {
       console.error('❌ فشل رفع صورة الاستمارة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع صورة الاستمارة' });
+      return uploadFailed(res, err, 'فشل رفع صورة الاستمارة');
     }
   }
   const now = new Date().toISOString();
@@ -424,7 +434,7 @@ api.patch('/vehicles/:id', async (req, res) => {
       patch.registration_photo_url = await uploadVehicleRegistrationPhoto(req.params.id, body.registration_photo_data_url);
     } catch (err) {
       console.error('❌ فشل رفع صورة الاستمارة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع صورة الاستمارة' });
+      return uploadFailed(res, err, 'فشل رفع صورة الاستمارة');
     }
   } else if (body.remove_registration_photo) {
     patch.registration_photo_url = undefined;
@@ -646,7 +656,7 @@ api.post('/assets', async (req, res) => {
       invoiceFileUrl = await uploadAssetPurchaseInvoice(assetId, body.purchase_invoice_file_data_url);
     } catch (err) {
       console.error('❌ فشل رفع فاتورة الشراء إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع فاتورة الشراء' });
+      return uploadFailed(res, err, 'فشل رفع فاتورة الشراء');
     }
   }
   const now = new Date().toISOString();
@@ -694,7 +704,7 @@ api.patch('/assets/:id', async (req, res) => {
       patch.purchase_invoice_file_name = body.purchase_invoice_file_name || undefined;
     } catch (err) {
       console.error('❌ فشل رفع فاتورة الشراء إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع فاتورة الشراء' });
+      return uploadFailed(res, err, 'فشل رفع فاتورة الشراء');
     }
   } else if (body.remove_purchase_invoice_file) {
     patch.purchase_invoice_file_url = undefined;
@@ -1040,7 +1050,7 @@ api.patch('/profiles/:id', async (req, res) => {
       patch.id_photo_url = await uploadEmployeeIdPhoto(req.params.id, body.id_photo_data_url);
     } catch (err) {
       console.error('❌ فشل رفع صورة الهوية إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع صورة الهوية' });
+      return uploadFailed(res, err, 'فشل رفع صورة الهوية');
     }
   } else if (body.remove_id_photo) {
     patch.id_photo_url = undefined;
@@ -1055,7 +1065,7 @@ api.patch('/profiles/:id', async (req, res) => {
       patch.contract_file_name = body.contract_file_name || undefined;
     } catch (err) {
       console.error('❌ فشل رفع ملف العقد إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع ملف العقد' });
+      return uploadFailed(res, err, 'فشل رفع ملف العقد');
     }
   } else if (body.remove_contract_file) {
     patch.contract_file_url = undefined;
@@ -1194,7 +1204,7 @@ api.post('/leaves', async (req, res) => {
       leave.photo_url = await uploadLeavePhoto(leave.id, body.photo_data_url);
     } catch (err) {
       console.error('❌ فشل رفع صورة الإجازة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع الصورة' });
+      return uploadFailed(res, err, 'فشل رفع الصورة');
     }
   }
   store.leaves.insert(leave);
@@ -1879,24 +1889,36 @@ api.delete('/appointments/:id', (req, res) => {
   res.status(204).end();
 });
 
+// مصغّرة الصورة / لقطة عرض الفيديو: رفعها اختياري وفشلها لا يُفشل الرفع الأصلي
+// (تبقى الشبكة تعرض الصورة الكاملة كما كان قبل هذه الميزة).
+async function uploadThumbIfAny(appointmentId: string, stage: string, dataUrl: unknown): Promise<string | undefined> {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return undefined;
+  try {
+    return await uploadAppointmentPhoto(appointmentId, stage, dataUrl);
+  } catch {
+    return undefined;
+  }
+}
+
 // Technician: attach a before/after photo. The client sends a base64 data
 // URL; we upload it to Supabase Storage and keep only the resulting URL
 // (never the raw base64) on the appointment record.
 api.post('/appointments/:id/photos', async (req, res) => {
   const appt = store.appointments.get(req.params.id);
   if (!appt) return res.status(404).json({ error: 'not found' });
-  const { stage, data_url } = req.body ?? {};
+  const { stage, data_url, thumb_data_url } = req.body ?? {};
   if (!stage || !data_url) return res.status(400).json({ error: 'stage و data_url مطلوبان' });
   try {
     const url = await uploadAppointmentPhoto(appt.id, stage, data_url);
-    appt.photos.push({ id: store.id(), stage, data_url: url, taken_at: new Date().toISOString() });
+    const thumb_url = await uploadThumbIfAny(appt.id, stage, thumb_data_url);
+    appt.photos.push({ id: store.id(), stage, data_url: url, thumb_url, taken_at: new Date().toISOString() });
     store.appointments.update(appt.id, { photos: appt.photos });
     const stageLabel = stage === 'before' ? 'قبل العمل' : stage === 'after' ? 'بعد العمل' : 'الموقع الحالي';
     logActivity(req, `تم إضافة صورة ${stageLabel} لموعد "${appt.customer_name_snapshot ?? ''}"`);
     res.status(201).json(appt);
   } catch (err) {
     console.error('❌ فشل رفع الصورة إلى Supabase Storage:', err);
-    res.status(500).json({ error: 'فشل رفع الصورة' });
+    uploadFailed(res, err, 'فشل رفع الصورة');
   }
 });
 
@@ -1913,27 +1935,28 @@ api.post('/appointments/:id/video-upload-url', async (req, res) => {
     res.json(await createAppointmentVideoUploadUrl(appt.id, stage, String(file_name ?? '')));
   } catch (err) {
     console.error('❌ فشل إنشاء رابط رفع الفيديو:', err);
-    res.status(500).json({ error: 'فشل تجهيز رفع الفيديو' });
+    uploadFailed(res, err, 'فشل تجهيز رفع الفيديو');
   }
 });
 
 api.post('/appointments/:id/videos', async (req, res) => {
   const appt = store.appointments.get(req.params.id);
   if (!appt) return res.status(404).json({ error: 'not found' });
-  const { stage, path } = req.body ?? {};
+  const { stage, path, poster_data_url } = req.body ?? {};
   if (!VIDEO_STAGES.includes(stage) || typeof path !== 'string' || !path.startsWith(`${appt.id}/`) || path.includes('..')) {
     return res.status(400).json({ error: 'stage و path مطلوبان' });
   }
   try {
     const url = await finalizeAppointmentVideo(path);
-    appt.photos.push({ id: store.id(), stage, data_url: url, media_type: 'video', taken_at: new Date().toISOString() });
+    const thumb_url = await uploadThumbIfAny(appt.id, stage, poster_data_url);
+    appt.photos.push({ id: store.id(), stage, data_url: url, thumb_url, media_type: 'video', taken_at: new Date().toISOString() });
     store.appointments.update(appt.id, { photos: appt.photos });
     const stageLabel = stage === 'before' ? 'قبل العمل' : stage === 'after' ? 'بعد العمل' : 'الموقع الحالي';
     logActivity(req, `تم إضافة فيديو ${stageLabel} لموعد "${appt.customer_name_snapshot ?? ''}"`);
     res.status(201).json(appt);
   } catch (err) {
     console.error('❌ فشل تسجيل الفيديو:', err);
-    res.status(500).json({ error: 'تعذّر تسجيل الفيديو — تأكد من اكتمال الرفع' });
+    uploadFailed(res, err, 'تعذّر تسجيل الفيديو — تأكد من اكتمال الرفع');
   }
 });
 
@@ -1996,7 +2019,7 @@ api.post('/appointments/:id/payments/:paymentId/receipt', async (req, res) => {
       payment.receipt_url = await uploadPaymentReceipt(appt.id, receipt_data_url);
     } catch (err) {
       console.error('❌ فشل رفع إيصال الدفعة:', err);
-      return res.status(500).json({ error: 'فشل رفع الإيصال' });
+      return uploadFailed(res, err, 'فشل رفع الإيصال');
     }
   } else if (remove) {
     payment.receipt_url = undefined;
@@ -2567,7 +2590,7 @@ api.post('/expenses', async (req, res) => {
       invoiceFileUrl = await uploadExpenseInvoice(expenseId, body.invoice_file_data_url);
     } catch (err) {
       console.error('❌ فشل رفع ملف الفاتورة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+      return uploadFailed(res, err, 'فشل رفع ملف الفاتورة');
     }
   }
   const amount = Number(body.amount ?? 0);
@@ -2728,7 +2751,7 @@ api.patch('/expenses/:id', async (req, res) => {
       patch.invoice_file_name = body.invoice_file_name || undefined;
     } catch (err) {
       console.error('❌ فشل رفع ملف الفاتورة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+      return uploadFailed(res, err, 'فشل رفع ملف الفاتورة');
     }
   } else if (body.remove_invoice_file) {
     patch.invoice_file_url = undefined;
@@ -2878,7 +2901,7 @@ api.post('/custody-invoices', async (req, res) => {
       invoiceFileUrl = await uploadExpenseInvoice(expenseId, body.invoice_file_data_url);
     } catch (err) {
       console.error('❌ فشل رفع ملف فاتورة العهدة إلى Supabase Storage:', err);
-      return res.status(500).json({ error: 'فشل رفع ملف الفاتورة' });
+      return uploadFailed(res, err, 'فشل رفع ملف الفاتورة');
     }
   }
 
@@ -3218,7 +3241,7 @@ api.post('/invoices/:id/platform-payment', async (req, res) => {
       patch.platform_payment_receipt_name = body.receipt_name ? String(body.receipt_name) : undefined;
     } catch (err) {
       console.error('❌ فشل رفع إيصال سداد سيرف:', err);
-      return res.status(500).json({ error: 'فشل رفع الإيصال' });
+      return uploadFailed(res, err, 'فشل رفع الإيصال');
     }
   } else if (body.remove_receipt) {
     patch.platform_payment_receipt_url = undefined;
@@ -4619,7 +4642,7 @@ api.post('/landing-images', async (req, res) => {
   try {
     const url = await uploadLandingImage(dataUrl);
     res.status(201).json({ url });
-  } catch {
-    res.status(500).json({ error: 'تعذّر رفع الصورة' });
+  } catch (err) {
+    uploadFailed(res, err, 'تعذّر رفع الصورة');
   }
 });

@@ -51,3 +51,72 @@ export async function compressImageToDataUrl(file: File): Promise<string> {
     return fileToDataUrl(file);
   }
 }
+
+const THUMB_MAX_DIMENSION = 480;
+const THUMB_QUALITY = 0.7;
+
+function canvasToThumbDataUrl(source: CanvasImageSource, width: number, height: number): string | null {
+  const scale = Math.min(1, THUMB_MAX_DIMENSION / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', THUMB_QUALITY);
+}
+
+// مصغّرة صغيرة (≈480px، عشرات الكيلوبايتات) لصورة تُعرَض في الشبكات بدل
+// الصورة الكاملة (≈170KB) — تقلّل نقل البيانات من التخزين نحو 85٪ عند تصفّح
+// صور الموعد. null عند أي فشل (لا تمنع رفع الصورة نفسها).
+export async function makeThumbDataUrl(file: File): Promise<string | null> {
+  try {
+    const img = await loadImage(await fileToDataUrl(file));
+    return canvasToThumbDataUrl(img, img.width, img.height);
+  } catch {
+    return null;
+  }
+}
+
+// لقطة عرض (poster) من أول لحظات فيديو — تُعرَض في الشبكة بدل تحميل الفيديو
+// نفسه. null لو تعذّر فك ترميز الفيديو في هذا المتصفح (مثلاً بعض صيغ iPhone
+// على غير سفاري)، وعندها تُعرَض بطاقة تشغيل عامة بلا أي تنزيل.
+export function makeVideoPosterDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    let settled = false;
+    const done = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      video.removeAttribute('src');
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => done(null), 8000);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.onerror = () => {
+      window.clearTimeout(timer);
+      done(null);
+    };
+    video.onloadeddata = () => {
+      try {
+        video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+      } catch {
+        window.clearTimeout(timer);
+        done(null);
+      }
+    };
+    video.onseeked = () => {
+      window.clearTimeout(timer);
+      try {
+        done(video.videoWidth ? canvasToThumbDataUrl(video, video.videoWidth, video.videoHeight) : null);
+      } catch {
+        done(null);
+      }
+    };
+    video.src = url;
+  });
+}

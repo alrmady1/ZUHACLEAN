@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { compressImageToDataUrl } from './image.js';
+import { compressImageToDataUrl, makeThumbDataUrl, makeVideoPosterDataUrl } from './image.js';
 import { APPOINTMENT_VIDEO_MAX_BYTES } from '../../shared/types.js';
 
 // الفيديو أكبر من أن يمر عبر دالة Vercel (حد الطلب ~4.5MB)، فيُرفع مباشرة من
@@ -12,13 +12,22 @@ async function uploadAppointmentVideo(appointmentId: string, stage: 'before' | '
     `/appointments/${appointmentId}/video-upload-url`,
     { stage, file_name: file.name },
   );
+  // لقطة العرض تُولَّد محلياً بالتوازي مع الرفع — تُعرَض في الشبكة بدل
+  // تحميل الفيديو نفسه (انظر MediaThumb).
+  const posterPromise = makeVideoPosterDataUrl(file);
   const res = await fetch(uploadUrl, {
     method: 'PUT',
     headers: { 'content-type': file.type || 'video/mp4', 'x-upsert': 'false', 'cache-control': 'max-age=3600' },
     body: file,
   });
-  if (!res.ok) throw new Error('فشل رفع الفيديو — تحقق من الاتصال أو من حجم الملف');
-  await api.post(`/appointments/${appointmentId}/videos`, { stage, path });
+  if (!res.ok) {
+    throw new Error(
+      res.status === 402
+        ? 'تخزين الصور والفيديو متوقف مؤقتاً بسبب تجاوز حصة النقل في Supabase — يلزم ترقية الباقة أو انتظار تجديد الدورة'
+        : 'فشل رفع الفيديو — تحقق من الاتصال أو من حجم الملف',
+    );
+  }
+  await api.post(`/appointments/${appointmentId}/videos`, { stage, path, poster_data_url: (await posterPromise) ?? undefined });
 }
 
 function isVideoFile(file: File): boolean {
@@ -34,8 +43,8 @@ export async function uploadAppointmentMedia(appointmentId: string, stage: 'befo
       if (isVideoFile(file)) {
         await uploadAppointmentVideo(appointmentId, stage, file);
       } else {
-        const data_url = await compressImageToDataUrl(file);
-        await api.post(`/appointments/${appointmentId}/photos`, { stage, data_url });
+        const [data_url, thumb_data_url] = await Promise.all([compressImageToDataUrl(file), makeThumbDataUrl(file)]);
+        await api.post(`/appointments/${appointmentId}/photos`, { stage, data_url, thumb_data_url: thumb_data_url ?? undefined });
       }
     } catch (err) {
       errors.push(err instanceof Error ? err.message : 'فشل رفع الملف');

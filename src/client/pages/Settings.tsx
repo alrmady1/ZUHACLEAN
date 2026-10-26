@@ -2753,7 +2753,7 @@ function WorksPickerModal({
                           <span className="flex h-full items-center justify-center text-[10px] text-slate-400">{t('تعذّر التحميل')}</span>
                         ) : (
                           <img
-                            src={p.data_url}
+                            src={p.thumb_url ?? p.data_url}
                             alt=""
                             loading="lazy"
                             onError={() => setBroken((b) => new Set(b).add(p.id))}

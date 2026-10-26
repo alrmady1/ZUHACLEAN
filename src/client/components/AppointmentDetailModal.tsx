@@ -12,7 +12,7 @@ import { formatDateAr, formatTimeAr, formatDuration, formatMoney } from '../lib/
 import { useAuth } from '../lib/auth.js';
 import { useI18n } from '../lib/i18n.js';
 import { waLink, ratingRequestMessage } from '../lib/whatsapp.js';
-import { compressImageToDataUrl } from '../lib/image.js';
+import { compressImageToDataUrl, makeThumbDataUrl } from '../lib/image.js';
 import { uploadAppointmentMedia } from '../lib/video.js';
 import MediaUploadButton from './MediaUploadButton.js';
 import SarvInvoiceDocument from './SarvInvoiceDocument.js';
@@ -74,9 +74,10 @@ function computeServicesDuration(chosen: Service[], quantities: Record<string, n
 }
 
 const STATUS_ORDER: AppointmentStatus[] = ['pending_review', 'scheduled', 'on_the_way', 'in_progress', 'completed', 'delayed', 'cancelled'];
-const toLightboxItem = (p: { data_url: string; media_type?: 'image' | 'video' }): LightboxItem => ({
+const toLightboxItem = (p: { data_url: string; media_type?: 'image' | 'video'; thumb_url?: string }): LightboxItem => ({
   url: p.data_url,
   isVideo: p.media_type === 'video',
+  thumbUrl: p.thumb_url,
 });
 
 const PHOTO_TABS: { value: 'all' | 'before' | 'after'; label: string }[] = [
@@ -459,10 +460,13 @@ export default function AppointmentDetailModal({
     setBusy(true);
     try {
       for (const file of Array.from(files)) {
-        const data_url = await compressImageToDataUrl(file);
-        await api.post(`/appointments/${appointment.id}/photos`, { stage, data_url });
+        const [data_url, thumb_data_url] = await Promise.all([compressImageToDataUrl(file), makeThumbDataUrl(file)]);
+        await api.post(`/appointments/${appointment.id}/photos`, { stage, data_url, thumb_data_url: thumb_data_url ?? undefined });
       }
       onChanged();
+    } catch (err) {
+      onChanged();
+      window.alert(err instanceof Error ? err.message : t('فشل رفع الصورة'));
     } finally {
       setBusy(false);
     }
@@ -1163,7 +1167,7 @@ export default function AppointmentDetailModal({
                   {appointment.photos.map((p, idx) => (
                     <div key={p.id} className="relative aspect-square">
                       <MediaThumb
-                        item={{ url: p.data_url, isVideo: p.media_type === 'video' }}
+                        item={{ url: p.data_url, isVideo: p.media_type === 'video', thumbUrl: p.thumb_url }}
                         alt={p.stage}
                         onOpen={() => setLightbox({ items: appointment.photos.map(toLightboxItem), index: idx })}
                       />
@@ -1232,7 +1236,7 @@ export default function AppointmentDetailModal({
                   {visiblePhotos.map((p, idx) => (
                     <div key={p.id} className="relative aspect-square">
                       <MediaThumb
-                        item={{ url: p.data_url, isVideo: p.media_type === 'video' }}
+                        item={{ url: p.data_url, isVideo: p.media_type === 'video', thumbUrl: p.thumb_url }}
                         alt={p.stage}
                         onOpen={() => setLightbox({ items: visiblePhotos.map(toLightboxItem), index: idx })}
                       />

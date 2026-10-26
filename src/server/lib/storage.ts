@@ -10,6 +10,15 @@ import { randomUUID } from 'node:crypto';
 import { supabase } from './supabaseClient.js';
 
 const BUCKET = 'appointment-photos';
+
+// مشروع Supabase يُوقَف تلقائياً (HTTP 402) عند تجاوز حصة النقل في الباقة —
+// فتفشل كل عمليات الرفع والعرض. تُكتشف هنا لتُعرَض للمستخدم برسالة واضحة.
+export const STORAGE_QUOTA_MESSAGE =
+  'تخزين الصور والفيديو متوقف مؤقتاً بسبب تجاوز حصة النقل في Supabase — يلزم ترقية الباقة أو انتظار تجديد الدورة، ثم أعد المحاولة';
+export function isStorageQuotaError(err: unknown): boolean {
+  const e = err as { status?: unknown; statusCode?: unknown; message?: unknown } | null;
+  return e?.status === 402 || e?.statusCode === 402 || e?.statusCode === '402' || /restricted due to|exceed_egress_quota/i.test(String(e?.message ?? ''));
+}
 const TEN_YEARS_IN_SECONDS = 60 * 60 * 24 * 365 * 10;
 
 let bucketReady: Promise<void> | null = null;

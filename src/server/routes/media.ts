@@ -13,7 +13,7 @@ import { downloadStorageObject } from '../lib/storage.js';
 
 const IMG_EXT = '(?:jpe?g|png|webp|gif)';
 const LANDING_RE = new RegExp(`^landing/[A-Za-z0-9._-]+\\.${IMG_EXT}$`, 'i');
-const APPT_PHOTO_RE = new RegExp(`^[0-9a-f]{8}-[0-9a-f-]{27}/(?:before|after)-\\d+-[0-9a-f-]{36}\\.${IMG_EXT}$`, 'i');
+const APPT_PHOTO_RE = new RegExp(`^[0-9a-f]{8}-[0-9a-f-]{27}/(?:before|after|site)-\\d+-[0-9a-f-]{36}\\.${IMG_EXT}$`, 'i');
 const PROXY_PATH = '/api/media/img';
 
 export function isAllowedMediaPath(path: string): boolean {
