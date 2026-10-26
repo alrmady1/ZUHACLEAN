@@ -3100,11 +3100,22 @@ api.post('/invoices', (req, res) => {
   // المبلغ المُرسَل من العميل يبقى دائماً "قبل الخصم" (سلوك الحقل نفسه
   // قبل إضافة هذه الميزة) — الخصم، إن وُجد، يُحتسَب هنا على الخادم فقط،
   // ولا يُوثَق بأي نسبة أو مبلغ يحسبه العميل بنفسه.
-  const preDiscountSubtotal = Number(body.subtotal ?? 0);
+  //
+  // total_amount (اختياري، يرسله العميل): سعر الخدمة شامل الضريبة كما هو —
+  // الإجمالي الفعلي للفاتورة يساويه بالضبط، والمبلغ قبل الضريبة مشتقّ منه،
+  // والضريبة = الإجمالي − المبلغ قبل الضريبة. بدونه (عملاء/تطبيقات أقدم)
+  // يُشتقّ الإجمالي من subtotal × (1 + VAT) كما كان، وقد ينحرف قرشاً.
+  const grossPrice = Number(body.total_amount);
+  const hasGrossPrice = Number.isFinite(grossPrice) && grossPrice > 0;
   // الخصم يُحتسَب على الإجمالي شامل الضريبة (نفس أسعار العميل)، فالمبلغ
   // الثابت (مثلاً 96) ينقص الإجمالي بمقدار 96 بالضبط — كان يُخصَم سابقاً من
   // المبلغ قبل الضريبة فيصير أثره 96 × 1.15 = 110.40. نفس منطق POST /quotes.
-  const preDiscountTotal = Math.round(preDiscountSubtotal * (1 + VAT_RATE) * 100) / 100;
+  const preDiscountTotal = hasGrossPrice
+    ? Math.round(grossPrice * 100) / 100
+    : Math.round(Number(body.subtotal ?? 0) * (1 + VAT_RATE) * 100) / 100;
+  const preDiscountSubtotal = hasGrossPrice
+    ? Math.round((preDiscountTotal / (1 + VAT_RATE)) * 100) / 100
+    : Number(body.subtotal ?? 0);
 
   let discount: ResolvedDiscount | null = null;
   if (body.discount_type === 'named') discount = resolveNamedDiscount(preDiscountTotal);
@@ -3113,11 +3124,17 @@ api.post('/invoices', (req, res) => {
   const discountAmount = discount?.amount ?? 0;
   // بلا خصم: الحساب كما كان تماماً؛ مع خصم: الإجمالي بعد الخصم أولاً، ثم
   // يُشتقّ منه المبلغ قبل الضريبة والضريبة.
-  const finalTotal = discount ? Math.round((preDiscountTotal - discountAmount) * 100) / 100 : undefined;
+  const finalTotal = discount
+    ? Math.round((preDiscountTotal - discountAmount) * 100) / 100
+    : hasGrossPrice
+      ? preDiscountTotal
+      : undefined;
   const subtotal =
     finalTotal !== undefined ? Math.round((finalTotal / (1 + VAT_RATE)) * 100) / 100 : preDiscountSubtotal;
+  // الضريبة = الإجمالي − المبلغ قبل الضريبة (لا net × 0.15)، فيطابق الإجمالي
+  // المخزَّن السعر الأصلي بالضبط بلا انحراف تقريب.
   const vat_amount = finalTotal !== undefined ? Math.round((finalTotal - subtotal) * 100) / 100 : Math.round(subtotal * VAT_RATE * 100) / 100;
-  const total = Math.round((subtotal + vat_amount) * 100) / 100;
+  const total = finalTotal !== undefined ? finalTotal : Math.round((subtotal + vat_amount) * 100) / 100;
 
   // طلب عبر منصة سيرف — النسبة والمبلغ يُحتسَبان ويُثبَّتان هنا وقت
   // الإصدار (انظر تعليق Invoice.platform_commission_rate في shared/types.ts).

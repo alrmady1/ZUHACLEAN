@@ -305,6 +305,9 @@ export default function Sales() {
     const payload: Record<string, unknown> = {
       customer_id: form.get('customer_id'),
       subtotal,
+      // المبلغ شامل الضريبة كما أُدخل — الخادم يشتق منه الضريبة (الإجمالي −
+      // المبلغ قبل الضريبة) فيطابق إجمالي الفاتورة المبلغ المُدخَل بالضبط.
+      total_amount: totalAmount,
       payment_status: form.get('payment_status'),
       payment_method: form.get('payment_method') || undefined,
       recorded_by: user?.id,

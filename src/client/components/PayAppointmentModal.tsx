@@ -201,6 +201,9 @@ export default function PayAppointmentModal({
         appointment_id: appointment.id,
         contract_id: appointment.contract_id,
         subtotal,
+        // سعر الخدمة شامل الضريبة كما هو — الخادم يشتق منه الضريبة (الإجمالي −
+        // المبلغ قبل الضريبة) فيطابق إجمالي الفاتورة السعر بالضبط.
+        total_amount: appointment.amount,
         payment_status: fullySettled ? 'paid' : 'partial',
         payment_method: method,
         recorded_by: user?.id,
